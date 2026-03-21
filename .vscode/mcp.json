@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "atlassian": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "CONFLUENCE_URL": "https://your-instance.atlassian.net/wiki",
+        "ENABLED_TOOLS": "confluence_search,confluence_get_page,confluence_get_page_children,confluence_get_comments,confluence_get_labels"
+      }
+    }
+  }
+}
