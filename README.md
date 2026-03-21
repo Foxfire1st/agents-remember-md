@@ -1,4 +1,4 @@
-# AI Infinite Context
+# AI Context System
 
 AI coding tools lose context, drift from plans in long sessions, and forget everything between sessions. When your backend defines an event type that three other codebases must implement — a TypeScript frontend, a mobile app, and a Go gateway service — no amount of code search in one of those repos will surface that contract. The AI writes confident code that breaks at integration.
 
