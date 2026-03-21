@@ -174,6 +174,8 @@ ai-infinite-context/                  # This repo — clone alongside your code 
     prompts/                          # Manual-invocation templates
 ```
 
+---
+
 ## What exists today and where it stops
 
 There is a spectrum of approaches for giving AI agents project context, from simple configuration files to sophisticated agent architectures. Each solves real problems. The question is where each one stops.
