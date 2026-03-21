@@ -165,8 +165,7 @@ are the ongoing authority via updateLock().
 - hasPermission() and isLocked() fall back to false for unknown types.
 
 ### Cross-repo References
-- EventType enum must stay in sync with Go gateway event_types
-  and mobile-app EventCategory.
+- EventType enum must stay in sync with Go gateway event_types and mobile-app EventCategory.
 - Lock state updated by WS lockStatus events via websocket.ts.
 
 ### Docs References
@@ -174,7 +173,19 @@ are the ongoing authority via updateLock().
 - WebSocket protocol: docs/architecture/websocket-protocol.md
 
 ## Tasks
-<!-- no active tasks -->
+<Task>
+target: updateLock() and lock state management
+taskGoal: "migration"
+progressStatus: "in-progress"
+description: Migrate lock state from local store to shared event bus so gateway can broadcast lock changes cross-tab.
+progress: Event bus wired up, updateLock() refactored. Pending: remove legacy WS handler fallback.
+taskfile: tasks/260315_lock-state-migration.md (S2)
+</Task>
+
+## Update History
+<!-- newest first; entries move here from Tasks when completed -->
+
+- 2026-03-10 — Added isLocked() guard for unknown event types after silent drop bug in production. (task: tasks/260310_unknown-event-guard.md)
 ```
 
 **Logic** says what the code does. **Invariants** says what must not be broken. **Cross-repo References** says what this file connects to in other repos. **Docs References** links to the specifications that define intended behavior — so the AI knows not just what the code does, but what it *should* do. **Tasks** tracks active modifications. The AI reads this before touching the code — it starts with structural context instead of guessing from syntax.
@@ -208,10 +219,10 @@ ai-infinite-context/                  # This repo — clone alongside your code 
 
 ## When to use which workflow
 
-| Situation | Workflow |
-|---|---|
-| Single-file changes, small fixes, any non-code changes (docs, configs, READMEs) | Light task workflow — plan in a task file, approval gate, then implement |
-| Multi-file refactors, cross-repo features, migrations, complex bug hunts | Full task workflow — plan, companion file updates, drift detection, approval gates |
+| Situation                                                                       | Workflow                                                                           |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Single-file changes, small fixes, any non-code changes (docs, configs, READMEs) | Light task workflow — plan in a task file, approval gate, then implement           |
+| Multi-file refactors, cross-repo features, migrations, complex bug hunts        | Full task workflow — plan, companion file updates, drift detection, approval gates |
 
 The overhead scales with complexity. The light workflow adds a plan and an approval gate — minimal overhead, but enough to keep the AI aligned. The full workflow adds companion file maintenance and drift detection on top. Every change goes through one of these two workflows.
 
