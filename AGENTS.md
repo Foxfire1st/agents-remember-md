@@ -16,19 +16,18 @@ This workspace uses a layered memory system. Understand the layers before acting
 | ----------------------- | --------------------- | --------------------------------------------------------------- |
 | `CORE_RULES.md`         | `CORE_RULES.md`       | Non-negotiable behavioral rules (R1–R6), harness file hierarchy |
 | `AGENTS.md` (this file) | `AGENTS.md`           | Operational principles: routing, glossary, source-of-truth      |
-| `*.instructions.md`     | `.github/instructions/` | Auto-attached retrieval hooks — compact, <50 lines            |
+| Rules                   | `.claude/rules/`        | Auto-attached retrieval hooks per file pattern                  |
 | `/onboarding/`          | `onboarding/`         | Code commentary — logic, invariants, conventions, task tracking |
 | `/docs/`                | `docs/`               | Authoritative reference documentation                           |
 | `/docs/glossary/`       | `docs/glossary/`      | Canonical vocabulary and cross-repo index                       |
 | Task files              | `tasks/`              | Current change intent, plans, decision logs                     |
-| Prompts                 | `.github/prompts/`    | Manual-invocation workflow templates                            |
-| Skills                  | `.github/skills/`     | Multi-step workflows with scripts and resources                 |
+| Skills                  | `.claude/skills/`     | Multi-step workflows with scripts and resources                 |
 
 ---
 
 ## Discovery
 
-**Always prefer top-down discovery over brute-force code roaming.** The full discovery procedure — reading order, cross-repo techniques, and fallback for missing onboarding — is defined in the [`discovery` skill](.github/skills/discovery/SKILL.md). Invoke it before touching code.
+**Always prefer top-down discovery over brute-force code roaming.** The full discovery procedure — reading order, cross-repo techniques, and fallback for missing onboarding — is defined in the [`discovery` skill](.claude/skills/discovery/SKILL.md). Invoke it before touching code.
 
 ---
 

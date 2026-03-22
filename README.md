@@ -169,11 +169,9 @@ ai-infinite-context/                  # This repo — clone alongside your code 
   tasks/                              # Task plans and decision logs
   docs/                               # Reference docs (API specs, protocol definitions, wiki exports)
     glossary/                         # Canonical terms across repos
-  .github/
-    agents/                           # AI agent entry points (VS Code Copilot)
-    skills/                           # Structured AI workflows (procedures)
-    instructions/                     # Auto-attached context per file pattern
-    prompts/                          # Manual-invocation templates
+  .claude/
+    skills/                           # Structured AI workflows (procedures, auto-discovered)
+    rules/                            # Auto-attached context per file pattern
 ```
 
 ---

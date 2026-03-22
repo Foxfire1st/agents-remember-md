@@ -25,7 +25,7 @@ Each AI tool has a tool-specific entry point that loads these shared files. **Im
 | Tool                           | Entry point                                                              | Loading behavior                                                                                                                                        |
 | ------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Claude Code CLI                | `CLAUDE.md` in workspace root                                            | **Inlines** R1–R6 from CORE_RULES.md. Claude Code auto-loads CLAUDE.md but does not follow references, so the rules must be present in the file itself. |
-| VS Code Copilot                | [`.github/agents/Developer.agent.md`](.github/agents/Developer.agent.md) | **References** CORE_RULES.md + AGENTS.md. VS Code can follow references.                                                                                |
+| Claude Code (VS Code extension) | `CLAUDE.md` in workspace root                                           | Same as CLI — auto-loads CLAUDE.md. Skills in `.claude/skills/` are auto-discovered.                                                                     |
 | JetBrains (PhpStorm, IntelliJ) | Custom instructions or system prompt in your AI plugin's settings        | Check whether your tool follows file references. If not, inline R1–R6 from CORE_RULES.md.                                                               |
 | Other tools                    | Find the highest-priority prompt slot your tool offers                   | Same — inline if the tool can't follow references, reference if it can.                                                                                 |
 
@@ -41,7 +41,7 @@ The minimum that must be present in any tool's entry point:
 
 ## 3. External integrations (optional)
 
-Some skills integrate with external tools like Confluence, GitLab, or other knowledge bases. These are provided as **example integrations** in `.github/skills/` — adapt them to your own tools:
+Some skills integrate with external tools like Confluence, GitLab, or other knowledge bases. These are provided as **example integrations** in `.claude/skills/` — adapt them to your own tools:
 
 | Example skill              | What it integrates with   | Adapt for                              |
 | -------------------------- | ------------------------- | -------------------------------------- |
@@ -52,7 +52,7 @@ Some skills integrate with external tools like Confluence, GitLab, or other know
 To enable the Confluence example:
 1. Copy `.env.example` to `.env`
 2. Set `CONFLUENCE_USERNAME` and `CONFLUENCE_API_TOKEN`
-3. Update the MCP server config in `.vscode/mcp.json` with your Confluence URL
+3. Configure your MCP server for Confluence (in `.claude/settings.json` for Claude Code, or your tool's MCP config)
 
 ---
 

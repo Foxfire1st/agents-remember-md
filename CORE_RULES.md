@@ -49,8 +49,8 @@ CORE_RULES.md          → Non-negotiable behavioral rules (this file)
   ├─ CLAUDE.md             → Claude Code CLI entry point — loads CORE_RULES.md + AGENTS.md
   ├─ Developer.agent.md    → VS Code Copilot entry point — loads CORE_RULES.md + AGENTS.md
   └─ AGENTS.md             → Operational principles: routing, glossary, source-of-truth
-       └─ Skills (.github/skills/)  → Procedures and workflow mechanics
-            └─ Instructions (.github/instructions/)  → Auto-attached retrieval hooks per file pattern
+       └─ Skills (.claude/skills/)  → Procedures and workflow mechanics
+            └─ Rules (.claude/rules/)  → Auto-attached retrieval hooks per file pattern
 ```
 
 | File                 | Responsibility                                                                                                 | Loaded by                                                     |

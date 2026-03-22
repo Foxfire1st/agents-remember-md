@@ -15,7 +15,7 @@ Pull ONE Confluence page through the MCP server and write a clean Markdown file 
 
 ## Prerequisites
 
-- The Atlassian MCP server must be configured in `.vscode/mcp.json`.
+- The Atlassian MCP server must be configured (in `.claude/settings.json` for Claude Code, or your tool's MCP config).
 - Valid Atlassian API token in `.env`.
 
 ---
