@@ -89,10 +89,6 @@ The two layers being a "Task management system" and the "Memory persistence laye
 
 ### Comparison
 
-Good update. The body grew a lot and the table is now undershooting — it's missing at least three rows that capture the most important points you added. Here's a revised version:
-
-### Comparison
-
 |                                                    | Task workflow systems (BMAD, GSD, Spec Kit) | Memory systems (graphify, Ix, claude-mem) | This workflow                                     |
 | -------------------------------------------------- | ------------------------------------------- | ----------------------------------------- | ------------------------------------------------- |
 | **Persistent knowledge of existing code**          | No                                          | Yes                                       | Yes                                               |
