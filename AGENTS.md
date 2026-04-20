@@ -1,98 +1,35 @@
-# AGENTS.md — Operational Principles
-
-This file defines operational principles for AI agents working in this workspace — workflow routing, glossary usage, and source-of-truth hierarchy. These apply regardless of which task is active, which repo is being worked on, or which agent mode is in use.
-
-Core behavioral rules (plan-in-file, approval gates, decision escalation, milestone alignment) live in **[CORE_RULES.md](CORE_RULES.md)** — read it first.
-
-Procedural skills (discovery, documentation maintenance) live in their respective skill files — this file defines **principles**, not step-by-step procedures. Project knowledge lives in instructions, onboarding, docs, and the glossary.
-
----
-
 ## Memory System Awareness
 
 This workspace uses a layered memory system. Understand the layers before acting:
 
-| Layer                   | Location              | Purpose                                                         |
-| ----------------------- | --------------------- | --------------------------------------------------------------- |
-| `CORE_RULES.md`         | `CORE_RULES.md`       | Non-negotiable behavioral rules (R1–R6), harness file hierarchy |
-| `AGENTS.md` (this file) | `AGENTS.md`           | Operational principles: routing, glossary, source-of-truth      |
-| Rules                   | `.claude/rules/`        | Auto-attached retrieval hooks per file pattern                  |
-| `/onboarding/`          | `onboarding/`         | Code commentary — logic, invariants, conventions, task tracking |
-| `/docs/`                | `docs/`               | Authoritative reference documentation                           |
-| `/docs/glossary/`       | `docs/glossary/`      | Canonical vocabulary and cross-repo index                       |
-| Task files              | `tasks/`              | Current change intent, plans, decision logs                     |
-| Skills                  | `.claude/skills/`     | Multi-step workflows with scripts and resources                 |
+| Layer      | Location         | Purpose                                                         |
+| ---------- | ---------------- | --------------------------------------------------------------- |
+| onboarding | `onboarding/`    | Code commentary — logic, invariants, conventions, task tracking |
+| docs       | `docs/`          | Authoritative reference documentation                           |
+| sources    | `docs/sources/`  | References to external technical documentation, mcps, etc.      |
+| glossary   | `docs/glossary/` | Canonical vocabulary and cross-repo index                       |
+| tasks      | `tasks/`         | Current change intent, plans, decision logs                     |
 
----
+# heavy-task-workflow
 
-## Discovery
+Operational references:
 
-**Always prefer top-down discovery over brute-force code roaming.** The full discovery procedure — reading order, cross-repo techniques, and fallback for missing onboarding — is defined in the [`discovery` skill](.claude/skills/discovery/SKILL.md). Invoke it before touching code.
+1. `skills/**`
+2. `skills/W-01-heavy-task-workflow/workflow/**`
 
----
+## Process Guard Rails
 
-## Documentation Maintenance
+1.  Use live skills and workflow docs as the operating spec for phase order, artifact names, ownership, and checkpoint gates.
+2.  Start from the live repo state and the current task. Change only what the task and workflow require.
+3.  Preserve existing behavior, helper structure, and compatible guidance unless the task or workflow explicitly changes, relocates, or retires them.
+4.  For `changed-in-place` and `moved` surfaces, implement the required delta. Do not collapse surviving content to the projected slice.
+5.  Planning is scheduling-only. Do not introduce new design or contract content there.
+6.  Implementation is sequential by default. Record issues first; do not silently promote them into requirement or architecture changes.
+7.  Checkpoint reviews are review-only. They assess artifacts and findings; they do not rewrite working artifacts or approvals.
 
-Onboarding files are code commentary — they describe what the code does, not what it should do. All planning belongs in task files. The `task-workflow` skill defines when and how onboarding is updated (Phases 2.1, 3.3, 4.2–4.6). The `create_or_update-onboarding-file` skill defines the template.
+## Workflow Development Guard Rails
 
----
+Workflow design reference when changing the workflow itself: [onboarding/heavy-task-workflow/overview.md](onboarding/heavy-task-workflow/overview.md)
 
-## Planning Rules
-
-### Task workflow routing
-
-Before making changes, determine the appropriate workflow:
-
-| Target                                                                                 | Routing                                                                                    |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Code** — multi-file, cross-component, cross-repo, risky invariants, or multi-session | `task-workflow` skill (full lifecycle with onboarding, drift detection, `<Task>` blocks)   |
-| **Code** — single-file or small change that doesn't meet the above thresholds          | `light-task-workflow` skill (plan → approval → implement → close, no onboarding machinery) |
-| **Non-code** — docs, skills, configs, READMEs, presentations                           | `light-task-workflow` skill — always, regardless of size                                   |
-
-Read the relevant skill before starting. The skills define approval gates, iteration cycles, and task file structure that this section does not repeat.
-
-### Task file discipline
-
-The core planning rules — plan-in-file, approval gates, decision escalation, milestone alignment, mid-implementation routing — are defined in [CORE_RULES.md](CORE_RULES.md) (R1–R6). This section covers the operational details that support those rules.
-
-- Before creating a new task file, search `tasks/` for active (non-completed) tasks that cover the same artifact or scope. If one exists, the new work is an iteration — update the existing task file instead of creating a new one.
-- Plans should be externalized into task files (`tasks/`) as soon as the discussion has enough substance.
-- Do not let plans live only in chat — they degrade over time.
-- Each task file should include a decision log to track proposals, objections, accepted decisions, and reversals.
-- Chat stays focused on concise summaries, objections, tradeoffs, and decisions.
-- The task file is the source of truth for what was agreed.
-
----
-
-## Source-of-Truth Hierarchy
-
-When code, docs, onboarding, and task files disagree:
-
-| Source         | Role                                                                 |
-| -------------- | -------------------------------------------------------------------- |
-| `/docs/`       | Intended reference model (authoritative system facts)                |
-| Code           | Current implementation model (what actually runs)                    |
-| `/onboarding/` | Code commentary — describes the code as it is, links to active tasks |
-| Task files     | Change intent — what should change and why                           |
-
-Onboarding is not a reconciliation layer. If code and docs disagree, the mismatch should be identified during task planning and resolved through a task — not absorbed into onboarding as implicit planning.
-
----
-
-## Glossary Rules
-
-- Use canonical terms from `docs/glossary/index.md` when discussing cross-repo concepts.
-- If a term is unfamiliar or ambiguous, check the glossary before guessing.
-- When a new cross-repo term is encountered, add it to the master glossary.
-- Domain-local terms may go in scoped sub-glossaries (e.g., `docs/glossary/networking.md`).
-
----
-
-## General Behavioral Rules
-
-- Prefer editing existing files over creating new ones.
-- Search for similar patterns in the codebase before implementing new features.
-- When the user asks a question with multiple possible approaches, discuss before implementing.
-- After user correction, treat it as a signal to review code vs. onboarding vs. reference docs.
-- Do not create documentation that duplicates what is already well-documented in another layer.
-- **Always use the available time tool** to get the current date when writing `lastUpdated` or any timestamp in onboarding files, task files, or change history entries. Never guess or hardcode dates.
+1. Use onboarding docs when developing or changing the workflow itself, not as the primary operational source for normal coding tasks.
+2. Keep separation of concerns: `SKILL.md` owns entrypoint guidance, workflow docs own phase behavior, templates own scaffolds, and validation or check assets own verification.

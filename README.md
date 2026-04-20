@@ -1,225 +1,320 @@
-# AI Context System
+# The AI Coding Workflow That Remembers Your Codebase
 
-AI coding tools lose context, drift from plans in long sessions, and forget everything between sessions. When your backend defines an event type that three other codebases must implement — a TypeScript frontend, a mobile app, and a Go gateway service — no amount of code search in one of those repos will surface that contract. The AI writes confident code that breaks at integration.
+## Overview
 
-This system addresses that. Structured companion files document what code search cannot reveal: cross-repo dependencies, invariants that must hold, the direction of in-progress migrations, decisions from previous sessions, and links to the technical specifications that define intended behavior. A task workflow keeps these files accurate as the code changes.
+Most AI coding workflows are forward-looking. They generate a PRD, write an architecture doc, break it into stories, and hand each story to the agent. The artifacts describe what to build, live for the length of one project, and are discarded afterwards. The next task starts from zero.
 
-By the end of this guide, you will know how this system:
+This workflow inverts the starting point. Before any planning happens, it asks a different question:
+**What does the code already do, and how does that understanding survive between tasks?**
 
-- **Prevents documentation from going stale** — every file records a git commit hash, and drift detection runs before each task. Staleness is caught before it causes damage.
-- **Keeps your effort where it counts** — the AI handles file creation, routine updates, and drift detection. You contribute what it can't automate: reviewing plans, validating correctness, and adding the domain knowledge that only comes from working in the codebase.
-- **Scales with complexity** — the full workflow is reserved for changes where complexity would outpace the AI's ability to stay aligned without it — multi-file refactors, cross-repo contracts, risky invariants, multi-session work. Smaller changes use a lighter workflow with less overhead but the same approval discipline.
-- **Differs from existing tools** like CLAUDE.md, cursor rules, and copilot instructions — those are real and useful, and this system is built for the specific gap they leave.
+The answer is a persistent shadow documentation tree that mirrors the actual codebase. Each source file can have a corresponding onboarding markdown capturing its logic, conventions, invariants, and cross-repo edges. This tree exists across all tasks — it isn't built for any single one. It grows organically as the codebase is touched, it tracks its own staleness against git, and it makes cross-repository contracts first-class instead of leaving them implicit.
 
----
+Plus it is extremely easy to retrieve because the doc path is derived from the code path, so the agent can open the relevant file alongside the code rather than having to search for it.
 
-## Problems you have probably already seen
+Around this persistent context layer sits a six-phase task workflow — Creation, Research, Design, Plan, Implementation, Closure — with review gates between phases and feedback loops that let any stage walk back to an earlier one when reality disagrees with the plan. Task-local documentation artifacts (inputs, outputs) are being generated from global onboarding. Inputs form the scope and annotate likely changes. Outputs project future behaviour in code and intent. Outputs help to shape design and make sure agent and developer are on the same page before implementation. The outputs then get further grounded and refined in code during implementation; This workflow makes sure that transient task local documentation remains seperated from the global onboarding tree until the code is reviewed and ready to merge. This prevents that half-baked speculation poisens the global knowledge layer.
 
-You ask the AI to implement something. It writes code confidently. The code compiles. It even looks reasonable. But it is wrong — it ignores a pattern that every developer on the team knows about, because the pattern is not visible from the code the AI looked at.
-
-Or: you are working through a larger change with the AI in a chat session. You agree on a plan. You start implementing part 3, and when you check back on parts 1 and 2, the AI has quietly rewritten them. Not maliciously — it just ran out of room in its context window and reconstructed what it thought was there. The longer the chat, the worse this gets.
-
-Or: you had a good session yesterday, the AI understood the full picture, and you made real progress. Today you start a new session. The AI has no idea what happened yesterday. You spend 20 minutes re-explaining, and the re-explanation is lossy — you forget details, the AI fills in gaps with guesses, and now you are working from a slightly wrong version of yesterday's plan.
-
-These are not unusual experiences. They are the default behavior of every LLM-based coding tool right now. They happen because of how LLMs work — and the problems get worse in proportion to the size and complexity of the task.
-
-**Between sessions: complete amnesia.** LLMs are stateless. Every session starts with no knowledge of what happened before. If you spent an hour yesterday explaining the architecture, agreeing on a plan, and making decisions — none of that exists today. You can re-explain, but re-explanation is always lossy. You forget details, the AI fills gaps with guesses, and you end up working from a slightly different version of what was agreed.
-
-**Within a session: gradual degradation.** The AI has a context window — the total amount of text it can hold at once. The natural assumption is that everything in the window is equally available until you run out of room. That is wrong. [Du et al., "Context Length Alone Hurts LLM Performance Despite Perfect Retrieval"](https://arxiv.org/abs/2510.05381) (EMNLP 2025) tested five open- and closed-source models on math, QA, and coding tasks and found that performance degrades 14–85% as input length increases — even when the model can perfectly retrieve the relevant information, and even when all irrelevant tokens are replaced with whitespace. The sheer length of the input is enough to hurt performance. This is not a capacity problem — it is a signal-to-noise problem. Every file the AI reads, every search result, every correction attempt stays in the window as accumulated noise. As the noise grows, each piece of relevant information gets proportionally less of the model's attention.
-
-**The middle of the context is a blind spot.** Models attend well to the beginning and end of their context, and poorly to everything in the middle — with accuracy dropping by more than 30% for information in middle positions ([Liu et al., "Lost in the Middle," TACL 2024](https://aclanthology.org/2024.tacl-1.9/)). When you are deep into a session and the plan you agreed on earlier is sitting in the middle of the context, the AI is least able to hold onto it. This is not carelessness. It is a structural property of how the model distributes attention, and it explains why the AI quietly rewrites earlier parts of a plan: it literally cannot attend to them as effectively as to whatever is immediately in front of it.
-
-**Longer sessions compound the problem.** Toby Ord's ["Half-Life of AI Agent Success Rates"](https://www.tobyord.com/writing/half-life) found that every agent's success rate drops after approximately 35 minutes of work — and doubling the task duration does not double the failure rate, it quadruples it. The reason is a compounding loop: degraded context causes a mistake, the mistake requires a correction, the correction requires reading more files and running more searches, and each of those adds more noise to the already-degraded context. The longer the session, the faster this loop accelerates. This is why multi-file refactors and migrations are disproportionately hard for AI: they are long tasks by nature, and long tasks trigger this compounding effect.
-
-**Code search cannot recover what was never written down.** The AI can search your files and find function definitions, type declarations, and import chains. But no search can recover the intent behind a half-finished migration — which files have been converted, what the target pattern is, what edge cases were decided in a previous session. No search can recover invariants that exist only in the team's shared understanding. And no search can find cross-repo contracts: searching a TypeScript frontend will not reveal that the canonical definition lives in a Go service two repositories away, or that three other codebases must implement the same type.
+This document describes the design: the persistent onboarding layer that makes it work, the phase-by-phase workflow that runs on top of it, and the principles behind both - most importantly that **the developer remains an upstream participant rather than a downstream reviewer.**
 
 ---
 
-## What this system adds
+## The Onboarding System — What Makes This Different
 
-This system extends the "system prompt" idea in four specific ways:
+Most systems in this space fall into one of two camps. **Task workflow systems** (BMAD, GSD, GitHub Spec Kit) orchestrate _what to build_: PRDs, architecture docs, epic sharding, story files, phase gates. **Memory and context systems** (graphify, Ix, claude-mem, V-NOC) persist understanding of the _existing code_: knowledge graphs, call graphs, structural extraction, semantic search.
 
-**1. Per-file companion files with cross-repo edges.**
-Not one flat file per repo — a companion markdown file for each important source file with typed sections: what the code does (Logic), what must not break (Invariants), what this file connects to in other repos (Cross-repo References), which specifications define the intended behavior (Docs References), and what tasks are currently modifying it (Tasks). The cross-repo and docs reference sections are the key difference — they give the AI visibility into contracts, protocols, and specifications that no amount of code search will surface.
+This workflow covers both — and the two layers are designed against each other rather than bolted together. The persistent onboarding tree is the substrate the task workflow runs on, and the task workflow is what keeps the onboarding tree honest, current, and growing. Neither half works the same way without the other.
 
-**2. Task files that preserve intent across sessions.**
-When a complex change starts, the plan, implementation steps, and all decisions go into a task file — not the chat. If the session ends, the context window fills up, or a different developer continues the work, the task file is the source of truth for what was agreed and why. This is ["docs as code"](https://www.writethedocs.org/guide/docs-as-code/) applied to the plan itself.
+That matters because the failure modes of the two problems are intertwined. A task workflow with no persistent memory starts every task from a blank slate and forces the agent to rediscover the codebase each time — which is where comprehension failures enter and where silent regressions get introduced. A memory system with no task workflow has no mechanism for validating what it stores or promoting new knowledge safely — speculation contaminates the canonical layer, staleness accumulates, and no structural discipline enforces when updates should happen. Solving one without the other leaves the other's failure mode intact.
 
-**3. Skills — structured workflows the AI follows.**
-Instead of hoping the AI discovers the right process, skills are explicit instructions: how to start a task, how to check for stale docs, how to bootstrap context for a new repo, how to query library documentation. The AI reads the skill and follows the steps.
+### What the onboarding layer contributes
 
-**4. Drift detection.**
-Every companion file records the git commit of its code-partner at which it was last verified. Before a task starts, the system compares these hashes against the current code. If someone merged a change outside this workflow, the AI detects the drift and updates the companion file before planning. This does not guarantee perfect accuracy — but it makes staleness explicit and recoverable instead of silent.
+- **Retrieval by construction, not by search.** The onboarding tree is not a centralized wiki. It mirrors the codebase's directory structure one-to-one, so an agent reading src/Backend/UserController.php knows without searching that the corresponding documentation is at onboarding/src/Backend/UserController.md. Retrieval is a path derivation rather than a search — cheap enough to do every time rather than once at the start of a task. Relevance is guaranteed by construction: the doc at that path is tightly scoped to the code file it's about, so there's no wasted read and no risk of the agent having through an entire wiki to find that one relevant piece of information or not finding stuff and concluding that documentation isn't useful. Centralized wikis fail this test on both counts — retrieval cost is high and relevance is a gamble — which is why agents so often get "lazy" on those.
+- **Parallel reading, not upfront skim.** Because retrieval is effectively free, agents open onboarding files alongside the code files they're looking at rather than skimming everything once at task start. The documentation gets the same attention and freshness as the code file currently being worked on. This matters because information read earlier in a context window and then buried under hundreds of tokens of subsequent code tends to degrade — the agent still has it, but not with the same clarity as what it read most recently. Onboarding files being re-opened alongside their code keeps them at the top of attention exactly when they're relevant.
+- **Persistent understanding of the existing code.** A shadow documentation tree mirrors the codebase. Each source file can have a corresponding onboarding markdown capturing logic, conventions, invariants, cross-repo edges, and technical references. The tree is not built for a task — it exists across all tasks and grows organically as code is touched.
+- **Encodes what code cannot say on its own.** Invariants the code assumes but doesn't state. Conventions with social rather than syntactic enforcement. The _why_ behind a pattern. Cross-repo contracts that live between two repositories and are owned by neither. This is information that cannot be recovered by any static analyzer because it was never in the code in the first place — it lives in the developer's head until the onboarding tree gives it somewhere to live.
+- **Git-anchored staleness detection.** Each onboarding file tracks its code companions' last verified commit hash and -date. Drift between the code and existing documentation is detectable before any task begins, so the agent never plans against an outdated model of the system.
+- **Cross-repo edges are first-class.** The tree explicitly maps system-crossing behavior — API calls, WebSocket events, MQTT topics, shared types, etc. — across repository borders. Changes in one repo that would silently break a contract in another are surfaced during planning instead of discovered in production.
+- **Markdown-in-repo substrate.** The onboarding tree lives in its own repo alongside the code it documents. It's diff-able, code-reviewable, and readable by any human without special tooling. The knowledge layer is open and participates in the normal engineering workflow rather than sitting in an opaque backend.
+- **Collaborative maintenance, not one-way generation.** Onboarding files are not an agent-only artifact. Developers can write directly into them like a notepad. Also agents are actively prompted to capture new insights as they surface in conversation — a dedicated skill encourages the agent to ask "should I write this down?" when the developer mentions something important that isn't yet in the onboarding. The knowledge layer grows through shared authorship, which is the only way for it to encode things the code genuinely cannot say.
+- **Developer read-along during AI-assisted work.** When an agent reads an onboarding file during a task, the developer can read it alongside. This surfaces the agent's current understanding of the system in a form the developer can verify in real time, rather than having to infer from its outputs what it thinks the code does. It's also a rediscovery tool when the developer returns to old code — reading the captured intent often helps to analyze the code a lot faster, especially for narrow edge-case logic that was written to handle a specific problem and takes a hot minute to understand months later without the original context.
+- **Accelerates human onboarding, not just agent onboarding.** The same properties that make onboarding files useful to agents make them useful to new engineers, cross-team contributors, and anyone working outside their usual area of the codebase. A single co-located layer combines things that normally live in separate systems: code-level invariants, architectural conventions, cross-repo edges, references and links to external technical documentation. A new engineer no longer has to discover which external documentation exists, where it lives, or what terminology to search for. The onboarding is the bridge between the code they're reading and every other information source that explains it — and in environments where the code and the external docs are in different languages, or scattered across wikis, Confluence spaces, and forgotten README files, that bridge is the difference between "I can start contributing this week" and "I'll be guessing at things for months."
+- **Bootstrappable on demand.** A repository with no onboarding can start with a bare `overview.md` and extend organically as tasks touch new areas. Full upfront mapping is not required.
 
-These four additions have a compounding property: the first task on a codebase pays the most — researching cross-repo contracts, documenting invariants, writing companion files where none existed. Every task after that starts with that context already in place. Without companion files, every session pays the same O(n) search cost: the AI greps, follows imports, reads files — often re-discovering relationships it found last session. Those search results also add noise to the context window, degrading the model's performance on everything else it is holding (the same mechanism Du et al. measured — longer input, worse output, even when the answer is present). With companion files, that research is replaced by a single O(1) curated read — less context consumed, higher signal-to-noise ratio, better output. The system gets cheaper with use, not more expensive.
+### What the task workflow contributes
+
+- **A phased task structure that enforces process instead of hoping for it.** Six phases — Creation, Research, Design, Plan, Implementation, Closure — with review gates between each. LLMs have no meta-awareness of skipped workflow steps; the phase structure itself has to enforce sequencing, because advisory skills and tracking files will not.
+- **Task-local input and output artifacts.** Inputs pull the relevant subset of onboarding files into task scope and annotate them with expected changes. Outputs contain projected structural code and stated intent in the same file, creating a dual-layer diff that catches inconsistencies between what the code does and what the developer thinks it does.
+- **Two-resolution comprehension checking.** The input file tree gives coverage checking — does the agent understand the territory. Per-file commentary gives intent checking — does the agent understand what's going to happen to each piece. Missing branches in the tree surface scope misunderstandings cheaply, before they cascade into wasted implementation work.
+- **Bidirectional walk-back instead of a one-way pipeline.** When a later phase reveals that an earlier phase was wrong — a missing scope branch, a contradiction between intent and implementation — the workflow makes it easy to walk back to the earlier phase and fixes it upward rather than patching forward. Cheap artifacts make this affordable instead of disastrous.
+- **Review gates at every phase boundary.** Human judgment lands at specific moments rather than being required continuously or eliminated entirely. The developer is an upstream participant, not a downstream reviewer.
+
+### What the integration contributes
+
+**Code designing as a first-class activity**
+
+The single most important capability that emerges from combining both layers is something neither achieves on its own:
+
+**The ability to fully design a task — code and intent — before touching the codebase.**
+
+The workflow makes this concrete through the input and output project documentation.
+
+The input layer pulls the relevant subset of onboarding files into the task scope and annotates each one with what might change, based on the requirements. Alongside that, a behavior inventory fixes which existing features and functionality must be preserved, so nothing gets silently dropped during the work. The inventory is grounded on the input project documentation + code — so the record of what must survive the change is itself verifiable rather than relying on the developer's memory of what the system does. A synthesis process helps to nail down any remaining unknowns before starting the design phase.
+
+The output layer is where the designing actually happens. For each file that will change, the agent writes a projected version that captures two things at once:
+
+- **Code projection** — the structural skeleton of the change. Object fields, method signatures, what calls what, the shape of the control flow, and the full logic. Not syntactically perfect; the agent has no IDE tools during projection and may reference methods that no longer exist or miss imports. That doesn't matter. What matters is whether the data structures carry the right fields, whether the methods cover the required functionality, whether the logic holds together as a design. Syntax is what the IDE and compiler catch during implementation. Projection exists to catch what they can't.
+
+- **Intent** — the reasoning that justifies the projected code. Why this shape rather than another. How the change fits the larger system. Which invariants are being preserved, broken, or newly established. Which items in the behavior inventory are being addressed, and how.
+
+Both live in the same file. Both are written at the same time. An agent is forced to think through code through two totally different angles at the same time. On the implementation (micro) and the architectural (macro) level:
+
+- **The micro level** — is this code going to do what we want at the level of fields and methods and control flow. Is the logic sound. Does it cover the necessary cases.
+
+- **The macro level** — does this change make sense as part of the system, does it honor the invariants, etc.
+
+Designing around only one at a time creates blindspots. Micro level alone misses the bigger picture, while focusing only on the macro level can overlook critical details. A lot of workflows spend too much time in the ivory tower and may fall apart once you try to implement.
+
+Once the output layer is accepted, **stitching the implementation plan together becomes almost trivial**. The hard work — what needs to change, how it should be shaped, why it makes sense — has already been done. The implementation plan stops being a planning document and becomes a coordinator: it sorts and schedules the work, identifies dependencies between changes, and orders the waves. The decisions that traditionally happen during implementation planning have already been made during projection, and the output layer serves as both the specification and the design rationale.
+
+During implementation, the projected code meets real code. Syntax gets corrected against IDE feedback. Method names are updated to match the actual APIs. Any insights that emerge from contact with reality are captured in the output layer — which iterates in parallel with the code — so the final version of the output documentation reflects what actually worked, not what was originally guessed. Only the validated version gets promoted back into the global onboarding tree.
+
+None of this is possible without both layers present. A task workflow without persistent memory has no grounded behavior inventory to project against — the agent is guessing what currently exists. A memory system without a task workflow has nowhere to do the projection and no validated moment to promote it back into canonical knowledge. Code planning as a deliberate, reviewable phase — separate from both design docs and implementation — exists in the seam between the two layers, and only emerges when that seam is designed deliberately rather than improvised.
+
+The two layers being a "Task management system" and the "Memory persistence layer" reinforce each other in ways that neither achieves alone:
+
+- **Tasks compound.** Task N+1 starts from the onboarding that tasks 1 through N built up. The agent doesn't rediscover the codebase from scratch — it reads what prior tasks verified, detects what drifted since, and focuses research only on what changed.
+- **Research is grounded in reality, not intent.** The Research phase builds a behavior inventory — what changes, what moves, what stays — by reading onboarding files and code together. This catches assumptions that pure-requirements workflows miss because they never model the existing system.
+- **A promotion gate separates speculation from canonical knowledge.** Task-local artifacts (inputs, outputs) stay task-local until they're validated through implementation. Only what survives contact with real code is merged back into the global onboarding tree. The canonical knowledge layer only accepts validated history — the same discipline git applies to main.
+- **Context survives the LLM.** Onboarding files are durable. They outlive context window compression, session boundaries, and model swaps. The agent can recover full task state by reading at most two files: the task file and the active phase's progress file. Nothing important lives only in a conversation.
+- **Drift is caught at the earliest possible moment.** Before any task begins, git-diff-based drift detection identifies onboarding files that are stale relative to the code. No planning work is ever built on an outdated model of the system.
+
+### Comparison
+
+Good update. The body grew a lot and the table is now undershooting — it's missing at least three rows that capture the most important points you added. Here's a revised version:
+
+### Comparison
+
+|                                                    | Task workflow systems (BMAD, GSD, Spec Kit) | Memory systems (graphify, Ix, claude-mem) | This workflow                                     |
+| -------------------------------------------------- | ------------------------------------------- | ----------------------------------------- | ------------------------------------------------- |
+| **Persistent knowledge of existing code**          | No                                          | Yes                                       | Yes                                               |
+| **Phased task workflow with gates**                | Yes                                         | No                                        | Yes                                               |
+| **Code + intent projection before implementation** | No                                          | No                                        | Yes — emerges from having both layers             |
+| **Encodes what code can't say**                    | N/A                                         | Partially (derivation only)               | Yes (augmentation, not derivation)                |
+| **Retrieval model**                                | N/A                                         | Search / graph query / embeddings         | Path-derived — doc path mirrors code path         |
+| **Knowledge authorship**                           | N/A                                         | Agent-generated                           | Collaborative — developer + agent                 |
+| **Cross-repo edges first-class**                   | No                                          | Usually no                                | Yes                                               |
+| **Staleness detection**                            | None                                        | Varies (hook-driven or none)              | Git-anchored, per-file                            |
+| **Promotion gate for new knowledge**               | N/A                                         | No                                        | Yes (task-local → global after validation)        |
+| **Substrate**                                      | Files in project, various formats           | Opaque backend or derived artifacts       | Markdown in git, human-readable                   |
+| **Human role**                                     | Reviewer / supervisor                       | Passive consumer of derived output        | Upstream participant — impulse and feedback giver |
 
 ---
 
-## What a companion file looks like
+<center>
 
-For a source file like `api-service/src/stores/sessionStore.ts`, the companion lives at `onboarding/api-service/.../sessionStore.md`:
+## Onboarding System Overview
 
-```markdown
-# sessionStore.ts
-repository: api-service
-path: src/stores/sessionStore.ts
-lastUpdated: 2026-03-15
-lastVerifiedCommitHash: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
-lastVerifiedCommitDate: 2026-03-14
+</center>
 
-## Code Commentary
+![alt text](image-3.png)
 
-### Logic
-Zustand store holding session-level data from GET /api/v1/session/{id}/state.
-commandLocks seeded from API on first load only — after that, WebSocket events
-are the ongoing authority via updateLock().
+<center>
 
-### Invariants
-- commandLocks: first API call seeds, WS events own all subsequent updates.
-- hasPermission() and isLocked() fall back to false for unknown types.
+## Flow Overview
 
-### Cross-repo References
-- EventType enum must stay in sync with Go gateway event_types and mobile-app EventCategory.
-- Lock state updated by WS lockStatus events via websocket.ts.
+```mermaid
 
-### Docs References
-- API spec: docs/api/session-management.md
-- WebSocket protocol: docs/architecture/websocket-protocol.md
+flowchart TD
+classDef phase fill:#f8f9fa,stroke:#495057,stroke-width:2px,color:#212529
+classDef gate fill:#fff8e1,stroke:#f57f17,stroke-width:2px,color:#212529,font-weight:bold
+classDef env fill:#ede7f6,stroke:#4527a0,stroke-width:1px,stroke-dasharray:5 5,color:#212529
+classDef done fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#212529
 
-## Tasks
-<Task>
-target: updateLock() and lock state management
-taskGoal: "migration"
-progressStatus: "in-progress"
-description: Migrate lock state from local store to shared event bus so gateway can broadcast lock changes cross-tab.
-progress: Event bus wired up, updateLock() refactored. Pending: remove legacy WS handler fallback.
-taskfile: tasks/260315_lock-state-migration.md (S2)
-</Task>
+    %% Foundational context — framing, not a step
+    subgraph ctx [" Foundational Environment "]
+        direction LR
+        ws(["Workspace &<br/>Codebase"]):::env
+        onb(["Global Onboarding<br/>Documentation"]):::env
+        ref(["Glossary &<br/>Reference Docs"]):::env
+    end
 
-## Update History
-<!-- newest first; entries move here from Tasks when completed -->
+    P1["<b>1 · Creation</b><br/><i>Scaffold task folder · record raw requirement & architecture intake · refresh onboarding</i><br/><br/>▸ Task Folder · Staged Intake · Updated Onboarding"]:::phase
 
-- 2026-03-10 — Added isLocked() guard for unknown event types after silent drop bug in production. (task: tasks/260310_unknown-event-guard.md)
+    G1{{"🔍 Review: Scope & Intake"}}:::gate
+
+    P2["<b>2 · Research</b><br/><i>Normalize requirements · input project docs · scope architectural hotspots</i><br/><br/>▸ Input Docs · Normalized Requirements · Architecture Hotspots"]:::phase
+
+    G2{{"🔍 Review: Research Completeness"}}:::gate
+
+    P3["<b>3 · Synthesis</b><br/><i>Frame requirement-facing questions · frame architectural how-to questions</i><br/><br/>▸ Requirement Questions · Architecture Questions"]:::phase
+
+    G3{{"🔍 Review: Question Coverage"}}:::gate
+
+    P4["<b>4 · Design</b><br/><i>Clarify requirements → promote contract · deliberate architecture · dry-run & project outputs · CP3 stress test → promote architecture</i><br/><br/>▸ Approved Requirements · Approved Architecture · Output Project Docs"]:::phase
+
+    G4{{"🔍 Review: Architectural Sanity (CP3)"}}:::gate
+
+    P5["<b>5 · Plan</b><br/><i>Scheduling-only decomposition · dependency-ordered checklist</i><br/><br/>▸ Implementation Plan"]:::phase
+
+    G5{{"🔍 Review: Plan Verification"}}:::gate
+
+    P6["<b>6 · Implementation</b><br/><i>Sequential execution · update output docs · record issues · ground in reality</i><br/><br/>▸ Code · Grounded Output Docs · Implementation Results"]:::phase
+
+    G6{{"🔍 Review: Final Code & Docs"}}:::gate
+
+    P7["<b>7 · Closing</b><br/><i>Merge code to dev · final onboarding refresh · write final report</i><br/><br/>▸ Merged Code · Updated Global Onboarding · Final Report"]:::done
+
+    %% ── Happy path (solid) ──
+    ctx --- P1
+    P1 --> G1 --> P2 --> G2 --> P3 --> G3 --> P4 --> G4 --> P5 --> G5 --> P6 --> G6 --> P7
+
+    %% ── Feedback loops (dashed) ──
+    G1 -. "scope unclear" .-> P1
+    G2 -. "incomplete / wrong scope" .-> P2
+    G3 -. "questions miss the point" .-> P3
+    G4 -. "technical-only changes" .-> P4
+    G4 -. "requirements misunderstood" .-> P2
+    G5 -. "plan needs fixing" .-> P5
+    G6 -. "assumptions diverged from code" .-> P4
+    G6 -. "contract change needed" .-> P2
+
 ```
 
-**Logic** says what the code does. **Invariants** says what must not be broken. **Cross-repo References** says what this file connects to in other repos. **Docs References** links to the specifications that define intended behavior — so the AI knows not just what the code does, but what it *should* do. **Tasks** tracks active modifications. The AI reads this before touching the code — it starts with structural context instead of guessing from syntax.
+</center>
+
+## 0. The Foundational Environment: Workspace & Onboarding System
+
+_The persistent, global state of the project that exists outside of any individual task. This understanding is the prerequisite for the workflow._
+
+- **The Workspace (Multi-Repository possible):** \* The system can operate across one or multiple distinct codebases (e.g., Repository A for Backend/Frontend, Repository B for Functions/IoT).
+- **The Global Onboarding Documentation (The "Shadow Tree"):** \* A parallel structure of documentation that mirrors the actual codebase(s) architecture.
+  - Contains global `overview.md` files at root directories and specific `.md` files detailing specific code components (e.g., `UserController.md`, `device.md`).
+  - Explicitly maps **"Edges across system borders"** (e.g., documenting how the Backend in Repo A interacts with the IoT functions in Repo B).
+- **Contents of an Onboarding `.md` File:**
+  - **Header:** Repository, file path, last updated timestamp, last verified commit hash, and last verified commit data.
+  - **Code Commentary:** Captures Logic, Conventions, Invariants, System Crossing Behaviour/Edges, and Technical Documentation References.
+  - **Update History:** A log of changes.
+- **Bootstrapping Principle:** \* If a repository has no onboarding documentation, it can be bootstrapped with a bare-minimum `overview.md`.
+  - It does not require mapping the whole repo upfront; it is extended _on demand_ to map important file areas as core files are touched, growing organically through the usage of the task workflow.
 
 ---
 
-## What this looks like in your code
+## 1. Creation
 
-Here are three examples from a multi-repo project — the kind of thing this system is built for.
+_The phase where a specific task is instantiated, the task folder is scaffolded, and onboarding is refreshed._
 
-### Example 1: The plugin registration pattern
+- **Process:**
+  - Present task-folder naming options and create the task folder.
+  - Initialize root artifacts (`task.md`, `requirements.md`, `architecture.md`).
+  - Record initial raw requirement intake in `requirement_change_candidates.md`.
+  - Record initial architectural intake (including any developer-directed target outcomes) in `architecture_open_questions.md`.
+  - Refresh and validate relevant onboarding (drift detection + corrections).
+- **Inputs:** Initial Requirements, Code, Global Onboarding Documentation.
+- **Outputs:** Task Folder, Staged Raw Requirement & Architecture Intake, Updated Global Onboarding Documentation.
+- **Purpose:** Prepares the workspace and refreshes stale onboarding before deep research begins, preventing work based on outdated context. Does not normalize or approve requirements.
 
-A backend service has 20+ plugins (Analytics, Notifications, Billing, Search, etc.). There is no central plugin list. No `registerPlugin()` call in main. Instead, each plugin uses a decorator that registers it at import time, and the framework collects them via package scanning:
+---
 
-```python
-# In analytics_plugin.py — plugin registers itself via decorator
-@register_plugin(
-    name="analytics",
-    init_order=15,
-    dependencies=["database", "cache"],
-)
-class AnalyticsPlugin:
-    async def setup(self, app):
-        # ...
+> 🛑 **Feedback / Review Checkpoint**
+
+---
+
+## 2. Research
+
+_The phase that normalizes raw requirements and pressure-tests them against the current system while scoping architectural hotspots._
+
+- **Process:**
+  - `R-01-requirements-normalization` normalizes raw intake in `requirement_change_candidates.md`.
+  - `R-02-input-documentation` produces task-local input documentation under `P-01-research/R-02-input-documentation/` with normalized requirement IDs annotated against current code.
+  - In parallel, scoped architectural hotspots and technical evidence gaps are recorded in `architecture_open_questions.md`.
+- **Inputs:** Raw Requirement Intake, Architectural Intake, Updated Global Onboarding Documentation, Code.
+- **Outputs:** Normalized Requirement Candidates, Task-Local Input Documentation (per-file + `overview.md`), Architectural Hotspot Notes.
+- **Purpose:** Freezes current-state truth alongside the normalized requirement view, giving both lanes (requirements and architecture) the same evidence base.
+
+---
+
+> 🛑 **Feedback / Review Checkpoint** _(CP1 — Research adversarial review)_
+
+---
+
+## 3. Synthesis
+
+_The phase that turns research findings into two distinct question sets — one about what should be true, one about how to do it._
+
+- **Process:**
+  - `S-01-requirement-question-framing` compiles requirement-facing elicitation questions.
+  - `S-02-architecture-question-framing` compiles architectural how-do-we-do-it questions and their dependency order.
+- **Inputs:** Task-Local Input Documentation, Normalized Requirement Candidates, Architectural Hotspots.
+- **Outputs:** `requirement-question-framing.md`, `architecture-question-framing.md`.
+- **Purpose:** Prepares the two parallel question sets that Design must resolve. Does not approve requirements and does not assign architecture IDs yet.
+
+---
+
+> 🛑 **Feedback / Review Checkpoint** _(CP2 — Synthesis adversarial review)_
+
+---
+
+## 4. Design
+
+_The phase where requirements get clarified and approved, architecture gets deliberated and projected, and the projected target state passes an explicit stress test before architecture is approved._
+
+- **Process:**
+  - `D-01-requirement-clarification`: ask what-should-be-true questions one by one, promote approved requirements into `requirements.md`, remove rejected candidates, leave evidence-pending candidates staged.
+  - `D-02-architecture-deliberation`: ask architectural how-do-we-do-it questions one by one with explicit options and tradeoffs, record the developer-chosen direction, and assign canonical architecture IDs.
+  - `D-03-output-dry-run-planning`: plan the validation pass for intended target-state outputs.
+  - `D-04-output-documentation`: produce target-state per-file output docs and `overview.md` carrying approved requirement IDs and architecture IDs.
+  - Initialize `cp3-design.md`, run adversarial review on the projected outputs, then collect human developer feedback. On approval, promote architectural items into `architecture.md` and remove them from `architecture_open_questions.md`.
+- **Inputs:** Question Framings, Normalized Candidates, Input Documentation, Architectural Open Questions, Code.
+- **Outputs:** Approved `requirements.md`, Approved `architecture.md`, Output Project Documentation (`D-04-output-documentation/`), Deliberation Records.
+- **Purpose:** This is the seam where requirements and architecture marry. The output projection demonstrates whether the chosen architecture can carry the approved intent. Approval of the architecture contract closes Design.
+
+---
+
+> 🛑 **Feedback / Review Checkpoint** _(CP3 — Architectural sanity stress test; technical-only failures loop back inside Design, requirement-misunderstanding failures loop back to Research)_
+
+---
+
+## 5. Plan
+
+_A scheduling-only phase that translates the approved contract and projection into ordered, checkable steps._
+
+- **Process:** `P-01-implementation-planning` reads `requirements.md`, `architecture.md`, and the output documentation, then produces `implementation_plan.md` with dependency-ordered phases, checklist substeps, verification notes, and an issues section.
+- **Inputs:** Approved Requirements, Approved Architecture, Output Project Documentation, Code.
+- **Outputs:** `implementation_plan.md`.
+- **Purpose:** Schedules the work without introducing new design or contract content. Substantive design content found in the plan is rejected at CP4.
+
+---
+
+> 🛑 **Feedback / Review Checkpoint** _(CP4 — Plan verification)_
+
+---
+
+## 6. Implementation
+
+_The execution phase where one Coder works sequentially through the plan and the projected outputs are grounded in real code._
+
+- **Process:** `I-01-implementation` works step-by-step through `implementation_plan.md`, checks off completed items, records issues in the plan's issues section, updates the output documentation as reality refines the projection, and writes `implementation_results.md`. Issues that turn out to need contract changes re-enter the requirement or architecture pipeline rather than being silently absorbed.
+- **Inputs:** Implementation Plan, Approved Requirements, Approved Architecture, Output Project Documentation, Code.
+- **Outputs:** Code, Grounded Output Documentation, `implementation_results.md`.
+- **Purpose:** Reconciles projection with reality. Validated insights are captured in the output layer so only what survives contact with real code is later promoted into global onboarding.
+
+---
+
+> 🛑 **Feedback / Review Checkpoint** _(CP5 — Final code and document review)_
+
+---
+
+## 7. Closing
+
+_The final wrap-up phase triggered once implementation is accepted._
+
+- **Process:**
+  - Merge code back to the development environment.
+  - Run a final onboarding refresh that promotes validated output documentation into the global onboarding tree and removes stale entries.
+  - Write `final_report.md` summarizing what was learned, decided, built, and updated.
+- **Inputs:** Code, Grounded Output Documentation, Approved Contracts, Implementation Results.
+- **Outputs:** Merged Code, Updated Global Onboarding Documentation, `final_report.md`.
+- **Purpose:** Captures new invariants, system edges, and technical references into the canonical knowledge layer so the next task starts from a clean, accurate state.
+
 ```
 
-An AI that does not know this pattern will look for a plugin list in `main.py`, not find one, and either add manual import calls (wrong) or ask you where to register things (wasted time). The companion file for the plugin framework explains the pattern once, and every AI session afterwards knows.
-
-### Example 2: Init order matters
-
-The service has a specific initialization sequence — Database first, then Cache, then MessageQueue, then Auth, then HTTP Server. An AI adding a new plugin has no way to guess which init slot it needs. Wrong position = silent dependency on something not yet initialized.
-
-### Example 3: Cross-repo event type sync
-
-`EventType` in the backend defines 12 event types (`user.created`, `order.placed`, `payment.failed`, ...). These same types must appear as:
-- `EventType` in the TypeScript frontend
-- `EventCategory` in the mobile app
-- `event_types` in the Go gateway service
-
-Adding an event type in the backend without updating the other three repositories produces silent failures. The new event arrives, gets mapped to `unknown`, and nobody sees an error. A companion file with a Cross-repo References section makes this contract visible:
-
-```markdown
-### Cross-repo References
-- EventType enum must stay in sync with:
-  - TypeScript: EventType (web-client/src/types/events.ts)
-  - React Native: EventCategory (mobile-app/src/constants/events.ts)
-  - Go: event_types (gateway/internal/events/types.go)
 ```
-
-No amount of code search in one repo will discover this. The companion file makes it explicit.
-
----
-
-## Folder structure
-
-```
-ai-infinite-context/                  # This repo — clone alongside your code repos
-  CORE_RULES.md                       # Non-negotiable behavioral rules (R1–R6)
-  AGENTS.md                           # Operational principles: routing, glossary, source-of-truth
-  onboarding/                         # Companion files mirroring source code
-    index.md                          # Workspace-level map
-    <repo>/                           # One folder per repo
-      overview.md                     # Repo-level architecture summary
-      <component>/                    # Component groupings
-        overview.md                   # Component architecture
-        src/<path>/<to>/<file>.md     # Per-file companion
-  tasks/                              # Task plans and decision logs
-  docs/                               # Reference docs (API specs, protocol definitions, wiki exports)
-    glossary/                         # Canonical terms across repos
-  .claude/
-    skills/                           # Structured AI workflows (procedures, auto-discovered)
-    rules/                            # Auto-attached context per file pattern
-```
-
----
-
-## What exists today and where it stops
-
-There is a spectrum of approaches for giving AI agents project context, from simple configuration files to sophisticated agent architectures. Each solves real problems. The question is where each one stops.
-
-| Approach                                                                                                                                                                                                                                   | What it does                                                                                                                                                                                                                                                                 | Where it stops                                                                                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Context files** ([CLAUDE.md](https://claude.com/blog/using-claude-md-files), [.cursorrules](https://docs.cursor.com/context/rules), [copilot-instructions.md](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions)) | Single file loaded at session start with project conventions and rules. Nested variants ([per-directory CLAUDE.md](https://claude.com/blog/using-claude-md-files), [Codebase Context Spec](https://github.com/Agentic-Insights/codebase-context-spec)) add per-area context. | Flat descriptions of the project. No cross-repo awareness, no task state, no way to encode "we are mid-migration and the direction is X."                                                                                                                                                                       |
-| **RAG / semantic code search** ([Cursor @Codebase](https://docs.cursor.com/chat/context#codebase), [GitHub Copilot code search](https://docs.github.com/en/copilot))                                                                       | Embeds code chunks as vectors. Retrieves semantically similar fragments at query time.                                                                                                                                                                                       | Retrieves code fragments, not structural knowledge. No encoding of intent, contracts, or invariants. Per-query — nothing persists between retrievals. Misses relevant code that doesn't match the query embedding.                                                                                              |
-| **Repository maps** ([aider RepoMap](https://aider.chat/docs/repomap.html), [Cursor indexing](https://docs.cursor.com/context/codebase-indexing))                                                                                          | Builds a structural map of symbols and relationships. Aider uses tree-sitter + PageRank to rank symbols by connectivity. Cursor indexes into a server-side vector DB for semantic search.                                                                                    | Ephemeral — rebuilt or re-queried each session. Single-repo. Maps what *is*, not what *should be*: no migration direction, no cross-repo contracts, no persistent task state.                                                                                                                                   |
-| **Stateful agents** ([Letta/MemGPT](https://docs.letta.com/))                                                                                                                                                                              | Agent manages its own persistent memory across sessions. Decides what to remember and what to forget via tool calls.                                                                                                                                                         | General-purpose memory — the agent decides what matters, with no structural guarantee it captures cross-repo contracts, invariants, or migration state. Cognitive state and coordination state are separate: cross-repo awareness remains an [unsolved problem](https://github.com/letta-ai/letta/issues/3226). |
-
-These systems share a design direction: they treat context as something to **retrieve or accumulate** — pulling information from the codebase toward the AI. This system inverts the direction. It pre-structures what the AI needs to know and places it where the workflow naturally reads it. The AI doesn't search for context; the context is already loaded when it starts working.
-
-That retrieval-based approach breaks down when:
-- The project spans multiple repositories, and correctness requires knowing what happens on the other side of an API call, WebSocket event, or message queue topic — something no single-repo index or embedding will surface.
-- You are mid-migration, and the AI needs to know not just what the code does now, but which direction it should move — intent that doesn't exist in any code fragment to retrieve.
-- A task spans multiple sessions, and the plan and decisions need to survive between them — not in agent memory that may silently drop what it considers unimportant.
-- Multiple developers or agents are working in the same codebase, and one needs to see what the other is currently changing — coordination state that no individual agent's memory covers.
-
----
-
-## When to use which workflow
-
-| Situation                                                                       | Workflow                                                                           |
-| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Single-file changes, small fixes, any non-code changes (docs, configs, READMEs) | Light task workflow — plan in a task file, approval gate, then implement           |
-| Multi-file refactors, cross-repo features, migrations, complex bug hunts        | Full task workflow — plan, companion file updates, drift detection, approval gates |
-
-The overhead scales with complexity. The light workflow adds a plan and an approval gate — minimal overhead, but enough to keep the AI aligned. The full workflow adds companion file maintenance and drift detection on top. Every change goes through one of these two workflows.
-
----
-
-## Your role
-
-The AI creates companion files, updates them at workflow transition points, runs drift detection, and maintains task state. You review their accuracy — the same responsibility you have for any AI-generated code. The AI automates the maintenance; you own the correctness.
-
-But companion files are not just assets for the AI. They are assets for you. You see at a glance how a specific code file connects to other parts of the codebase — the edges, the invariants, the running tasks on that file — without having to look up and search across five different places to assemble that view. They give everyone tools to follow the breadcrumbs, explore, and get familiar with parts of the project they usually don't work in.
-
-This is especially valuable for new contributors. When you don't know where to start looking, the onboarding folder mirrors the source code structure. Pick a repo, read the overview, follow cross-repo edges to adjacent repos. Each companion file shows what that code connects to, what must not break, and which specifications define its behavior. This is the guided tour that usually only exists in someone's head.
-
-For experienced developers, companion files are easy to validate at a glance. When something is wrong or missing, correcting it strengthens the system for every future session — yours, another developer's, or the AI's. Adding your own perspective builds the net further. This is a system that strengthens itself with every developer working in it.
-
----
-
-## Getting started
-
-The AI loses context, drifts from plans, and forgets between sessions. This system gives it structured memory that persists — and gets better with every task. The practical setup steps are in [GETTING_STARTED.md](GETTING_STARTED.md).
