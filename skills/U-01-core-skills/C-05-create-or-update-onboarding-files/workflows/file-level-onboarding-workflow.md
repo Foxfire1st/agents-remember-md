@@ -54,12 +54,12 @@ Subsections under `## Code Commentary`:
 
 Citation requirements for reference sections:
 
-1. `### Docs References` must be a markdown table with columns `Source Path`, `Citations`, and `Finding`.
-2. `## Cross-Repo References` must be a markdown table with columns `Source Path`, `Citations`, and `Finding`.
+1. `### Docs References` must include a concise prose summary when there is meaningful domain context to explain, followed by a markdown table with columns `Source Path`, `Citations`, and `Finding`.
+2. `## Cross-Repo References` must include a concise prose summary when there is meaningful system-boundary behavior to explain, followed by a markdown table with columns `Source Path`, `Citations`, and `Finding`.
 3. `Source Path` must be a clickable markdown link to the cited source file.
 4. `Citations` must list exact line ranges, for example `L10-L18` or `L10-L18; L42-L47`.
 5. `Finding` must be a concise summary of what those cited lines establish.
-6. Do not leave uncited prose or `None.` placeholders in either section. If nothing relevant exists, keep the table and note what was checked and that no relevant evidence was found.
+6. Do not rely on uncited prose alone in either section. Investigate and preserve useful explanation, then support it with the citation table. If nothing relevant exists, keep the table and note what was checked and that no relevant evidence was found.
 
 ## Create Workflow
 
@@ -71,14 +71,14 @@ Citation requirements for reference sections:
    - latest source-file commit via `git log --oneline -1 --format="%H %ci" -- <source-file>`
 5. fill the template from `../templates/file-level-onboarding-template.md`
 6. update the component overview if the file should be indexed there
-7. cross-check docs references and cross-repo references before finishing: every row needs a linked source path, exact line ranges, and a concise finding summary
+7. cross-check docs references and cross-repo references before finishing: preserve any load-bearing explanation, and ensure every table row has a linked source path, exact line ranges, and a concise finding summary
 
 ## Maintain Workflow
 
 When code changes:
 
 1. re-read the source file and the onboarding file
-2. update any changed purpose, logic, conventions, invariants, docs references, or cross-repo references, including citation line ranges when the source moved or changed
+2. update any changed purpose, logic, conventions, invariants, docs references, or cross-repo references, including correcting existing explanation and refreshing citation line ranges when the source moved or changed
 3. update metadata after the content has been verified
 
 When code is deleted or moved:

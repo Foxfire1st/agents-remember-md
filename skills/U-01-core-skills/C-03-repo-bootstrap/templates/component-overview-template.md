@@ -36,7 +36,7 @@ Use this template for `onboarding/<repo>/<component>/overview.md`.
 
 ## Cross-Repo References
 
-<Keep this as a table. Every row must include a clickable source path, exact line ranges, and a concise finding summary. If nothing relevant exists, keep the table and record what was checked plus `No relevant cross-repo evidence found.`>
+<Start with prose that explains the important cross-repo or cross-boundary behavior in this component. Then add the citation table to back that explanation up. Preserve and correct useful existing explanation rather than replacing it with the table. If nothing relevant exists, keep the table and record what was checked plus `No relevant cross-repo evidence found.`>
 
 | Source Path                                                          | Citations | Finding                                                                                                  |
 | -------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
@@ -44,7 +44,7 @@ Use this template for `onboarding/<repo>/<component>/overview.md`.
 
 ## Docs References
 
-<Keep this as a table. Every row must include a clickable source path, exact line ranges, and a concise finding summary. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
+<Start with prose that explains the documentation context that matters for this component. Then add the citation table to back that explanation up. Preserve and correct useful existing explanation rather than replacing it with the table. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
 
 | Source Path                                                    | Citations | Finding                                                                                    |
 | -------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------ |
@@ -61,7 +61,7 @@ Use this template for `onboarding/<repo>/<component>/overview.md`.
 
 ## Notes
 
-- `Docs References` and `Cross-Repo References` stay as citation-backed tables, not prose lists.
+- `Docs References` and `Cross-Repo References` are explanation-first sections backed by citation tables.
 - `Source Path` must be the clickable link to the cited file.
 - `Citations` should use exact line ranges like `L10-L18` or `L10-L18; L42-L47`.
 - `Finding` should be a concise summary of what the cited lines establish.

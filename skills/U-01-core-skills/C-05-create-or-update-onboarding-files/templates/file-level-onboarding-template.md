@@ -29,7 +29,7 @@
 
 ### Docs References
 
-<Use a table. Every row must include a clickable source path, exact citation line ranges, and a concise finding that explains what the cited lines establish for this file. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
+<Start with a short prose summary if there is meaningful documentation context to explain, then add the citation table. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
 
 | Source Path                                                    | Citations | Finding                                                                |
 | -------------------------------------------------------------- | --------- | ---------------------------------------------------------------------- |
@@ -41,7 +41,7 @@
 
 ## Cross-Repo References
 
-<Use a table. Every row must include a clickable source path, exact citation line ranges, and a concise finding that explains the cross-repo tie, external contract, or service boundary. If nothing relevant exists, keep the table and record what was checked plus `No meaningful cross-repo references found.`>
+<Start with a short prose summary if there is meaningful cross-repo or external-boundary behavior to explain, then add the citation table. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No meaningful cross-repo references found.`>
 
 | Source Path                                                                    | Citations | Finding                                                                                 |
 | ------------------------------------------------------------------------------ | --------- | --------------------------------------------------------------------------------------- |

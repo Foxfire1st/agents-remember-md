@@ -46,6 +46,16 @@ onboarding/
 3. Repo-level entity catalogs document real entities and cross-layer projections, not generic glossary content.
 4. If both a file-level onboarding document and a repo entity catalog need updates, handle both in the same pass when the task materially affects both.
 5. This package may be invoked immediately from `C-01-findings-capture` when a verified factual current-state clarification qualifies for onboarding propagation.
+6. When updating `Docs References` or `Cross-Repo References`, do not optimize by deleting existing explanation. Investigate the existing prose, correct it if needed, and back it with citations.
+
+## Reference Section Rule
+
+`Docs References` and `Cross-Repo References` are explanation-first sections.
+
+1. Explain domain behavior, system boundaries, or cross-repo interactions in prose.
+2. Correct outdated or unsupported prose instead of deleting it reflexively.
+3. Add citation-backed tables so the explanation is auditable.
+4. Do not treat the citation table as a replacement for the explanation when the section is carrying real behavioral context.
 
 ## Lifecycle Rules
 
