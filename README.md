@@ -26,6 +26,27 @@ All three modes share the same three-part discipline:
 
 The modes differ in _how approval happens_ — a chat turn, a task file review, a phase-gate checkpoint — not in what the discipline is. One system at three resolutions.
 
+In chat mode, the whole loop is small enough to state in full. It lives in `AGENTS.md` and reads:
+
+```markdown
+1. When planning code changes against onboarding documentation, invoke
+   `C-02-onboarding-drift-detection` to find drifted onboardings for the
+   files in question. Do not plan against drifted or missing-verification
+   onboarding until the drift report has been handed off to
+   `C-05-create-or-update-onboarding-files` or the caller has explicitly
+   accepted directional-only trust.
+
+2. Once planned, show the changes to the developer in chat including
+   code examples for every distinct change you intend to make. Wait for
+   explicit developer approval before changing any code.
+
+3. After approval, apply the code changes, update the onboarding
+   documentation, and use the appropriate code quality checks from
+   `docs/tools.md`.
+```
+
+No task folder, no phase structure. The same discipline the heavier modes enforce through artifacts is carried by chat turns.
+
 ## Why the memory layer changes things
 
 An AI coding session without persistent memory starts every task from scratch. It re-reads files it read last session, re-discovers cross-repo contracts it found before, re-infers invariants that nobody wrote down. All of that rediscovery consumes context window — and context-window degradation is measurable and severe. Du et al. (EMNLP 2025) showed model accuracy drops 14–85% as input length grows even when the answer is perfectly retrievable. Liu et al. (TACL 2024) showed models attend poorly to the middle of their context, with more than 30% accuracy loss for information placed mid-window. Ord's _Half-Life of AI Agent Success Rates_ found that doubling task duration quadruples failure rate, because each mistake forces correction work that adds more noise.
