@@ -8,6 +8,9 @@ The memory layer is a shadow documentation tree that mirrors your source tree on
 
 The memory layer is the product. Everything else in this repo is a way to interact with it.
 
+Here an example of an onboarding companion file, `src/helpers/NameTools.php`'s onboarding:
+![alt text](onboarding-example.jpg)
+
 ## The three modes
 
 Most tasks don't need a framework. They need an agent that already knows the codebase. That's what the memory layer provides, and that's why the default mode is just **chat**.
