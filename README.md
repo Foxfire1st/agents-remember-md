@@ -1,5 +1,10 @@
 # Agents Remember
 
+**_My agent keeps forgetting everything. So I made it write notes to its future self.
+Every source code file has a companion markdown. The agent opens both. Here's what that looks like:_**
+
+![onboarding-example](onboarding-example.png)
+
 ## What this is
 
 Most AI coding systems give you a workflow. This one gives you a **persistent memory layer** for your codebase, and three ways to interact with it.
@@ -7,9 +12,6 @@ Most AI coding systems give you a workflow. This one gives you a **persistent me
 The memory layer is a shadow documentation tree that mirrors your source tree one-to-one. For `src/Backend/UserController.php` there's an `onboarding/src/Backend/UserController.md`. No search, no retrieval, no embedding — the doc path is derived from the code path. An agent reading a source file opens its companion file alongside. The companion captures what code can't say on its own: invariants the code assumes, conventions with social rather than syntactic enforcement, the intent behind a pattern, and cross-repo contracts that live between two repositories and are owned by neither.
 
 The memory layer is the product. Everything else in this repo is a way to interact with it.
-
-Here an example of an onboarding companion file, `src/helpers/ComponentLabelResolver.php`'s onboarding:
-![onboarding-example](onboarding-example.png)
 
 ## The three modes
 
