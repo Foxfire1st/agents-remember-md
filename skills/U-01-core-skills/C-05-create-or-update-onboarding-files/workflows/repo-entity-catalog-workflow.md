@@ -14,6 +14,13 @@ Create or update one repo-level entity catalog documenting load-bearing real ent
 2. focus on load-bearing real entities that recur across layers and cause review, migration, or naming confusion
 3. do not use the file as a glossary or an exhaustive ontology of every noun in the repo
 
+## Source Discovery Rules
+
+1. Start by reading `docs/sources.md` and use its `Domain Documentation` category for the repo entities under review.
+2. Use the `Domain Documentation` sources from `docs/sources.md` when deciding canonical source of truth, naming drift, and cross-layer projections.
+3. Do not rely on adjacent onboarding alone when the `Domain Documentation` category contains more authoritative domain, protocol, or architecture context.
+4. If `Domain Documentation` includes both local and live variants, use the local material first and escalate to the live source when needed.
+
 ## Placement Rules
 
 ```text
@@ -58,14 +65,14 @@ Avoid entries that are:
 
 1. confirm the repo does not already have an entity catalog
 2. gather current time via MCP time tool
-3. read the repo overview and adjacent onboarding or docs needed to identify the first load-bearing entities
+3. read `docs/sources.md`, then read the repo overview and the relevant materials from its `Domain Documentation` category needed to identify the first load-bearing entities
 4. fill the template from `../templates/repo-entity-catalog-template.md`
 5. seed the catalog with the most confusion-prone entities first
 6. add a lightweight pointer from the repo overview when it improves discoverability
 
 ## Maintain Workflow
 
-1. re-read the current catalog and the adjacent source or onboarding docs for the entity being updated
+1. re-read `docs/sources.md`, the current catalog, and the relevant source materials for the entity being updated
 2. prefer updating an existing entry over creating a near-duplicate
 3. update `lastUpdated` whenever the entity set or any existing entity meaningfully changes
 4. keep the file selective; expand only when the extra entries materially improve understanding

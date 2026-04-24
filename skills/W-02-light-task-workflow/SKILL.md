@@ -45,7 +45,7 @@ The agent should:
 6. include proposed code examples for each distinct implementation change when code changes are in scope
 7. run `C-02-onboarding-drift-detection` before planning against onboarding files
 8. stop for approval before implementation
-9. after approval, treat code changes, durable onboarding knowledge capture, and the checks listed in `docs/tools.md` as one implementation cycle
+9. after approval, treat code changes, onboarding propagation through `C-05-create-or-update-onboarding-files`, and the checks listed in `docs/tools.md` as one implementation cycle
 10. set the task status to `Completed` once the approved implementation cycle is finished
 
 ## Context Gathering
@@ -66,8 +66,8 @@ Optional supporting tools such as Confluence search, Brave search, or Context7 m
 4. No implementation begins before explicit developer approval.
 5. Implementation steps and substeps use checkbox state rather than freeform progress prose.
 6. Code-changing light tasks include code examples for each distinct implementation change.
-7. After approval, onboarding is updated and the listed checks in `docs/tools.md` are run.
-8. Durable current-state findings discovered during implementation are recorded in onboarding during that implementation cycle or, if consolidation is clearer, in the immediate closeout pass right after implementation.
+7. After approval, onboarding is updated through `C-05-create-or-update-onboarding-files` and the listed checks in `docs/tools.md` are run.
+8. Durable current-state findings discovered during implementation are routed through `C-05-create-or-update-onboarding-files` during that implementation cycle or, if consolidation is clearer, in the immediate closeout pass right after implementation.
 9. Significant mid-implementation changes update the task file before edits continue.
 
 ## Relationship To Other Instructions

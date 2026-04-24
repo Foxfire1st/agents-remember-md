@@ -33,7 +33,7 @@ The orchestrator should:
 5. route work to the appropriate phase-local skill instead of absorbing every phase locally
 6. trigger `R-01-adversarial-review` at the defined checkpoints
 7. route factual current-state findings through `C-01-findings-capture` and `C-05-create-or-update-onboarding-files` when allowed
-8. ensure durable implementation discoveries are captured in onboarding during implementation when stable, or at latest in the immediate closure pass, so later sessions do not need to rediscover them
+8. ensure durable implementation discoveries are captured through `C-05-create-or-update-onboarding-files` during implementation when stable, or at latest in the immediate closure pass, so later sessions do not need to rediscover them
 
 ## When To Use
 
@@ -74,7 +74,7 @@ Before continuing, confirm that `task.md` still reflects the latest approved dev
 3. Root contracts stay separate from phase-owned working artifacts.
 4. Planning remains scheduling-only.
 5. Implementation runs through the sequential `I-01-implementation` package.
-6. Durable current-state findings are documented in onboarding during the task rather than left only in chat history.
+6. Durable current-state findings are documented through `C-05-create-or-update-onboarding-files` during the task rather than left only in chat history.
 
 ## Relationship To Other Instructions
 

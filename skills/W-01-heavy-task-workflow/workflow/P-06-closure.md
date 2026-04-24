@@ -6,7 +6,7 @@ This document defines how the heavy-task workflow closes a task after implementa
 
 Closure happens after implementation is approved, not merely after coding stops.
 
-Its main job in the MVP model is to bring onboarding documentation up to date from the final implemented state and then write the final report.
+Its main job in the MVP model is to bring onboarding documentation up to date through `C-05-create-or-update-onboarding-files` from the final implemented state and then write the final report.
 
 Closure is a consolidation pass, not a license to leave all durable discoveries undocumented until the very end.
 
@@ -24,7 +24,7 @@ It uses:
 4. actual code
 5. implementation results
 
-to update onboarding documentation so the documented state matches the implemented state.
+to update onboarding documentation through `C-05-create-or-update-onboarding-files` so the documented state matches the implemented state.
 
 Closure does not reopen design or implementation silently. If it discovers a material mismatch, it stops and sends the workflow back to the right earlier phase.
 
@@ -61,11 +61,11 @@ Closure gathers the final source of truth from approved requirements, approved a
 
 ### 3. Update onboarding documentation
 
-Closure updates onboarding documentation for the implemented surfaces.
+Closure updates onboarding documentation for the implemented surfaces through `C-05-create-or-update-onboarding-files`.
 
-If an onboarding document is missing for an implemented surface, Closure should create it through the onboarding update path rather than leaving the surface undocumented.
+If an onboarding document is missing for an implemented surface, Closure should create it through `C-05-create-or-update-onboarding-files` rather than leaving the surface undocumented.
 
-Closure should also confirm that durable findings discovered during implementation were already captured when practical, and then use this phase to consolidate or finish any remaining onboarding wording rather than rediscovering behavior from scratch.
+Closure should also confirm that durable findings discovered during implementation were already captured through `C-05-create-or-update-onboarding-files` when practical, and then use this phase to consolidate or finish any remaining onboarding wording rather than rediscovering behavior from scratch.
 
 ### 4. Stop on mismatch instead of silently closing
 
@@ -73,7 +73,7 @@ If the onboarding refresh reveals a material mismatch between approved target-st
 
 ### 5. Write `final_report.md`
 
-After onboarding is updated, Closure writes `final_report.md` summarizing what was learned, approved, built, and updated in onboarding.
+After onboarding is updated through `C-05-create-or-update-onboarding-files`, Closure writes `final_report.md` summarizing what was learned, approved, built, and updated in onboarding.
 
 ### 6. Mark the task complete
 
@@ -98,7 +98,7 @@ Closure does not:
 
 Closure ends only when:
 
-1. onboarding documentation has been updated from the final implemented state
-2. durable findings from the task have been preserved in onboarding rather than left only in chat history
+1. onboarding documentation has been updated through `C-05-create-or-update-onboarding-files` from the final implemented state
+2. durable findings from the task have been preserved through `C-05-create-or-update-onboarding-files` rather than left only in chat history
 3. `final_report.md` exists
 4. the task has been marked complete

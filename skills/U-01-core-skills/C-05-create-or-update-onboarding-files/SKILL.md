@@ -12,6 +12,8 @@ This package owns durable onboarding maintenance for two artifact types:
 
 Planning stays in task artifacts. This package defines how onboarding itself is created, updated, and kept structurally consistent.
 
+It must use the `Domain Documentation` category declared in `docs/sources.md` for the onboarding slice being maintained, rather than assuming that adjacent onboarding alone is sufficient or hard-coding one particular documentation system into the skill.
+
 ## Routing
 
 Choose the artifact type first, then use the matching workflow and template.
@@ -47,6 +49,18 @@ onboarding/
 4. If both a file-level onboarding document and a repo entity catalog need updates, handle both in the same pass when the task materially affects both.
 5. This package may be invoked immediately from `C-01-findings-capture` when a verified factual current-state clarification qualifies for onboarding propagation.
 6. When updating `Docs References` or `Cross-Repo References`, do not optimize by deleting existing explanation. Investigate the existing prose, correct it if needed, and back it with citations.
+7. Start reference discovery from `docs/sources.md`, then use its `Domain Documentation` category as the required domain-evidence input for the file or entity being documented.
+8. Treat onboarding as supporting context, not as a substitute for the `Domain Documentation` category.
+
+## Source Discovery Rule
+
+Before writing or revising onboarding content, read `docs/sources.md` and use its `Domain Documentation` category as the required discovery path for technical and behavioral documentation.
+
+1. Use the `Domain Documentation` category from `docs/sources.md` as the discovery plan for `Docs References`, `Cross-Repo References`, and any load-bearing explanatory prose.
+2. Preserve useful adjacent onboarding context, but do not let it replace the required `Domain Documentation` pass.
+3. Do not hard-code one external documentation system into this package. The operative rule is to use whatever sources are listed under `Domain Documentation` in `docs/sources.md`.
+4. If `Domain Documentation` includes both a local mirror and a live retrieval path, use the local material first for direct access and escalate to the live source when recency, completeness, or confidence requires it.
+5. If no relevant material is found in the `Domain Documentation` sources, record what was checked instead of pretending the search space was limited to onboarding only.
 
 ## Reference Section Rule
 

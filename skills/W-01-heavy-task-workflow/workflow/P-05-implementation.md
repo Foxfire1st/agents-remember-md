@@ -27,7 +27,7 @@ Output documentation defines the approved change set across real existing surfac
 
 It is not a completeness filter for every touched file or package, and touching an artifact does not mean compressing it down to only the documented overlap.
 
-Implementation should also capture durable current-state findings in onboarding as soon as those findings are stable enough to state accurately, rather than leaving them only in chat or deferring all knowledge capture to a later rediscovery pass.
+Implementation should also route durable current-state findings through `C-05-create-or-update-onboarding-files` as soon as those findings are stable enough to state accurately, rather than leaving them only in chat or deferring all knowledge capture to a later rediscovery pass.
 
 ---
 
@@ -69,7 +69,7 @@ For each step, the Coder agent should:
 5. remove existing material only when that removal is explicitly justified by the approved requirements, architecture, output documentation, or implementation plan
 6. record an issue if it is unclear whether existing material survives, instead of deleting by assumption
 7. make the required code changes you can do safely
-8. record any durable current-state findings learned from that step in the relevant onboarding files when the finding is already clear enough to document accurately
+8. record any durable current-state findings learned from that step through `C-05-create-or-update-onboarding-files` when the finding is already clear enough to document accurately
 9. run the step's verification note
 10. check off the step in `implementation_plan.md` once the verification passes
 
@@ -79,7 +79,7 @@ If the Coder agent finds a problem while implementing a step, it records that pr
 
 Issues are discussed with the developer through the orchestrator. They are not automatically turned into requirement or architecture intake.
 
-If the step reveals durable knowledge that will matter for future work, that knowledge should be added to onboarding during the implementation phase unless the orchestrator explicitly defers the wording cleanup to Closure.
+If the step reveals durable knowledge that will matter for future work, that knowledge should be routed through `C-05-create-or-update-onboarding-files` during the implementation phase unless the orchestrator explicitly defers the wording cleanup to Closure.
 
 ### 4. Finish the execution pass
 
@@ -87,7 +87,7 @@ Implementation ends the execution pass when:
 
 1. every checklist step is either checked off or explicitly blocked by a discussed issue
 2. verification has been run for the completed steps
-3. durable findings from completed steps have been captured in onboarding or explicitly queued for the immediate Closure pass
+3. durable findings from completed steps have been captured through `C-05-create-or-update-onboarding-files` or explicitly queued for the immediate Closure pass
 4. the plan accurately reflects what was completed and what remains blocked
 
 ### 5. Write `implementation_results.md`

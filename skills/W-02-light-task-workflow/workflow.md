@@ -10,7 +10,7 @@ Light-task-workflow still follows the same shared discipline documented in `READ
 
 1. drift check before planning when onboarding is part of the planning context
 2. approval before implementation
-3. onboarding update after approved changes, with durable findings captured during implementation when they become clear enough
+3. onboarding update through `C-05-create-or-update-onboarding-files` after approved changes, with durable findings routed through that skill during implementation when they become clear enough
 
 ## Phase 1 — Create Or Update The Task File
 
@@ -106,10 +106,10 @@ For each implementation section:
 1. read the step objective and its checkbox items
 2. read the relevant files or materials
 3. perform the approved work
-4. record durable current-state findings for that implemented slice in the relevant onboarding files as soon as the finding is stable enough to state accurately
+4. route durable current-state findings for that implemented slice through `C-05-create-or-update-onboarding-files` as soon as the finding is stable enough to state accurately
 5. use the checks listed in `docs/tools.md` for that implemented slice when those checks are available
-6. finish any remaining onboarding cleanup for that implemented slice before considering it done
-7. mark a substep complete only after its code or artifact change, its onboarding capture or update, and its relevant listed checks are done
+6. finish any remaining onboarding cleanup for that implemented slice through `C-05-create-or-update-onboarding-files` before considering it done
+7. mark a substep complete only after its code or artifact change, its onboarding capture or update through `C-05-create-or-update-onboarding-files`, and its relevant listed checks are done
 8. mark the parent step checkbox complete only after its substeps and verification are complete
 9. record any meaningful judgment call in the decision log
 
@@ -135,7 +135,7 @@ When the approved plan has been fully implemented:
 
 Close does not own implementation work. Code changes, onboarding updates, and listed checks all belong to Phase 2 and should already be finished before this phase begins.
 
-Close may still consolidate or polish onboarding language if needed, but it must not depend on rediscovering durable findings that should have been captured during Phase 2.
+Close may still consolidate or polish onboarding language through `C-05-create-or-update-onboarding-files` if needed, but it must not depend on rediscovering durable findings that should have been captured during Phase 2.
 
 ### 1. Prepare the completion handoff
 
@@ -143,7 +143,7 @@ When all planned work is complete:
 
 1. present what was done, any deviations, and any deferred items
 2. verify that the Phase 2 completion summary still reflects the final state accurately
-3. confirm that durable findings discovered during implementation were written into onboarding rather than left implicit in chat history
+3. confirm that durable findings discovered during implementation were routed through `C-05-create-or-update-onboarding-files` rather than left implicit in chat history
 
 ### 2. Cross-reference check
 
@@ -172,7 +172,7 @@ If the change is significant, get renewed approval before editing files.
 
 ### Touch 2 — Implement and present
 
-Do the work for the current slice, update onboarding for that same slice, run the listed checks for that same slice when available, then update the same checklist:
+Do the work for the current slice, update onboarding for that same slice through `C-05-create-or-update-onboarding-files`, run the listed checks for that same slice when available, then update the same checklist:
 
 1. check off completed substeps
 2. check off completed parent steps when they are truly done

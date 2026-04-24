@@ -29,7 +29,7 @@
 
 ### Docs References
 
-<Start with a short prose summary if there is meaningful documentation context to explain, then add the citation table. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
+<Start with a short prose summary if there is meaningful documentation context to explain, then add the citation table. Build this section from the `Domain Documentation` category declared in `docs/sources.md`. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
 
 | Source Path                                                    | Citations | Finding                                                                |
 | -------------------------------------------------------------- | --------- | ---------------------------------------------------------------------- |
@@ -41,7 +41,7 @@
 
 ## Cross-Repo References
 
-<Start with a short prose summary if there is meaningful cross-repo or external-boundary behavior to explain, then add the citation table. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No meaningful cross-repo references found.`>
+<Start with a short prose summary if there is meaningful cross-repo or external-boundary behavior to explain, then add the citation table. Build this section using the `Domain Documentation` category from `docs/sources.md` plus the necessary code and onboarding evidence, not from adjacent onboarding alone. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No meaningful cross-repo references found.`>
 
 | Source Path                                                                    | Citations | Finding                                                                                 |
 | ------------------------------------------------------------------------------ | --------- | --------------------------------------------------------------------------------------- |
