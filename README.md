@@ -1,7 +1,7 @@
 # Agents Remember
 
 **_My agent keeps forgetting everything. So I made it write notes to its future self.
-Every source code file has a companion markdown. The agent opens both. Here's what that looks like:_**
+Every source code file has a companion markdown. The agent opens both. (No context bloat, No hallucinations) Here's what that looks like:_**
 
 ![onboarding-example](onboarding-example.png)
 
