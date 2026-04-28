@@ -5,6 +5,96 @@ Every source code file has a companion markdown. The agent opens both. Here's wh
 
 ![onboarding-example](onboarding-example.png)
 
+## Techstack
+
+```text
+Skills for for Claude Code, Cursor, VS Code etc. No software dependendencies.
+Just markdown files and conventions.
+```
+
+## Quickstart
+
+Clone this repository somewhere next to your existing code — it doesn't go inside any of them. The onboarding tree lives here and mirrors each code repo by name:
+
+```text
+projects/
+  agents-remember/        ← this repo
+    AGENTS.md
+    onboarding/
+      my-app/
+        overview.md
+  my-app/                 ← your existing repo
+    src/
+```
+
+The steps are the same regardless of which tool you use:
+
+1. Wire up the agent so it reads `AGENTS.md` from this repo at session start (tool-specific instructions below).
+2. Run `C-03-repo-bootstrap` to scaffold the initial onboarding structure in `onboarding/my-app/`. A bare `overview.md` is enough — the agent fills in depth as it works.
+3. Start using the agent normally. Chat handles most tasks. The agent reads companion files alongside source files and updates them as it goes.
+4. Escalate to `W-02-light-task-workflow` or `W-01-heavy-task-workflow` when the task needs a written plan or needs to survive beyond a single session.
+
+Coverage builds from real work. The first task on any file writes the companion; every task after reads it.
+
+### Claude Code
+
+Add a `CLAUDE.md` at the root of each code repository:
+
+```markdown
+# my-app
+
+@../agents-remember/AGENTS.md
+```
+
+Claude Code imports the file into context at session start. When a skill applies, the agent reads the corresponding `SKILL.md` using its normal file tools — no extra configuration needed since `agents-remember` is already accessible on disk.
+
+### Cursor
+
+Create `.cursor/rules/agents-remember.mdc` in your code repository:
+
+```markdown
+---
+description: Agents Remember memory system conventions
+alwaysApply: true
+---
+
+@../agents-remember/AGENTS.md
+```
+
+Alternatively, use Cursor's built-in GitHub import to sync rules directly from this repo. Skills are read on demand by the agent using standard file access.
+
+### VS Code + GitHub Copilot
+
+Open (or create) a `.code-workspace` file that includes both repositories as folders. Copilot needs the skills directories listed explicitly in `chat.agentSkillsLocations` — without this setting it won't discover them:
+
+```json
+{
+  "folders": [{ "path": "agents-remember" }, { "path": "my-app" }],
+  "settings": {
+    "chat.agentSkillsLocations": {
+      "agents-remember/skills": true,
+      "agents-remember/skills/U-01-core-skills": true,
+      "agents-remember/skills/W-01-heavy-task-workflow": true,
+      "agents-remember/skills/W-02-light-task-workflow": true,
+      "agents-remember/skills/P-00-creation": true,
+      "agents-remember/skills/P-01-research": true,
+      "agents-remember/skills/P-02-synthesis": true,
+      "agents-remember/skills/P-03-design": true,
+      "agents-remember/skills/P-04-planning": true,
+      "agents-remember/skills/P-05-implementation": true,
+      "agents-remember/skills/P-06-closing": true,
+      "agents-remember/skills/P-99-review": true
+    }
+  }
+}
+```
+
+You can add a `.github/copilot-instructions.md` in the code repo to layer on any repo-specific overrides.
+
+### Windsurf
+
+Add both repositories to your workspace. Windsurf automatically discovers `AGENTS.md` files within the workspace tree and reads skills on demand from there. You can add repo-specific additions in `.windsurf/rules/*.md` inside the code repo if needed.
+
 ## What this is
 
 Most AI coding systems give you a workflow. This one gives you a **persistent memory layer** for your codebase, and three ways to interact with it.
@@ -103,86 +193,3 @@ The fundamental choice isn't "task workflow or memory system" — it's whether y
 | **Staleness detection**                   | None                                        | Varies                                    | Git-anchored, per-file                      |
 | **Substrate**                             | Files, various formats                      | Opaque backend or derived                 | Markdown in git, human-readable             |
 | **Infrastructure compounds across tasks** | No — regenerated per project                | Yes                                       | Yes                                         |
-
-## Getting started
-
-Clone this repository somewhere next to your existing code — it doesn't go inside any of them. The onboarding tree lives here and mirrors each code repo by name:
-
-```text
-projects/
-  agents-remember/        ← this repo
-    AGENTS.md
-    onboarding/
-      my-app/
-        overview.md
-  my-app/                 ← your existing repo
-    src/
-```
-
-The steps are the same regardless of which tool you use:
-
-1. Wire up the agent so it reads `AGENTS.md` from this repo at session start (tool-specific instructions below).
-2. Run `C-03-repo-bootstrap` to scaffold the initial onboarding structure in `onboarding/my-app/`. A bare `overview.md` is enough — the agent fills in depth as it works.
-3. Start using the agent normally. Chat handles most tasks. The agent reads companion files alongside source files and updates them as it goes.
-4. Escalate to `W-02-light-task-workflow` or `W-01-heavy-task-workflow` when the task needs a written plan or needs to survive beyond a single session.
-
-Coverage builds from real work. The first task on any file writes the companion; every task after reads it.
-
-### Claude Code
-
-Add a `CLAUDE.md` at the root of each code repository:
-
-```markdown
-# my-app
-
-@../agents-remember/AGENTS.md
-```
-
-Claude Code imports the file into context at session start. When a skill applies, the agent reads the corresponding `SKILL.md` using its normal file tools — no extra configuration needed since `agents-remember` is already accessible on disk.
-
-### Cursor
-
-Create `.cursor/rules/agents-remember.mdc` in your code repository:
-
-```markdown
----
-description: Agents Remember memory system conventions
-alwaysApply: true
----
-
-@../agents-remember/AGENTS.md
-```
-
-Alternatively, use Cursor's built-in GitHub import to sync rules directly from this repo. Skills are read on demand by the agent using standard file access.
-
-### VS Code + GitHub Copilot
-
-Open (or create) a `.code-workspace` file that includes both repositories as folders. Copilot needs the skills directories listed explicitly in `chat.agentSkillsLocations` — without this setting it won't discover them:
-
-```json
-{
-  "folders": [{ "path": "agents-remember" }, { "path": "my-app" }],
-  "settings": {
-    "chat.agentSkillsLocations": {
-      "agents-remember/skills": true,
-      "agents-remember/skills/U-01-core-skills": true,
-      "agents-remember/skills/W-01-heavy-task-workflow": true,
-      "agents-remember/skills/W-02-light-task-workflow": true,
-      "agents-remember/skills/P-00-creation": true,
-      "agents-remember/skills/P-01-research": true,
-      "agents-remember/skills/P-02-synthesis": true,
-      "agents-remember/skills/P-03-design": true,
-      "agents-remember/skills/P-04-planning": true,
-      "agents-remember/skills/P-05-implementation": true,
-      "agents-remember/skills/P-06-closing": true,
-      "agents-remember/skills/P-99-review": true
-    }
-  }
-}
-```
-
-You can add a `.github/copilot-instructions.md` in the code repo to layer on any repo-specific overrides.
-
-### Windsurf
-
-Add both repositories to your workspace. Windsurf automatically discovers `AGENTS.md` files within the workspace tree and reads skills on demand from there. You can add repo-specific additions in `.windsurf/rules/*.md` inside the code repo if needed.
