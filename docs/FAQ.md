@@ -9,7 +9,7 @@ Common questions and objections about `agents-remember.md`. If you're evaluating
 Four commitments shape the system. When a proposed feature conflicts with one of these, the feature loses.
 
 **1. Piggyback on how agents already work.**
-Onboarding files live in a tree that mirrors the source tree. When the agent reads `src/foo/bar.php`, it reads `onboarding/<repo>/src/foo/bar.md` alongside it. The onboarding path is derived from the code path — no search, no retrieval, no embeddings, no index. Any agent that can follow a file path can use this system.
+Onboarding files live in a tree that mirrors the source tree. When the agent reads `src/foo/bar.php`, it reads `<onboarding-root>/<repo>/src/foo/bar.md` alongside it. The onboarding path is derived from the code path — no search, no retrieval, no embeddings, no index. Any agent that can follow a file path can use this system.
 
 **2. Capture what code can't say on its own.**
 Onboarding documents invariants the code assumes, conventions with social rather than syntactic enforcement, the intent behind a pattern, and cross-repo contracts that live between two repositories and are owned by neither. It doesn't duplicate what the code already says or what a type signature already reveals. That scoping rule is what keeps onboarding files small and useful.
@@ -28,7 +28,7 @@ Nothing unapproved reaches the canonical onboarding tree. In chat mode the gate 
 
 This is the standard failure mode of retrieval-based memory — vector stores, accumulated conversation memory, semantic search over a growing corpus. It does not apply here because there is no retrieval layer.
 
-Navigation is path-derived. When the agent reads `src/foo/bar.php`, it knows the onboarding is at `onboarding/<repo>/src/foo/bar.md`. Load cost is O(files touched in this task), not O(repo size). Adding 10,000 more files to the repo does not change the cost of any individual read.
+Navigation is path-derived. When the agent reads `src/foo/bar.php`, it knows the onboarding is at `<onboarding-root>/<repo>/src/foo/bar.md`. Load cost is O(files touched in this task), not O(repo size). Adding 10,000 more files to the repo does not change the cost of any individual read.
 
 Hallucination from memory systems usually comes from similarity retrieval returning tangentially related content that the model then weaves into its reasoning. Path-derived onboarding cannot do that — the onboarding for `bar.php` is by construction about `bar.php`. No similarity-based false positives are possible.
 
@@ -42,7 +42,7 @@ The scope rule does most of the work. Onboarding captures what code can't say on
 
 When onboarding does grow, it's usually a signal that the source file has accumulated too much coupling or too many invariants and should probably be split. The onboarding size becomes a useful pressure gauge for the code itself.
 
-Heavy-task mode adds another safeguard. Task-local artifacts — research notes, projected outputs, implementation plans — stay in `tasks/` until implementation is approved. Only then does anything promote into the canonical onboarding tree. Transient task noise never permanently inflates an onboarding file.
+Heavy-task mode adds another safeguard. Task-local artifacts — research notes, projected outputs, implementation plans — stay in `<task-root>/` until implementation is approved. Only then does anything promote into the canonical onboarding tree. Transient task noise never permanently inflates an onboarding file.
 
 ### How does the agent know the onboarding isn't stale?
 
@@ -66,7 +66,7 @@ Onboarding files include two explicit reference sections:
 
 When a file's behavior depends on something outside itself, the onboarding records the edge explicitly. The agent follows edges when they matter, the same way an `import` statement declares what context is needed. This is deliberate — eagerly loading a transitive closure "just in case" is how retrieval systems end up with bloated context and spurious correlations. Making the edge explicit and optional keeps the read surface bounded while preserving cross-file reasoning when it actually matters.
 
-Repo-level context lives one level up: `onboarding/<repo>/overview.md` and an optional `entities.md` catalog describe load-bearing architecture and cross-layer entities. The `C-04-discovery` skill enforces a top-down reading order — repo overview first, then component overview, then file-level onboarding, then code — so the agent doesn't brute-force its way through unfamiliar surfaces.
+Repo-level context lives one level up: `<onboarding-root>/<repo>/overview.md` and an optional `entities.md` catalog describe load-bearing architecture and cross-layer entities. The `C-04-discovery` skill enforces a top-down reading order — repo overview first, then component overview, then file-level onboarding, then code — so the agent doesn't brute-force its way through unfamiliar surfaces.
 
 ### Why not just use a vector store or semantic retrieval?
 
@@ -93,7 +93,7 @@ No. Chat mode is the default. It's four steps:
 1. Check onboarding drift for the files in scope (`C-02-onboarding-drift-detection`).
 2. Read onboarding alongside code, propose changes in chat with concrete code examples.
 3. Wait for explicit developer approval.
-4. Implement, update onboarding through `C-05`, run the checks from `docs/tools.md`.
+4. Implement, update onboarding through `C-05`, run the checks from `<AR_MANAGEMENT_ROOT>/system/tools.md`.
 
 Most work happens in chat mode. Light task adds a written single-page plan when the work will outlive a session. Heavy task exists for migrations, cross-repo contracts, and work where a silent mistake would be expensive to unwind.
 

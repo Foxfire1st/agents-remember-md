@@ -91,7 +91,7 @@ Why this example is included: <reason>
 ## Usage Rules
 
 1. Keep the section structure even for small tasks.
-2. Use repo-local paths such as `tasks/` and `docs/`.
+2. Use configured management-root paths such as `<task-root>/`, `<onboarding-root>/`, and `<AR_MANAGEMENT_ROOT>/docs/`.
 3. When code changes are in scope, include proposed code examples for each distinct implementation change.
 4. For documentation-only or other non-code tasks, keep the section and state that no code examples are needed.
 5. Mark substeps complete before their parent verification item.

@@ -20,7 +20,7 @@ Its job is to keep investigation ordered: onboarding first, reference context ne
 
 Always prefer top-down discovery over brute-force code roaming.
 
-1. Read the relevant repo overview under `onboarding/<repo>/overview.md`.
+1. Read the relevant repo overview under `<onboarding-root>/<repo>/overview.md`.
 2. If the area is narrower, read the component overview and any relevant file-level onboarding docs.
 3. Read any entity catalog, glossary, or naming reference that helps disambiguate the terms in play.
 4. Follow documentation references surfaced by onboarding before broad browsing.

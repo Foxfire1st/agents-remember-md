@@ -2,7 +2,7 @@
 
 > <One-sentence description of the component's role in the repo>
 
-Use this template for `onboarding/<repo>/<component>/overview.md`.
+Use this template for `<onboarding-root>/<repo>/<component>/overview.md`.
 
 ## Architecture
 

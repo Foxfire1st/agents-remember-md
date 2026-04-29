@@ -26,7 +26,7 @@ The system uses three storage substrates, each matched to the access pattern it 
 
 ### 1. Current-state files (existing)
 
-Markdown in git, mirroring the source tree. Path-derived: the agent reading `src/foo/bar.php` reads `onboarding/<repo>/src/foo/bar.md`. Captures invariants, conventions, cross-repo edges, and intent — what the code can't say on its own. Deleted when the source file is deleted.
+Markdown in git, mirroring the source tree. Path-derived: the agent reading `src/foo/bar.php` reads `<onboarding-root>/<repo>/src/foo/bar.md`. Captures invariants, conventions, cross-repo edges, and intent — what the code can't say on its own. Deleted when the source file is deleted.
 
 Substrate choice: markdown in git is correct here because volume is bounded by the shape of the codebase, humans read these files directly, and the git diff/history machinery is load-bearing for staleness detection.
 
@@ -104,7 +104,7 @@ The system now uses two storage substrates: markdown-in-git for onboarding, a da
 
 Onboarding is markdown-in-git because humans read it, volume is bounded, and git's diff/history machinery is load-bearing. Episodes are database rows because volume is unbounded, queries are the primary access pattern, and human readability is deferred to renderers. Matching substrate to access pattern is what makes both layers defensible. A system that insisted on one substrate for everything would be worse on one of the two axes.
 
-One-sentence justification for future reference: *onboarding is markdown because humans read it; episodes are a database because agents query them; both are anchored to the same entities through shared task IDs.*
+One-sentence justification for future reference: _onboarding is markdown because humans read it; episodes are a database because agents query them; both are anchored to the same entities through shared task IDs._
 
 ---
 

@@ -4,10 +4,12 @@ This template defines the canonical runtime layout for heavy-task-workflow task 
 
 Read it during task creation and use it as the authoritative placement guide for root artifacts, phase folders, and checkpoint outputs.
 
+`<task-root>` is the task root derived from `AR_MANAGEMENT_ROOT`, documented in `<AR_MANAGEMENT_ROOT>/system/settings.md`.
+
 ## Canonical Runtime Layout
 
 ```text
-tasks/YYMMDD_slug/
+<task-root>/YYMMDD_slug/
 ├── task.md
 ├── requirement_change_candidates.md
 ├── requirements.md

@@ -1,20 +1,23 @@
 ## Memory System Awareness
 
-This workspace uses a layered memory system. Understand the layers before acting:
+This workspace uses a layered memory system. Understand the layers before acting.
 
-| Layer      | Location         | Purpose                                                         |
-| ---------- | ---------------- | --------------------------------------------------------------- |
-| onboarding | `onboarding/`    | Code commentary — logic, invariants, conventions, task tracking |
-| docs       | `docs/`          | Authoritative reference documentation                           |
-| sources    | `docs/sources/`  | References to external technical documentation, mcps, etc.      |
-| glossary   | `docs/glossary/` | Canonical vocabulary and cross-repo index                       |
-| tasks      | `tasks/`         | Current change intent, plans, decision logs                     |
+Resolve `AR_MANAGEMENT_ROOT` from `.env` in this repository first. If `.env` is absent, use the default from `.env.example`: `../ar-management`, resolved relative to that `.env.example` file. The active management files then live under this scaffold:
+
+| Layer      | Location                                  | Purpose                                                         |
+| ---------- | ----------------------------------------- | --------------------------------------------------------------- |
+| settings   | `<AR_MANAGEMENT_ROOT>/system/settings.md` | Derived path contract and management-root scaffold              |
+| onboarding | `<AR_MANAGEMENT_ROOT>/onboarding/`        | Code commentary — logic, invariants, conventions, task tracking |
+| tasks      | `<AR_MANAGEMENT_ROOT>/tasks/`             | Current change intent, plans, decision logs                     |
+| docs       | `<AR_MANAGEMENT_ROOT>/docs/`              | Local domain documentation and mirrors                          |
+| sources    | `<AR_MANAGEMENT_ROOT>/system/sources.md`  | References to external technical documentation, mcps, etc.      |
+| tools      | `<AR_MANAGEMENT_ROOT>/system/tools.md`    | Repo-specific commands, checks, tools, and MCP notes            |
 
 ## Onboarding Usage
 
 When working with code make sure to read the corresponding onboarding file alongside it. The code path tells the agent where to find the onboarding, and the onboarding file name matches the code file name.
 
-For example, if you are working with `src/js/libs/device_connection/apiRequests.ts`, read `onboarding/device-management/helpdesk/src/js/libs/device_connection/apiRequests.md` for the relevant commentary.
+For example, if you are working with `src/js/libs/device_connection/apiRequests.ts`, read `<AR_MANAGEMENT_ROOT>/onboarding/device-management/helpdesk/src/js/libs/device_connection/apiRequests.md` for the relevant commentary.
 Note that onboarding repositories may be segmented by domain (e.g., `helpdesk`) to group related files.
 
 When a task uncovers durable current-state knowledge, record that knowledge in onboarding during implementation as soon as the finding is stable enough to state accurately, or at latest in the immediate post-implementation documentation pass. Do not rely on rediscovering the same behavior in a later session.
@@ -38,7 +41,7 @@ Operational references:
 
 ### Workflow Development Guard Rails
 
-Workflow design reference when changing the workflow itself: [onboarding/heavy-task-workflow/overview.md](onboarding/heavy-task-workflow/overview.md)
+Workflow design reference when changing the workflow itself: `<AR_MANAGEMENT_ROOT>/onboarding/heavy-task-workflow/overview.md` when that onboarding exists and has passed drift qualification.
 
 1. Use onboarding docs when developing or changing the workflow itself, not as the primary operational source for normal coding tasks.
 2. Keep separation of concerns: `SKILL.md` owns entrypoint guidance, workflow docs own phase behavior, templates own scaffolds, and validation or check assets own verification.
@@ -54,4 +57,4 @@ When asked to find a sollution to a problem, do not change any code before you h
 
 2. Then after `C-05-create-or-update-onboarding-files` has updated the required onboarding context you can investigate and plan the changes, which then you show to the developer in chat including code examples for every distinct change you intend to make. Wait for explicit developer approval before you start changing any code.
 
-3. After approval apply the code changes, route durable findings and onboarding refresh through `C-05-create-or-update-onboarding-files` during implementation whenever the discovery is already clear, finish any remaining onboarding pass through that skill immediately after implementation, and use the appropriate code quality checks from `docs/tools.md`.
+3. After approval apply the code changes, route durable findings and onboarding refresh through `C-05-create-or-update-onboarding-files` during implementation whenever the discovery is already clear, finish any remaining onboarding pass through that skill immediately after implementation, and use the appropriate code quality checks from `<AR_MANAGEMENT_ROOT>/system/tools.md`.

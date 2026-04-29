@@ -70,7 +70,7 @@ All `Docs References` and `Cross-Repo References` sections produced by this skil
 
 ## Bootstrap State File
 
-Every bootstrap produces a state file at `onboarding/<repo>/bootstrap/STATE.md`. This is the first file read at the start of every session and the last file updated at the end.
+Every bootstrap produces a state file at `<onboarding-root>/<repo>/bootstrap/STATE.md`. This is the first file read at the start of every session and the last file updated at the end.
 
 **Purpose:** Track progress, decisions, and open questions across sessions. When a bootstrap spans multiple sessions (the recommended approach), the state file is the thread that ties them together.
 
@@ -189,10 +189,10 @@ Before exploring blind, discover what's known about this repo's external interfa
 
 #### Path A — Onboarding exists in adjacent repos
 
-1. **Read the current (possibly placeholder) overview** at `onboarding/<repo>/overview.md`.
+1. **Read the current (possibly placeholder) overview** at `<onboarding-root>/<repo>/overview.md`.
 2. **Search bootstrapped repos' onboarding** for references to this repo:
    ```bash
-   grep -r "<repo-name>" onboarding/ --include="*.md" -l
+   grep -r "<repo-name>" "<onboarding-root>" --include="*.md" -l
    ```
 3. **Read the cross-repo sections** of those files. These name specific files, interfaces, event types, and communication paths — use them as seed points for the deep-dive.
 4. **Check the glossary** for terms associated with this repo.
@@ -243,7 +243,7 @@ Divide the repo into **functional areas**. An area is a cohesive group of files 
 
 ### 1.5 Write the scout report
 
-Write to: `onboarding/<repo>/bootstrap/scout-report.md`
+Write to: `<onboarding-root>/<repo>/bootstrap/scout-report.md`
 
 **Scout report template:**
 
@@ -389,7 +389,7 @@ After all sub-agents complete for an area, a **merge agent** (fresh context) com
 4. Consult the developer for anything tagged `[LOW]` or flagged as uncertain.
 5. Write the unified area report.
 
-Write to: `onboarding/<repo>/bootstrap/areas/<area-name>.md`
+Write to: `<onboarding-root>/<repo>/bootstrap/areas/<area-name>.md`
 
 **Area report template:**
 
@@ -455,7 +455,7 @@ Migration direction, intent, planned changes.>
 
 After the merged area report is complete, produce a **1-page area brief** — a distilled summary for the synthesis phase:
 
-Write to: `onboarding/<repo>/bootstrap/areas/<area-name>.brief.md`
+Write to: `<onboarding-root>/<repo>/bootstrap/areas/<area-name>.brief.md`
 
 ```markdown
 # <Area Name> — Brief
@@ -507,7 +507,7 @@ After each area completes its deep-dive cycle (section files → merge → brief
 
 Load into context:
 
-1. **Area briefs** from `onboarding/<repo>/bootstrap/areas/*.brief.md` — not full reports.
+1. **Area briefs** from `<onboarding-root>/<repo>/bootstrap/areas/*.brief.md` — not full reports.
 2. **The scout report** — for the area map, tech profile, and cross-repo interface map.
 3. **The bootstrap state file** — for decisions and unresolved items.
 4. **The existing placeholder overview** (if any).
@@ -518,7 +518,7 @@ Load into context:
 
 ### 3.2 Compose the repo overview
 
-The overview follows `templates/repo-overview-template.md`. `onboarding/device-management/overview.md` remains a quality reference, but the template defines the required section names and citation-backed tables. It must include:
+The overview follows `templates/repo-overview-template.md`. `<onboarding-root>/device-management/overview.md` remains a quality reference when available, but the template defines the required section names and citation-backed tables. It must include:
 
 1. **What This Repo Is** — purpose, tech stack, deployment model
 2. **Architecture at a Glance** — ASCII diagram showing major components and their relationships
@@ -537,7 +537,7 @@ The overview follows `templates/repo-overview-template.md`. `onboarding/device-m
 - `[LOW]` findings are either omitted or placed in a "Needs Verification" callout, not stated as facts.
 - If many `[LOW]` items remain, flag this to the developer — it may indicate the area needs a targeted deep-dive with more developer consultation.
 
-Write to: `onboarding/<repo>/overview.md` (replacing the placeholder)
+Write to: `<onboarding-root>/<repo>/overview.md` (replacing the placeholder)
 
 ### 3.3 Developer review
 
@@ -551,7 +551,7 @@ During review, ask the developer to:
 
 ### 3.4 Update the onboarding index and state
 
-1. Update `onboarding/index.md` to reflect the new status (e.g., "Bootstrapped — repo overview complete").
+1. Update `<onboarding-root>/index.md` to reflect the new status (e.g., "Bootstrapped — repo overview complete").
 2. Update `STATE.md` — mark synthesis complete, record any final decisions from the review.
 
 ---
@@ -594,7 +594,7 @@ Each component overview runs as a **sub-agent** to keep the orchestrator clean f
 
 1. **Read the full area report and section files** — these are the primary inputs. Note any `[LOW]`-confidence findings that need resolution.
 2. **Re-read key source files** where the area report lacks detail on specific patterns, or where the concerns agent flagged traps/invariants that need more context to document clearly.
-3. **Write the component overview** at `onboarding/<repo>/<component>/overview.md` using `templates/component-overview-template.md`. `onboarding/device-management/helpdesk/overview.md` remains the quality reference, but the template defines the required section names and citation-backed tables.
+3. **Write the component overview** at `<onboarding-root>/<repo>/<component>/overview.md` using `templates/component-overview-template.md`. `<onboarding-root>/device-management/helpdesk/overview.md` remains the quality reference when available, but the template defines the required section names and citation-backed tables.
 4. **Include an Onboarding File Index** section listing:
    - Which file-level MDs should be created (ranked by priority — see 4.2 for criteria).
    - Which file-level MDs exist (initially empty for a fresh bootstrap).
@@ -676,7 +676,7 @@ Synthesis agent (Phase 3):
 Per-component deepen agent (Phase 4 — one per component):
   → Reads: repo overview + full area report + section files (concerns, interfaces)
   →         + scout tech profile + component source files
-  → Writes: onboarding/<repo>/<component>/overview.md
+   → Writes: <onboarding-root>/<repo>/<component>/overview.md
   → Returns to orchestrator: confirmation only
   → Developer reviews before file-level MDs proceed
 ```

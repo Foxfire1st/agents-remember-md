@@ -36,7 +36,7 @@ This skill can work from one of these scopes:
 
 ### 1. Identify onboarding files in scope
 
-Locate the relevant onboarding files under `onboarding/<repo>/...`.
+Locate the relevant onboarding files under `<onboarding-root>/<repo>/...`, where `<onboarding-root>` is derived from `AR_MANAGEMENT_ROOT` and documented in `<AR_MANAGEMENT_ROOT>/system/settings.md`.
 
 Primary drift detection operates on file-level onboarding that mirrors concrete source files and carries verification metadata.
 
@@ -86,8 +86,8 @@ Write a drift report when the scope is large enough that the caller needs a reus
 
 Preferred report locations:
 
-1. `onboarding/<repo>/drift-report.md` for repo, component, or file-scoped runs
-2. `onboarding/drift-report-all.md` for workspace-wide runs
+1. `<onboarding-root>/<repo>/drift-report.md` for repo, component, or file-scoped runs
+2. `<onboarding-root>/drift-report-all.md` for workspace-wide runs
 
 The report should include:
 
@@ -115,7 +115,7 @@ If no actionable files exist, return a clean summary and stop.
 ## Rules
 
 1. Drift detection remains evidence qualification and maintenance routing, not deep Research.
-2. It must use the canonical `onboarding/` root.
+2. It must use the configured canonical `<onboarding-root>/` root.
 3. It hands maintenance work to `C-05-create-or-update-onboarding-files` instead of performing that maintenance itself.
 4. Stale onboarding may remain directional evidence until refreshed or disproven, but that trust level must be made explicit.
 5. Missing verification metadata is itself actionable drift.

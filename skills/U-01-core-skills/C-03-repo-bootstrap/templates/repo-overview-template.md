@@ -2,7 +2,7 @@
 
 > **Status:** <bootstrap status>
 
-Use this template for `onboarding/<repo>/overview.md`.
+Use this template for `<onboarding-root>/<repo>/overview.md`.
 
 ## What This Repo Is
 

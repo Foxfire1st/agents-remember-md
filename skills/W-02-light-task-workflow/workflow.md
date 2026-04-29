@@ -16,15 +16,15 @@ Light-task-workflow still follows the same shared discipline documented in `READ
 
 ### 1. Ensure the local task area exists
 
-All light-task artifacts live under `tasks/`.
+All light-task artifacts live under `<task-root>/`, where `<task-root>` is derived from `AR_MANAGEMENT_ROOT` and documented in `<AR_MANAGEMENT_ROOT>/system/settings.md`.
 
-If `tasks/` does not exist yet, create it before writing the task file.
+If `<task-root>/` does not exist yet, create it before writing the task file.
 
 ### 2. Reuse an existing active task when appropriate
 
 Before creating a new file:
 
-1. search `tasks/` for an active task already covering the same scope
+1. search `<task-root>/` for an active task already covering the same scope
 2. update that task instead of creating a duplicate when the scope matches
 
 ### 3. Name the task file
@@ -47,9 +47,9 @@ If the task plan relies on onboarding files:
 
 Before planning:
 
-1. check `docs/` for reference material when it exists
-2. check `docs/glossary/` for canonical terminology when it exists
-3. check onboarding for any repo whose behavior or terminology the artifact touches
+1. check `<AR_MANAGEMENT_ROOT>/docs/` for local reference material when it exists
+2. check glossary or naming references listed in `<AR_MANAGEMENT_ROOT>/system/sources.md` when they exist
+3. check `<onboarding-root>/` for any repo whose behavior or terminology the artifact touches
 4. use supporting search or docs tools only when the task domain needs them
 
 ### 6. Write the task file
@@ -107,13 +107,13 @@ For each implementation section:
 2. read the relevant files or materials
 3. perform the approved work
 4. route durable current-state findings for that implemented slice through `C-05-create-or-update-onboarding-files` as soon as the finding is stable enough to state accurately
-5. use the checks listed in `docs/tools.md` for that implemented slice when those checks are available
+5. use the checks listed in `<AR_MANAGEMENT_ROOT>/system/tools.md` for that implemented slice when those checks are available
 6. finish any remaining onboarding cleanup for that implemented slice through `C-05-create-or-update-onboarding-files` before considering it done
 7. mark a substep complete only after its code or artifact change, its onboarding capture or update through `C-05-create-or-update-onboarding-files`, and its relevant listed checks are done
 8. mark the parent step checkbox complete only after its substeps and verification are complete
 9. record any meaningful judgment call in the decision log
 
-If `docs/tools.md` is still blank, there may be no repo-specific checks listed yet; the file exists so the developer can fill in that checklist over time.
+If `<AR_MANAGEMENT_ROOT>/system/tools.md` is still blank, there may be no repo-specific checks listed yet; the file exists so the developer can fill in that checklist over time.
 
 ### 3. Milestone alignment
 
@@ -150,7 +150,7 @@ When all planned work is complete:
 Before final closure:
 
 1. verify any referenced workflow or skill paths still resolve
-2. check whether newly introduced terms belong in `docs/glossary/`
+2. check whether newly introduced terms belong in the glossary or naming references listed in `<AR_MANAGEMENT_ROOT>/system/sources.md`
 3. update any repo-level descriptions that would now be misleading
 
 ## Three-touch iteration cycle
@@ -222,7 +222,7 @@ Developer request
        ▼
   light-task-workflow
        │
-       ├─ task file under `tasks/`
+      ├─ task file under `<task-root>/`
        ├─ approval gate before implementation
        └─ live checkbox checklist during execution
 ```

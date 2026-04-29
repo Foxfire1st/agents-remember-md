@@ -14,7 +14,7 @@ The idea came from our embedded code. Many files had large comment sections at t
 
 I wanted that same effect for developers working with agents. But without the risk of introducing "noise" into source files for experienced developers, just because it is helpful for agents. Also commentary in files can go stale without anyone noticing. So this repo keeps the extended commentary layer separate, while still making it easy to find: one markdown file per source file, mirrored by path.
 
-That 1-to-1 mapping is the trick. If an agent is working on `src/foo/bar.ts`, it knows exactly where to look for `onboarding/my-app/src/foo/bar.md`. No secret wiki, no guessing, no giant context dump. The agent can onboard itself from the file it is touching and discover the hidden contracts around it naturally.
+That 1-to-1 mapping is the trick. If an agent is working on `src/foo/bar.ts`, it knows exactly where to look for `<onboarding-root>/my-app/src/foo/bar.md`. No secret wiki, no guessing, no giant context dump. The agent can onboard itself from the file it is touching and discover the hidden contracts around it naturally.
 
 That is what this repository is trying to make practical: a collaborative knowledge layer that grows as work happens. Documentation stops being a second job and becomes a trail of useful context left behind by real tasks.
 
@@ -29,23 +29,57 @@ Just markdown files and conventions.
 
 ## Quickstart
 
-Clone this repository somewhere next to your existing code — it doesn't go inside any of them. The onboarding tree lives here and mirrors each code repo by name:
+Clone this repository somewhere next to your existing code — it doesn't go inside any of them. The memory artifacts live in a management root beside this repo by default:
 
 ```text
 projects/
   agents-remember/        ← this repo
     AGENTS.md
+    .env.example
+  ar-management/          ← local/team memory root
     onboarding/
-      my-app/
-        overview.md
+      my-app-onboarding/
+        src/
+    tasks/
+    docs/
+    system/
+      settings.md
+      sources.md
+      tools.md
   my-app/                 ← your existing repo
     src/
 ```
 
+### Configure The Management Root
+
+The default setup expects an `ar-management` folder beside this repo. The default is shown in `.env.example`:
+
+```dotenv
+AR_MANAGEMENT_ROOT=../ar-management
+```
+
+Relative paths resolve from the `.env` file in the agents-remember checkout. To use a different location, copy `.env.example` to `.env` and edit the value. The `.env` file is intentionally ignored because it is local machine configuration.
+
+Scaffold the management root like this:
+
+```text
+ar-management/
+├── onboarding/
+│   └── my-app-onboarding/
+├── tasks/
+├── docs/
+└── system/
+    ├── settings.md
+    ├── sources.md
+    └── tools.md
+```
+
+Copy or rename the files in `system/*.example.md` into `ar-management/system/` as `settings.md`, `sources.md`, and `tools.md`. The onboarding root can contain newly created onboarding folders or cloned onboarding repositories that your team version-controls.
+
 The steps are the same regardless of which tool you use:
 
 1. Wire up the agent so it reads `AGENTS.md` from this repo at session start (tool-specific instructions below).
-2. Run `C-03-repo-bootstrap` to scaffold the initial onboarding structure in `onboarding/my-app/`. A bare `overview.md` is enough — the agent fills in depth as it works.
+2. Run `C-03-repo-bootstrap` to scaffold the initial onboarding structure in `<onboarding-root>/my-app-onboarding/`. A bare `overview.md` is enough — the agent fills in depth as it works.
 3. Start using the agent normally. Chat handles most tasks. The agent reads companion files alongside source files and updates them as it goes.
 4. Escalate to `W-02-light-task-workflow` or `W-01-heavy-task-workflow` when the task needs a written plan or needs to survive beyond a single session.
 
@@ -144,7 +178,7 @@ In chat mode, the whole loop is small enough to state in full. It lives in `AGEN
 
 3. After approval, apply the code changes, update the onboarding
    documentation, and use the appropriate code quality checks from
-   `docs/tools.md`.
+   `<AR_MANAGEMENT_ROOT>/system/tools.md`.
 ```
 
 No task folder, no phase structure. The same discipline the heavier modes enforce through artifacts is carried by chat turns.
@@ -176,4 +210,4 @@ For bulk coverage the `C-03-repo-bootstrap` skill can do more. After `overview.m
   - `C-05-create-or-update-onboarding-files` — the onboarding file template and maintenance
 - `skills/P-99-review/` — the adversarial review package used by heavy task
 - `AGENTS.md` — operational principles, including the chat-mode loop
-- `onboarding/heavy-task-workflow/` — this workflow's self-documentation, written in its own format
+- `<onboarding-root>/heavy-task-workflow/` — this workflow's self-documentation, written in its own format when available

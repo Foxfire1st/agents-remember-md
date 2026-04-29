@@ -29,7 +29,7 @@
 
 ### Docs References
 
-<Start with a short prose summary if there is meaningful documentation context to explain, then add the citation table. Build this section from the `Domain Documentation` category declared in `docs/sources.md`. Read local mirrors if needed, but link the table row to the canonical online document reference. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
+<Start with a short prose summary if there is meaningful documentation context to explain, then add the citation table. Build this section from the `Domain Documentation` category declared in `<AR_MANAGEMENT_ROOT>/system/sources.md`. Read local mirrors if needed, but link the table row to the canonical online document reference. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No relevant documentation found.`>
 
 | Finding                                                                | Citations | Source Path                                                |
 | ---------------------------------------------------------------------- | --------- | ---------------------------------------------------------- |
@@ -41,7 +41,7 @@
 
 ## Cross-Repo References
 
-<Start with a short prose summary if there is meaningful cross-repo or external-boundary behavior to explain, then add the citation table. Build this section using the `Domain Documentation` category from `docs/sources.md` plus the necessary code and onboarding evidence, not from adjacent onboarding alone. Use workspace-relative links for code or onboarding evidence; never absolute filesystem paths. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No meaningful cross-repo references found.`>
+<Start with a short prose summary if there is meaningful cross-repo or external-boundary behavior to explain, then add the citation table. Build this section using the `Domain Documentation` category from `<AR_MANAGEMENT_ROOT>/system/sources.md` plus the necessary code and onboarding evidence, not from adjacent onboarding alone. Use workspace-relative links for code or onboarding evidence; never absolute filesystem paths. Investigate and preserve useful explanation already present in this section; correct it if needed rather than deleting it. If nothing relevant exists, keep the table and record what was checked plus `No meaningful cross-repo references found.`>
 
 | Finding                                                                                 | Citations | Source Path                                                                     |
 | --------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------- |
