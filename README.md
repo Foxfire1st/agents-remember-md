@@ -95,13 +95,21 @@ You can add a `.github/copilot-instructions.md` in the code repo to layer on any
 
 Add both repositories to your workspace. Windsurf automatically discovers `AGENTS.md` files within the workspace tree and reads skills on demand from there. You can add repo-specific additions in `.windsurf/rules/*.md` inside the code repo if needed.
 
-## What this is
+## Why I made this repo
 
-Most AI coding systems give you a workflow. This one gives you a **persistent memory layer** for your codebase, and three ways to interact with it.
+Imagine you work in a multi-repo product workspace. Configurator, firmware, user & device management, cloud services, etc. All of it revolving around one product. And some of the code has been growing for decades.
 
-The memory layer is a shadow documentation tree that mirrors your source tree one-to-one. For `src/Backend/UserController.php` there's an `onboarding/src/Backend/UserController.md`. No search, no retrieval, no embedding — the doc path is derived from the code path. An agent reading a source file opens its companion file alongside. The companion captures what code can't say on its own: invariants the code assumes, conventions with social rather than syntactic enforcement, the intent behind a pattern, and cross-repo contracts that live between two repositories and are owned by neither.
+That is exactly the kind of environment where agents struggle. A small issue is fine. But for migrations or cross-repo changes, the important knowledge is rarely in one file. It is spread across repos, conventions, old decisions, and domain-specific quirks. Asking an agent to rediscover all of that from scratch every time either blows up the context window or produces shallow answers.
 
-The memory layer is the product. Everything else in this repo is a way to interact with it.
+The idea came from our embedded code. Many files had large comment sections at the top: who changed what, when, and what strange behavior mattered. At first that looked excessive. But as I browsed, I realized those comments let me understand code I had never worked in before. I could read some, sure, but the commentary gave me the shape of the system much faster than code alone would have.
+
+I wanted that same effect for developers working with agents. But without the risk of introducing "noise" into source files for experienced developers, just because it is helpful for agents. Also commentary in files can go stale without anyone noticing. So this repo keeps the extended commentary layer separate, while still making it easy to find: one markdown file per source file, mirrored by path.
+
+That 1-to-1 mapping is the trick. If an agent is working on `src/foo/bar.ts`, it knows exactly where to look for `onboarding/my-app/src/foo/bar.md`. No secret wiki, no guessing, no giant context dump. The agent can onboard itself from the file it is touching and discover the hidden contracts around it naturally.
+
+That is what this repository is trying to make practical: a collaborative knowledge layer that grows as work happens. Documentation stops being a second job and becomes a trail of useful context left behind by real tasks.
+
+The onboarding files are a shared knowledge substrate. Versioned in git, readable by people, and easy for agents to retrieve. That transfer of knowledge between developers, tools, and future sessions is the heart of this project.
 
 ## The three modes
 
@@ -142,14 +150,6 @@ In chat mode, the whole loop is small enough to state in full. It lives in `AGEN
 
 No task folder, no phase structure. The same discipline the heavier modes enforce through artifacts is carried by chat turns.
 
-## Why the memory layer changes things
-
-An AI coding session without persistent memory starts every task from scratch. It re-reads files it read last session, re-discovers cross-repo contracts it found before, re-infers invariants that nobody wrote down. All of that rediscovery consumes context window — and context-window degradation is measurable and severe. Du et al. (EMNLP 2025) showed model accuracy drops 14–85% as input length grows even when the answer is perfectly retrievable. Liu et al. (TACL 2024) showed models attend poorly to the middle of their context, with more than 30% accuracy loss for information placed mid-window. Ord's _Half-Life of AI Agent Success Rates_ found that doubling task duration quadruples failure rate, because each mistake forces correction work that adds more noise.
-
-Persistent memory attacks this at the root. The agent doesn't rediscover — it reads a small, relevant, curated set of companion files and starts with context already loaded. Cross-repo contracts, invariants, and migration direction are visible at read time instead of reconstructed at runtime. The first task on an area pays for the companion file. Every task after that benefits from it.
-
-The same properties that make companion files useful to agents make them useful to developers. When returning to old code months later, reading the captured intent reconstructs context faster than re-reading the code. New engineers read the companion next to the file and see invariants, conventions, and cross-repo edges in one place instead of hunting through wikis and Slack archives.
-
 ## What makes the memory layer honest
 
 Memory systems fail in two ways. They go stale (the code moves, the docs don't). They get polluted with speculation (an agent writes what it _planned_ to build, not what exists). This system addresses both:
@@ -178,18 +178,3 @@ For bulk coverage the `C-03-repo-bootstrap` skill can do more. After `overview.m
 - `skills/P-99-review/` — the adversarial review package used by heavy task
 - `AGENTS.md` — operational principles, including the chat-mode loop
 - `onboarding/heavy-task-workflow/` — this workflow's self-documentation, written in its own format
-
-## Comparison
-
-The fundamental choice isn't "task workflow or memory system" — it's whether you want infrastructure that compounds across tasks or infrastructure that regenerates per project.
-
-|                                           | Task workflow systems (BMAD, GSD, Spec Kit) | Memory systems (graphify, Ix, claude-mem) | This system                                 |
-| ----------------------------------------- | ------------------------------------------- | ----------------------------------------- | ------------------------------------------- |
-| **Persistent knowledge of existing code** | No                                          | Yes                                       | Yes                                         |
-| **Workflow is optional**                  | No — framework is the product               | N/A                                       | Yes — default mode is chat                  |
-| **Retrieval model**                       | N/A                                         | Search / graph query / embeddings         | Path-derived — doc path mirrors code path   |
-| **Cross-repo edges first-class**          | No                                          | Usually no                                | Yes                                         |
-| **Promotion gate for new knowledge**      | N/A                                         | No                                        | Yes — task-local → canonical after approval |
-| **Staleness detection**                   | None                                        | Varies                                    | Git-anchored, per-file                      |
-| **Substrate**                             | Files, various formats                      | Opaque backend or derived                 | Markdown in git, human-readable             |
-| **Infrastructure compounds across tasks** | No — regenerated per project                | Yes                                       | Yes                                         |
