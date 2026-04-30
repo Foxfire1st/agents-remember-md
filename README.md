@@ -2,7 +2,7 @@
 
 _"My agent keeps forgetting everything. So I made it write notes to its future self."_
 
-Modern coding agents are better than they look on toy problems, and worse than they look on real ones.
+Modern coding agents look superhuman one moment, then hit you with a divine stroke of idiocy the next.
 
 On a small task, an `AGENTS.md` file, a few prompt rules, and a strong model can feel almost magical. That creates the illusion that the agent already “knows the codebase.” **In larger systems, that illusion breaks.** The agent does not actually know your architecture, your hidden invariants, your migration scars, or the strange rules everyone on the team has learned the hard way. It only knows what the repository makes legible.
 
