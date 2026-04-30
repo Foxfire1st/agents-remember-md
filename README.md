@@ -1,6 +1,20 @@
 # Agents Remember
 
-**"My agent keeps forgetting everything. So I made it write notes to its future self."**
+_"My agent keeps forgetting everything. So I made it write notes to its future self."_
+
+Modern coding agents are better than they look on toy problems, and worse than they look on real ones.
+
+On a small task, an `AGENTS.md` file, a few prompt rules, and a strong model can feel almost magical. That creates the illusion that the agent already “knows the codebase.” **In larger systems, that illusion breaks.** The agent does not actually know your architecture, your hidden invariants, your migration scars, or the strange rules everyone on the team has learned the hard way. It only knows what the repository makes legible.
+
+That is why the failures are so weird. The output looks plausible. The edit is clean. **The regression is real.**
+
+A single top-level instruction file can point the agent in the right direction, but it cannot reappear exactly when the agent needs it. **Once the agent is deep in a file, the relevant context is no longer naturally in front of it.** Recovering it becomes an explicit search problem: expensive, uncertain, and easy to skip.
+
+It is like handing someone a city map at the train station and taking it away before they start walking. The problem is not that they never saw the map. The problem is that it is gone when they need one next turn.
+
+That's where Agents Remember simple premise starts: important project knowledge should not have to be hunted down. If it is not local, structured, and discoverable, **then for the agent it effectively does not exist.**
+
+So the way forward is to make that missing context visible before the agent has to guess.
 
 ![alt text](agents-remember-infographic.png)
 
