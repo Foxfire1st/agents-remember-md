@@ -18,6 +18,8 @@ So the way forward is to make that missing context visible before the agent has 
 
 ![alt text](agents-remember-infographic.png)
 
+---
+
 ## Why I made this repo
 
 Imagine you work in a multi-repo product workspace. Configurator, firmware, user & device management, cloud services, etc. All of it revolving around one product. And some of the code has been growing for decades.
@@ -34,12 +36,16 @@ That is what this repository is trying to make practical: a collaborative knowle
 
 The onboarding files are a shared knowledge substrate. Versioned in git, readable by people, and easy for agents to retrieve. That transfer of knowledge between developers, tools, and future sessions is the heart of this project.
 
+---
+
 ## Techstack
 
 ```text
 Skills for for Claude Code, Cursor, VS Code etc. No software dependendencies.
 Just markdown files and conventions.
 ```
+
+---
 
 ## Quickstart
 
@@ -52,7 +58,7 @@ projects/
     .env.example
   ar-management/          ← local/team memory root
     onboarding/
-      my-app-onboarding/
+      my-app-onboarding/   ← created later by C-03 or supplied by your team
         src/
     tasks/
     docs/
@@ -64,6 +70,8 @@ projects/
     src/
 ```
 
+---
+
 ### Configure The Management Root
 
 The default setup expects an `ar-management` folder beside this repo. The default is shown in `.env.example`:
@@ -74,30 +82,39 @@ AR_MANAGEMENT_ROOT=../ar-management
 
 Relative paths resolve from the `.env` file in the agents-remember checkout. To use a different location, copy `.env.example` to `.env` and edit the value. The `.env` file is intentionally ignored because it is local machine configuration.
 
-Scaffold the management root like this:
+Initialize the management root with `C-00-initialize-management-root`. This first-run skill resolves `AR_MANAGEMENT_ROOT`, creates the missing directories, and writes starter `settings.md`, `sources.md`, and `tools.md` files without overwriting existing files.
+
+The resulting scaffold looks like this:
 
 ```text
 ar-management/
 ├── onboarding/
-│   └── my-app-onboarding/
 ├── tasks/
 ├── docs/
+├── notes/
 └── system/
     ├── settings.md
     ├── sources.md
     └── tools.md
 ```
 
-Copy or rename the files in `system/*.example.md` into `ar-management/system/` as `settings.md`, `sources.md`, and `tools.md`. The onboarding root can contain newly created onboarding folders or cloned onboarding repositories that your team version-controls.
+The onboarding root can later contain newly created onboarding folders or cloned onboarding repositories that your team version-controls. `C-00` intentionally leaves `onboarding/` empty; `C-03-repo-bootstrap` owns repo onboarding below that point. The starter `system/sources.md` and `system/tools.md` are intentionally plain; fill them in with project-specific docs, commands, and checks as repos are onboarded.
+
+---
+
+### Wire Up Your Agent
 
 The steps are the same regardless of which tool you use:
 
 1. Wire up the agent so it reads `AGENTS.md` from this repo at session start (tool-specific instructions below).
-2. Run `C-03-repo-bootstrap` to scaffold the initial onboarding structure in `<onboarding-root>/my-app-onboarding/`. A bare `overview.md` is enough — the agent fills in depth as it works.
-3. Start using the agent normally. Chat handles most tasks. The agent reads companion files alongside source files and updates them as it goes.
-4. Escalate to `W-02-light-task-workflow` or `W-01-heavy-task-workflow` when the task needs a written plan or needs to survive beyond a single session.
+2. Run `C-00-initialize-management-root` if the `ar-management` scaffold does not exist yet.
+3. Run `C-03-repo-bootstrap` to scaffold the initial onboarding structure in `<onboarding-root>/my-app-onboarding/`. A bare `overview.md` is enough — the agent fills in depth as it works.
+4. Start using the agent normally. Chat handles most tasks. The agent reads companion files alongside source files and updates them as it goes.
+5. Escalate to `W-02-light-task-workflow` or `W-01-heavy-task-workflow` when the task needs a written plan or needs to survive beyond a single session.
 
 Coverage builds from real work. The first task on any file writes the companion; every task after reads it.
+
+---
 
 ### Codex
 
@@ -110,6 +127,8 @@ Read and follow `agents-remember-md/AGENTS.md` before working in any sibling pro
 
 @agents-remember-md/AGENTS.md
 ```
+
+---
 
 ### Claude Code
 
@@ -124,6 +143,8 @@ Read and follow `agents-remember-md/AGENTS.md` before working in any sibling pro
 ```
 
 Claude Code imports the file into context at session start. When a skill applies, the agent reads the corresponding `SKILL.md` using its normal file tools — no extra configuration needed since `agents-remember-md` is already accessible on disk.
+
+---
 
 ### Cursor
 
@@ -141,6 +162,8 @@ Read and follow `agents-remember-md/AGENTS.md` before working in any sibling pro
 ```
 
 Alternatively, use Cursor's built-in GitHub import to sync rules directly from this repo. Skills are read on demand by the agent using standard file access.
+
+---
 
 ### VS Code + GitHub Copilot
 
@@ -170,9 +193,13 @@ Open (or create) a `.code-workspace` file that includes both repositories as fol
 
 You can add a `.github/copilot-instructions.md` in the code repo to layer on any repo-specific overrides.
 
+---
+
 ### Windsurf
 
 Add both repositories to your workspace. Windsurf automatically discovers `AGENTS.md` files within the workspace tree and reads skills on demand from there. You can add repo-specific additions in `.windsurf/rules/*.md` inside the code repo if needed.
+
+---
 
 ## The three modes
 
@@ -213,6 +240,8 @@ In chat mode, the whole loop is small enough to state in full. It lives in `AGEN
 
 No task folder, no phase structure. The same discipline the heavier modes enforce through artifacts is carried by chat turns.
 
+---
+
 ## What makes the memory layer honest
 
 Memory systems fail in two ways. They go stale (the code moves, the docs don't). They get polluted with speculation (an agent writes what it _planned_ to build, not what exists). This system addresses both:
@@ -223,17 +252,22 @@ Memory systems fail in two ways. They go stale (the code moves, the docs don't).
 
 Both guarantees hold across all three modes. The memory layer only accepts validated history, the same discipline git applies to `main`.
 
+---
+
 ## Repository bootstrapping
 
 Companion files don't need to exist before you can use the system. A repo with no onboarding can start with a bare `overview.md` and be scaffolded by using the `C-03-repo-bootstrap` skill. From there it can grow organically as tasks touch new areas. The first task on a file pays the cost of writing its companion; every task after that benefits.
 
 For bulk coverage the `C-03-repo-bootstrap` skill can do more. After `overview.md` you can scaffold an entire repo in phases. Start with the hotspots and then go into detail where needed. You can bootstrap hundreds of files in a session, which is nowadays practical on current models using sub-Agents and parallelism.
 
+---
+
 ## What's in this repo
 
 - `skills/W-01-heavy-task-workflow/` — the seven-phase workflow for high-stakes tasks
 - `skills/W-02-light-task-workflow/` — the single-page-plan workflow for medium tasks
 - `skills/U-01-core-skills/` — supporting skills used by all modes:
+  - `C-00-initialize-management-root` — create the first-run `ar-management` scaffold
   - `C-02-onboarding-drift-detection` — staleness detection (used by every mode)
   - `C-03-repo-bootstrap` — scaffold onboarding for an existing repo
   - `C-04-discovery` — top-down reading order for unfamiliar code
