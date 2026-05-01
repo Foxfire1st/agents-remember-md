@@ -16,7 +16,29 @@ That's where Agents Remember simple premise starts: important project knowledge 
 
 So the way forward is to make that missing context visible before the agent has to guess.
 
-![alt text](agents-remember-infographic.png)
+## What This Looks Like
+
+An agent touches:
+
+```text
+resolve_auto_editor/src/orchestrator/core_editor.py
+```
+
+So it checks the mirrored onboarding companion:
+
+```text
+ar-management/onboarding/resolve_auto_editor/orchestrator-and-agent-loop/src/orchestrator/core_editor.py.md
+```
+
+Before trusting that file, it runs drift detection:
+
+```text
+core_editor.py.md       drifted      source changed since 4d1fdf2
+shot_planner.py.md      drifted      source changed since 4d1fdf2
+22 other files          up to date
+```
+
+Then it refreshes only the stale companions and plans against current context, not old notes.
 
 ---
 
@@ -275,3 +297,9 @@ For bulk coverage the `C-03-repo-bootstrap` skill can do more. After `overview.m
 - `skills/P-99-review/` — the adversarial review package used by heavy task
 - `AGENTS.md` — operational principles, including the chat-mode loop
 - `<onboarding-root>/heavy-task-workflow/` — this workflow's self-documentation, written in its own format when available
+
+---
+
+## System At A Glance
+
+![Agents Remember system overview](agents-remember-infographic.png)
