@@ -244,6 +244,8 @@ All three modes share the same three-part discipline:
 2. **Approval before implementation.** The agent proposes changes. The developer approves. No implicit approval, no "I'll just make this small edit."
 3. **Onboarding update after approved changes.** Onboarding reflects approved code, not speculation. The update happens after the developer approves the change, not before.
 
+The drift check establishes a start-of-task baseline for pre-existing files. It does not mean the agent must refuse to read files it just created or dirtied during the current task; those are task-local working state and stay pending verification until the next verification pass.
+
 The modes differ in _how approval happens_ — a chat turn, a task file review, a phase-gate checkpoint — not in what the discipline is. One system at three resolutions.
 
 In chat mode, the whole loop is small enough to state in full. It lives in `AGENTS.md` and reads:
@@ -251,10 +253,12 @@ In chat mode, the whole loop is small enough to state in full. It lives in `AGEN
 ```markdown
 1. When planning code changes against onboarding documentation, invoke
    `C-02-onboarding-drift-detection` to find drifted onboardings for the
-   files in question. Do not plan against drifted or missing-verification
-   onboarding until the drift report has been handed off to
-   `C-05-create-or-update-onboarding-files` or the caller has explicitly
-   accepted directional-only trust.
+  pre-existing files in question. Do not plan against drifted or
+  missing-verification onboarding until the drift report has been handed off
+  to `C-05-create-or-update-onboarding-files` or the caller has explicitly
+  accepted directional-only trust. This establishes a start-of-task baseline;
+  it does not re-trigger solely because the current task later creates or
+  modifies files in that scope.
 
 2. Once planned, show the changes to the developer in chat including
    code examples for every distinct change you intend to make. Wait for

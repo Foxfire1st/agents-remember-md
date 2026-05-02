@@ -106,35 +106,62 @@ the scoped code area:
    contents is not allowed yet.
 3. Run `C-02-onboarding-drift-detection` once for that relevant scope.
 4. If drifted, missing-verification, missing, or orphaned onboarding is found
-   for the relevant scope, stop normal task work and route those files through
-   `C-05-create-or-update-onboarding-files`.
+   for the relevant pre-existing scope, stop normal task work on those files
+   and route them through `C-05-create-or-update-onboarding-files`.
 5. Re-run `C-02-onboarding-drift-detection` for the refreshed scope.
-6. Proceed only after every in-scope onboarding file needed for the task is
-   classified as up to date.
+6. Proceed only after every pre-existing in-scope onboarding file needed for
+   the task is classified as up to date. This establishes the start-of-task
+   trust baseline for that scope; it does not re-trigger solely because the
+   current task creates files or dirties source/onboarding within that scope.
 7. Do not repeatedly drift-check each file during the same task unless the
    investigation expands materially beyond the original scope.
 
 Do not open or inspect source file contents before this gate passes.
 
-There is no source-only or directional bypass in this workspace. If drift
-detection or onboarding update cannot be completed, stop and report the blocker
-instead of continuing from source.
+There is no source-only or directional bypass for establishing the initial
+baseline in this workspace. If drift detection or onboarding update for
+pre-existing files cannot be completed, stop and report the blocker instead of
+continuing from source.
+
+### Task-Local Working State After Gate Passes
+
+Once the hard onboarding gate has passed for a scoped area, files created or
+modified during the current task may still be opened, read, and reasoned about
+within that same task even though they are now pending verification.
+
+- Treat those files as task-local working state, not as re-verified
+  onboarding.
+- Do not refuse to read a file solely because the current task dirtied it or
+  because the task just created its source/onboarding pair.
+- Re-run the hard gate when the scope expands to additional pre-existing files
+  or when a later task/session starts from that area, not every time the
+  current task updates a file.
+- Keep same-breath onboarding updates current so task-local drift remains
+  temporary rather than ignored.
 
 ### Uncommitted Source Verification Blockers
 
-When onboarding verification is blocked because source files have no committed
-state or commit hash, ask the developer whether you may commit and push the
-current state. The prompt must let the developer either provide a commit
-message or simply approve the commit. If the developer only approves, inspect
-the files in the commit scope and write a concise commit message based on those
-files. If the developer declines, report the remaining verification blocker and
-continue only where the workspace rules allow.
+When onboarding verification for pre-existing files is blocked because source
+files have no committed state or commit hash, ask the developer whether you may
+commit and push the current state. The prompt must let the developer either
+provide a commit message or simply approve the commit. If the developer only
+approves, inspect the files in the commit scope and write a concise commit
+message based on those files. If the developer declines, report the remaining
+verification blocker and continue only where the workspace rules allow.
+
+This rule applies when establishing or refreshing verification for pre-existing
+files. It does not require committing or pushing files created or modified
+during the current task just to continue working.
 
 ### Paired Reading Rule
 
 After the hard onboarding gate passes, read source and onboarding as pairs:
 
 - When opening a relevant source file, open its verified onboarding with it.
+- If the source or onboarding file was created or modified during the current
+   task after the gate passed, open the current working versions together and
+   mark them as pending verification in the read ledger instead of treating them
+   as re-verified onboarding.
 - Do not bulk-read all onboarding up front unless the source files are also
   being read then.
 - Do not read source first and defer its onboarding for later.
@@ -170,6 +197,7 @@ Use this shape:
 ```text
 Read for this task:
 - Source + onboarding: <source path> + <onboarding path>
+- Task-local working state: <source path> + <onboarding path> - pending verification from current task edits
 - Repo/component onboarding: <path>
 
 Checked but not read:
@@ -179,11 +207,14 @@ Not trusted / refreshed:
 - <path> - <missing, drifted, missing verification, orphaned, refreshed, or user-approved bypass>
 ```
 
-Only list onboarding as read if it was actually opened alongside the
-corresponding source file after the relevant drift check passed. Do not claim
-onboarding informed the answer unless its content was actually read after the
-relevant drift check passed, or unless you explicitly state that it is being
-used only as directional context.
+Only list onboarding as verified read if it was actually opened alongside the
+corresponding source file after the relevant drift check passed. Files created
+or modified during the current task after a passed gate may be listed as
+task-local working state when they were read together, but do not present them
+as verified onboarding. Do not claim onboarding informed the answer unless its
+content was actually read after the relevant drift check passed, or unless you
+explicitly state that it is being used only as task-local working state or as
+directional context.
 
 ## No Code Changes Before Explicit Developer Approval
 
@@ -192,8 +223,8 @@ When asked to find a sollution to a problem, do not change any code before you h
 
 ## Chat Based Coding Workflow
 
-1. At the start of a coding workflow, scope the relevant files/component/repo area and invoke `C-02-onboarding-drift-detection` once for that scope. Do not plan against drifted, missing-verification, missing, or orphaned onboarding until it has been refreshed through `C-05-create-or-update-onboarding-files` or the caller has explicitly accepted directional-only/source-only trust. Do not skip this step; it is critical to maintain onboarding integrity and prevent untracked drift.
+1. At the start of a coding workflow, scope the relevant files/component/repo area and invoke `C-02-onboarding-drift-detection` once for that scope. Do not plan against drifted, missing-verification, missing, or orphaned pre-existing onboarding until it has been refreshed through `C-05-create-or-update-onboarding-files` or the caller has explicitly accepted directional-only/source-only trust. This establishes the task-start trust baseline. Do not skip this step, and do not re-trigger it solely because the current task later creates or modifies files in that scope.
 
-2. During investigation, read each relevant source file with its verified onboarding as a pair. Do not bulk-read onboarding as detached background context, and do not defer the onboarding read until after source interpretation. After enough paired reads, show the developer the plan in chat, including code examples for every distinct change you intend to make. Wait for explicit developer approval before you start changing any code.
+2. During investigation, read each relevant source file with its verified onboarding as a pair. If the current task has already modified or created that pair after the gate passed, read the current working versions together and treat them as pending verification rather than re-verified onboarding. Do not bulk-read onboarding as detached background context, and do not defer the onboarding read until after source interpretation. After enough paired reads, show the developer the plan in chat, including code examples for every distinct change you intend to make. Wait for explicit developer approval before you start changing any code.
 
 3. After approval, apply code changes and update the corresponding onboarding in the same editing pass whenever the change affects durable current-state knowledge. Do not postpone required onboarding changes to the end of the task. Use the appropriate code quality checks from `<AR_MANAGEMENT_ROOT>/system/tools.md`.
