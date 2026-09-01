@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +30,11 @@ from agents_remember.tasks.document_refs import (
     TaskDocumentRefError,
     TaskDocumentTopology,
 )
+from agents_remember.tasks.semantic_topology_graph import (
+    SemanticTopologyGraphIndex,
+    SemanticTopologyGraphIndexError,
+    build_semantic_topology_graph_index,
+)
 
 from .closeout_queue_errors import CloseoutQueueError, bounded_queue_failure_detail
 from .closeout_queue_evidence import PRIORITY_RANK, GradeAuthority, planning_authorities
@@ -41,6 +46,7 @@ class QueueGraphContext:
 
     sprint: ResolvedTaskDocument
     graph: SprintExecutionGraph
+    semantic_topology_index: SemanticTopologyGraphIndex
     masters: dict[TaskDocumentRef, ResolvedTaskDocument]
     revision: str
     node_order: dict[SprintExecutionNode, int]
@@ -57,17 +63,31 @@ def graph_context(
     topology: TaskDocumentTopology,
     sprint_ref: TaskDocumentRef,
     *,
+    authored_graph: SprintExecutionGraph,
     strict_registers: bool = True,
     overrides: Mapping[TaskDocumentRef, TaskDocument] | None = None,
 ) -> QueueGraphContext:
     """Resolve, validate, cap, and index one sprint execution graph.
 
+    ``authored_graph`` is the already-resolved consumer source. The semantic index
+    validates this potentially separate object once, then materializes the sole
+    deep-immutable graph used by the returned context and its sprint projection.
     ``strict_registers`` guards mutations: a malformed canonical planning register
     refuses with the repair named. Read paths (L13-R4) pass ``False`` so a malformed
     register degrades the projection instead of failing it.
     """
 
     sprint, graph, master_map = _validated_graph_documents(topology, sprint_ref, overrides)
+    try:
+        topology_index = build_semantic_topology_graph_index(
+            graph,
+            _candidate_leaf_ids(master_map),
+            authored_graph=authored_graph,
+        )
+    except SemanticTopologyGraphIndexError as exc:
+        raise CloseoutQueueError(exc.status, exc.detail) from exc
+    graph = topology_index.boundGraph
+    sprint = _sprint_with_bound_graph(sprint, graph)
     completed = {ref for ref, master in master_map.items() if master.document.status == "Completed"}
     leaf_nodes, leaf_facts = _leaf_node_index(graph, master_map, completed)
     try:
@@ -83,17 +103,28 @@ def graph_context(
             ),
         ) from exc
     return QueueGraphContext(
-        sprint,
-        graph,
-        master_map,
-        _graph_revision(graph, master_map),
-        {node: index for index, node in enumerate(graph.nodes)},
-        _nodes_by_master(graph),
-        leaf_nodes,
-        leaf_facts,
-        incomplete_predecessor_map(graph, completed=completed),
-        GradeAuthority(sprint, judgments, priorities),
+        sprint=sprint,
+        graph=graph,
+        semantic_topology_index=topology_index,
+        masters=master_map,
+        revision=_graph_revision(graph, master_map),
+        node_order={node: index for index, node in enumerate(graph.nodes)},
+        nodes_by_master=_nodes_by_master(graph),
+        leaf_nodes=leaf_nodes,
+        leaf_facts=leaf_facts,
+        incomplete_predecessors=incomplete_predecessor_map(graph, completed=completed),
+        grade_authority=GradeAuthority(sprint, judgments, priorities),
     )
+
+
+def _sprint_with_bound_graph(
+    sprint: ResolvedTaskDocument,
+    graph: SprintExecutionGraph,
+) -> ResolvedTaskDocument:
+    """Give this read context the already-validated immutable graph instance."""
+
+    document = sprint.document.model_copy(update={"executionGraph": graph})
+    return replace(sprint, document=document)
 
 
 def _validated_graph_documents(
@@ -160,6 +191,17 @@ def _validated_graph_documents(
             f"sprint has more than {MAX_CLOSEOUT_CANDIDATES} leaf candidates; split it before queue admission",
         )
     return sprint, graph, master_map
+
+
+def _candidate_leaf_ids(
+    masters: Mapping[TaskDocumentRef, ResolvedTaskDocument],
+) -> dict[TaskDocumentRef, tuple[str, ...]]:
+    """Return every live child row that can become a closeout candidate."""
+
+    return {
+        ref: tuple(row.number for row in master.document.subTasks if row.file)
+        for ref, master in masters.items()
+    }
 
 
 def _graph_revision(

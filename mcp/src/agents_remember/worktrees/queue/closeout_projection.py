@@ -9,9 +9,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
-from agents_remember.controlplane.closeout_queue_records import CloseoutProjectionBuild
 from agents_remember.controlplane.closeout_queue_store import ProjectionSourceIdentity
 from agents_remember.models.closeout.projection import (
     MAX_CLOSEOUT_CANDIDATES,
@@ -22,7 +21,7 @@ from agents_remember.models.closeout.projection import (
 )
 from agents_remember.models.lifecycles.door import CloseoutDoorGeneration
 from agents_remember.models.task_document_ref import TaskDocumentRef
-from agents_remember.tasks import TaskDocument
+from agents_remember.tasks import SprintExecutionGraph, TaskDocument
 from agents_remember.tasks.document_refs import (
     ResolvedTaskDocument,
     TaskDocumentRefError,
@@ -50,35 +49,18 @@ from .closeout_projection_members import (
     projection_member,
     scheduling_source_fact,
 )
+from .closeout_projection_snapshot import ProjectionSourceSnapshot
+from .closeout_projection_source_facts import (
+    TaskSourceProjectionError,
+    semantic_topology_source_fact,
+    task_source_fact,
+)
 from .closeout_queue_errors import CloseoutQueueError
 from .closeout_queue_evidence import GradeAuthority, planning_authorities
-from .closeout_queue_graph import graph_context
+from .closeout_queue_graph import QueueGraphContext, graph_context
 
 _PRIORITY_RANK = {"critical": 0, "high": 1, "normal": 2, "low": 3}
 _CLASSIFICATION_RANK = {"ready": 0, "waiting": 1, "blocked": 2}
-
-
-@dataclass(frozen=True)
-class ProjectionSourceSnapshot:
-    """One exact current source census; old projection rows are never an input."""
-
-    identity: ProjectionSourceIdentity
-    classification: ProjectionSourceClassification | None
-    members: tuple[CloseoutProjectionMember, ...]
-    captured_at: str
-
-    def build(self, sprint_ref: TaskDocumentRef) -> CloseoutProjectionBuild | None:
-        fingerprint = self.identity.fingerprint
-        classification = self.classification
-        if not self.identity.readable or fingerprint is None or classification is None:
-            return None
-        return CloseoutProjectionBuild(
-            sprintTaskDocumentRef=sprint_ref,
-            sourceFingerprint=fingerprint,
-            sourceClassification=classification,
-            members=list(self.members),
-            builtAt=self.captured_at,
-        )
 
 
 @dataclass(frozen=True)
@@ -161,6 +143,14 @@ def capture_projection_source(
         tasks = _task_census(coordination_root, sprint_ref, problems, overrides)
     except _ProjectionSourceRefusal as exc:
         return _unreadable_snapshot((exc.problem,), captured_at)
+    except TaskSourceProjectionError as exc:
+        problem = _problem(
+            "task",
+            exc.address,
+            "task-document-field-effect-unclassified",
+            "classify every task-document field before rebuilding",
+        )
+        return _unreadable_snapshot((problem,), captured_at)
     doors = _door_census(coordination_root, tasks, problems, overrides)
     _require_waiting_door_identities(doors.waiting, sprint_ref, problems)
 
@@ -189,35 +179,43 @@ def capture_projection_source(
         )
 
     try:
-        graph = (
-            graph_context(
-                tasks.topology,
-                sprint_ref,
-                strict_registers=False,
-                overrides=overrides,
+        try:
+            graph = (
+                graph_context(
+                    tasks.topology,
+                    sprint_ref,
+                    authored_graph=cast(
+                        SprintExecutionGraph,
+                        tasks.sprint.document.executionGraph,
+                    ),
+                    strict_registers=False,
+                    overrides=overrides,
+                )
+                if tasks.mode == "dag"
+                else None
             )
-            if tasks.mode == "dag"
-            else None
+            grade_authority = (
+                graph.grade_authority
+                if graph is not None
+                else GradeAuthority(tasks.sprint, *planning_authorities(tasks.sprint))
+            )
+        except CloseoutQueueError as exc:
+            raise _ProjectionSourceRefusal(
+                _problem(
+                    "task",
+                    sprint_ref.key,
+                    exc.status,
+                    "repair the canonical planning registers before rebuilding",
+                )
+            ) from exc
+        members, member_source_facts = _projection_members(
+            tasks,
+            doors,
+            graph=graph,
+            grade_authority=grade_authority,
         )
-        grade_authority = (
-            graph.grade_authority
-            if graph is not None
-            else GradeAuthority(tasks.sprint, *planning_authorities(tasks.sprint))
-        )
-    except CloseoutQueueError as exc:
-        problem = _problem(
-            "task",
-            sprint_ref.key,
-            exc.status,
-            "repair the canonical planning registers before rebuilding",
-        )
-        return _unreadable_snapshot((problem,), captured_at)
-    members, member_source_facts = _projection_members(
-        tasks,
-        doors,
-        graph=graph,
-        grade_authority=grade_authority,
-    )
+    except _ProjectionSourceRefusal as exc:
+        return _unreadable_snapshot((exc.problem,), captured_at)
     payload["memberSources"] = member_source_facts
     payload["members"] = [member.model_dump(mode="json") for member in members]
     return ProjectionSourceSnapshot(
@@ -262,11 +260,11 @@ def _task_census(
                 "address an orchestration sprint task document",
             )
         )
-    task_rows: list[dict[str, object]] = [_task_fact(sprint)]
+    task_rows: list[dict[str, object]] = [task_source_fact(sprint)]
     leafs: list[tuple[ResolvedTaskDocument, ResolvedTaskDocument, int]] = []
     build = _TaskCensusBuild(task_rows, problems, overrides)
     for master_index, master in enumerate(masters):
-        task_rows.append(_task_fact(master))
+        task_rows.append(task_source_fact(master))
         leafs.extend(
             _master_leafs(
                 topology,
@@ -467,11 +465,12 @@ def _projection_members(
     tasks: _TaskCensus,
     doors: _DoorCensus,
     *,
-    graph: Any,
+    graph: QueueGraphContext | None,
     grade_authority: GradeAuthority,
 ) -> tuple[list[CloseoutProjectionMember], list[dict[str, object]]]:
     members: list[CloseoutProjectionMember] = []
     member_source_facts: list[dict[str, object]] = []
+    topology_sprint = graph.sprint if graph is not None else tasks.sprint
     for source, leaf, master, order in doors.waiting:
         door = source.door
         contract = source.contract
@@ -504,6 +503,24 @@ def _projection_members(
         )
         source_blockers.extend(scheduling_blockers)
         source_fact["scheduling"] = scheduling_fact
+        try:
+            topology_fingerprint, topology_fact = semantic_topology_source_fact(
+                topology_sprint,
+                master,
+                leaf,
+                graph,
+            )
+        except CloseoutQueueError as exc:
+            raise _ProjectionSourceRefusal(
+                ProjectionSourceProblem(
+                    kind="task",
+                    address=leaf.ref.key,
+                    state="invalid",
+                    errorType=exc.status,
+                    repairAction=exc.detail,
+                )
+            ) from exc
+        source_fact["semanticTopology"] = topology_fact
         member_source_facts.append(source_fact)
         members.append(
             projection_member(
@@ -513,8 +530,9 @@ def _projection_members(
                     candidate=leaf,
                     master=master,
                     order=order,
-                    sprint=tasks.sprint,
+                    sprint=topology_sprint,
                     graph=graph,
+                    task_topology_fingerprint=topology_fingerprint,
                     activation_waiting=doors.activation_waiting.get(master.ref, ()),
                     source_blockers=tuple(source_blockers),
                 )
@@ -567,7 +585,7 @@ def _master_leafs(
                 _problem("task", path.as_posix(), exc.status, "repair the exact leaf task source")
             )
             continue
-        build.task_rows.append(_task_fact(leaf))
+        build.task_rows.append(task_source_fact(leaf))
         leafs.append((leaf, master, master_index * 1000 + leaf_index))
     return leafs
 
@@ -796,14 +814,6 @@ def _leaf_door_sources(
             continue
         sources.append(_DoorSource(path, contract, contract.closeout_door))
     return sources
-
-
-def _task_fact(resolved: ResolvedTaskDocument) -> dict[str, object]:
-    return {
-        "address": resolved.ref.model_dump(mode="json"),
-        "state": "present",
-        "document": resolved.document.model_dump(mode="json", by_alias=True, exclude_none=True),
-    }
 
 
 def _door_fact(source: _DoorSource) -> dict[str, object]:

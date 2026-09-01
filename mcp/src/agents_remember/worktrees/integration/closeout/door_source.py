@@ -67,10 +67,19 @@ def door_task_context(
         master, sprint = _door_owners(contract, candidate, topology)
     except TaskDocumentRefError as exc:
         raise CloseoutQueueError(exc.status, str(exc)) from exc
+    authored_graph = sprint.document.executionGraph
     graph = (
-        graph_context(topology, sprint.ref) if sprint.document.executionGraph is not None else None
+        graph_context(topology, sprint.ref, authored_graph=authored_graph)
+        if authored_graph is not None
+        else None
     )
-    return DoorSourceContext(contract, candidate, master, sprint, graph)
+    return DoorSourceContext(
+        contract,
+        candidate,
+        master,
+        graph.sprint if graph is not None else sprint,
+        graph,
+    )
 
 
 def _door_candidate(

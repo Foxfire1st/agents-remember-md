@@ -8,15 +8,20 @@ from pathlib import Path
 
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.tasks import SubTaskRef, TaskDocument, read_task_doc
+from agents_remember.tasks.leaf_binding import (
+    CanonicalLeafBindingError,
+    canonical_leaf_source,
+    require_canonical_leaf_binding,
+    require_leaf_parent_row,
+)
 from agents_remember.worktrees.task_resolver import leaf_enclosure_path
 
 
 class TaskLeafBindingError(ValueError):
     """The parent row and exact child source do not form one canonical leaf identity."""
 
-    status = "task-leaf-binding-invalid"
-
-    def __init__(self, detail: str) -> None:
+    def __init__(self, detail: str, *, status: str = "task-leaf-binding-invalid") -> None:
+        self.status = status
         self.detail = detail
         super().__init__(detail)
 
@@ -52,10 +57,21 @@ def resolve_leaf_task_binding(
 
     root = task_root.resolve(strict=False)
     parent_path, parent = _load_leaf_parent(root)
-    row = _require_leaf_row(parent, leaf_id)
-    markdown, leaf_json = _leaf_source_paths(root, row)
-    leaf = _read_leaf_source(leaf_json, markdown, row)
-    task_ref = _leaf_task_ref(coordination_root, repo_id, leaf_json)
+    parent_ref = _task_ref_for_path(coordination_root, repo_id, parent_path)
+    try:
+        row = require_leaf_parent_row(parent, leaf_id)
+        source = canonical_leaf_source(parent_ref, row)
+    except CanonicalLeafBindingError as exc:
+        raise TaskLeafBindingError(exc.detail, status=exc.status) from exc
+    repository_root = (coordination_root / "tasks" / repo_id).resolve(strict=False)
+    markdown = repository_root / source.markdown_path
+    leaf_json = repository_root / source.json_ref.path
+    leaf = _read_leaf_source(leaf_json, markdown)
+    if leaf is not None:
+        try:
+            require_canonical_leaf_binding(parent_ref, parent, source.json_ref, leaf)
+        except CanonicalLeafBindingError as exc:
+            raise TaskLeafBindingError(exc.detail, status=exc.status) from exc
     return LeafTaskBinding(
         coordination_root=coordination_root.resolve(strict=False),
         repo_id=repo_id,
@@ -67,7 +83,7 @@ def resolve_leaf_task_binding(
         leaf_json_path=leaf_json,
         leaf_markdown_path=markdown,
         leaf=leaf,
-        task_ref=task_ref,
+        task_ref=source.json_ref,
     )
 
 
@@ -84,35 +100,9 @@ def _load_leaf_parent(root: Path) -> tuple[Path, TaskDocument]:
     return parent_path, parent
 
 
-def _require_leaf_row(parent: TaskDocument, leaf_id: str) -> SubTaskRef:
-    rows = [row for row in parent.subTasks if row.number == leaf_id]
-    if len(rows) != 1:
-        raise TaskLeafBindingError(
-            f"parent task must contain exactly one live row for leaf {leaf_id!r}"
-        )
-    row = rows[0]
-    if row.masterRef is not None:
-        raise TaskLeafBindingError("discard-unstarted is leaf-only, not a sprint master detach")
-    return row
-
-
-def _leaf_source_paths(root: Path, row: SubTaskRef) -> tuple[Path, Path]:
-    file_value = row.file.strip()
-    if not file_value:
-        raise TaskLeafBindingError("the live leaf row has no exact child source path")
-    relative = Path(file_value)
-    if relative.is_absolute() or relative.parent != Path() or relative.suffix != ".md":
-        raise TaskLeafBindingError(
-            f"the live leaf row must name one direct Markdown child of {root}: {file_value!r}"
-        )
-    markdown = root / relative
-    return markdown, markdown.with_suffix(".json")
-
-
 def _read_leaf_source(
     leaf_json: Path,
     markdown: Path,
-    row: SubTaskRef,
 ) -> TaskDocument | None:
     json_mode = _source_mode(leaf_json)
     markdown_mode = _source_mode(markdown)
@@ -129,10 +119,6 @@ def _read_leaf_source(
             raise TaskLeafBindingError(
                 f"canonical leaf task document is unreadable: {leaf_json}: {exc}"
             ) from exc
-        if leaf.kind != "subTask" or leaf.id != row.number:
-            raise TaskLeafBindingError(
-                "the parent row and JSON-primary child disagree on leaf identity"
-            )
         return leaf
     if markdown_mode is not None:
         raise TaskLeafBindingError(
@@ -141,17 +127,17 @@ def _read_leaf_source(
     return None
 
 
-def _leaf_task_ref(
+def _task_ref_for_path(
     coordination_root: Path,
     repo_id: str,
-    leaf_json: Path,
+    source_path: Path,
 ) -> TaskDocumentRef:
     repository_root = (coordination_root / "tasks" / repo_id).resolve(strict=False)
-    if not leaf_json.is_relative_to(repository_root):
-        raise TaskLeafBindingError("canonical leaf task source escapes the repository task root")
+    if not source_path.is_relative_to(repository_root):
+        raise TaskLeafBindingError("canonical task source escapes the repository task root")
     return TaskDocumentRef(
         repository=repo_id,
-        path=leaf_json.relative_to(repository_root).as_posix(),
+        path=source_path.relative_to(repository_root).as_posix(),
     )
 
 

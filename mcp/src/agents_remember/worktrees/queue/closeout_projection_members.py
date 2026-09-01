@@ -6,7 +6,6 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from agents_remember.models.closeout.projection import (
     MAX_CLOSEOUT_REASONS,
@@ -15,10 +14,21 @@ from agents_remember.models.closeout.projection import (
 from agents_remember.models.lifecycles.door import CloseoutDoorGeneration
 from agents_remember.tasks import completion_blockers
 from agents_remember.tasks.document_refs import ResolvedTaskDocument
+from agents_remember.tasks.semantic_topology import (
+    SEMANTIC_TOPOLOGY_SCHEMA,
+    SemanticTopologyError,
+    SemanticTopologyV2,
+)
+from agents_remember.tasks.semantic_topology import (
+    semantic_topology_fingerprint as task_semantic_topology_fingerprint,
+)
+from agents_remember.tasks.semantic_topology import (
+    semantic_topology_projection as task_semantic_topology_projection,
+)
 
 from .closeout_queue_errors import CloseoutQueueError
 from .closeout_queue_evidence import GradeAuthority, canonical_grade
-from .closeout_queue_graph import candidate_node, predecessor_waiting_reasons
+from .closeout_queue_graph import QueueGraphContext, candidate_node, predecessor_waiting_reasons
 
 
 @dataclass(frozen=True)
@@ -29,7 +39,8 @@ class ProjectionMemberContext:
     master: ResolvedTaskDocument
     order: int
     sprint: ResolvedTaskDocument
-    graph: Any
+    graph: QueueGraphContext | None
+    task_topology_fingerprint: str
     activation_waiting: tuple[str, ...] = ()
     source_blockers: tuple[str, ...] = ()
 
@@ -71,12 +82,7 @@ def _projection_blockers(context: ProjectionMemberContext) -> list[str]:
         context.master.ref,
         context.source_address.as_posix(),
     )
-    stale = door.taskTopologyFingerprint != candidate_task_topology_fingerprint(
-        context.sprint,
-        context.master,
-        context.candidate,
-        graph=context.graph,
-    )
+    stale = door.taskTopologyFingerprint != context.task_topology_fingerprint
     incomplete = bool(completion_blockers(context.candidate.document))
     derived = [
         reason
@@ -180,38 +186,43 @@ def candidate_task_topology_fingerprint(
     master: ResolvedTaskDocument,
     candidate: ResolvedTaskDocument,
     *,
-    graph: Any,
+    graph: QueueGraphContext | None,
+    schema_version: str = SEMANTIC_TOPOLOGY_SCHEMA,
 ) -> str:
-    """Bind a door only to its candidate-relevant task and placement facts."""
+    """Adapt queue graph context to the task-domain topology identity owner."""
 
-    own_rows = [
-        row.model_dump(mode="json", exclude_none=True)
-        for row in master.document.subTasks
-        if row.number == candidate.document.id
-        or (row.file and Path(row.file).stem == candidate.path.stem)
-    ]
-    placement: list[dict[str, object]] = []
-    if graph is not None:
-        placement = [
-            node.model_dump(mode="json")
-            for node in graph.nodes_by_master.get(master.ref, ())
-            if node.kind == "master" or candidate.document.id in node.leafIds
-        ]
-    return _fingerprint(
-        {
-            "schema": "closeout-door-task-topology/v1",
-            "sprint": sprint.ref.model_dump(mode="json"),
-            "master": master.ref.model_dump(mode="json"),
-            "executionNature": master.document.executionNature,
-            "row": own_rows,
-            "candidate": candidate.document.model_dump(
-                mode="json",
-                by_alias=True,
-                exclude_none=True,
-            ),
-            "placement": placement,
-        }
-    )
+    try:
+        return task_semantic_topology_fingerprint(
+            sprint,
+            master,
+            candidate,
+            graph_index=graph.semantic_topology_index if graph is not None else None,
+            schema_version=schema_version,
+        )
+    except SemanticTopologyError as exc:
+        raise CloseoutQueueError(exc.status, exc.detail) from exc
+
+
+def semantic_topology_projection(
+    sprint: ResolvedTaskDocument,
+    master: ResolvedTaskDocument,
+    candidate: ResolvedTaskDocument,
+    *,
+    graph: QueueGraphContext | None,
+    schema_version: str = SEMANTIC_TOPOLOGY_SCHEMA,
+) -> SemanticTopologyV2:
+    """Return the task-domain projection through the queue's typed error surface."""
+
+    try:
+        return task_semantic_topology_projection(
+            sprint,
+            master,
+            candidate,
+            graph_index=graph.semantic_topology_index if graph is not None else None,
+            schema_version=schema_version,
+        )
+    except SemanticTopologyError as exc:
+        raise CloseoutQueueError(exc.status, exc.detail) from exc
 
 
 def _bounded_reasons(reasons: list[str]) -> list[str]:
@@ -228,7 +239,9 @@ def _fingerprint(payload: object) -> str:
 
 __all__ = [
     "ProjectionMemberContext",
+    "SemanticTopologyV2",
     "candidate_task_topology_fingerprint",
     "projection_member",
     "scheduling_source_fact",
+    "semantic_topology_projection",
 ]

@@ -400,10 +400,15 @@ def _task_context(contract: WorktreeContract):
         if sprint_ref is None:
             raise TaskDocumentRefError("task-document-parent-missing", master.ref.key)
         sprint = topology.resolve(sprint_ref)
-        graph = graph_context(topology, sprint.ref) if sprint.document.executionGraph else None
+        authored_graph = sprint.document.executionGraph
+        graph = (
+            graph_context(topology, sprint.ref, authored_graph=authored_graph)
+            if authored_graph is not None
+            else None
+        )
     except TaskDocumentRefError as exc:
         raise CuratorCoherenceError(exc.status, str(exc), next_action="task_doc") from exc
-    return candidate, master, sprint, graph
+    return candidate, master, graph.sprint if graph is not None else sprint, graph
 
 
 def _memory_candidate_tree(contract: WorktreeContract) -> str:

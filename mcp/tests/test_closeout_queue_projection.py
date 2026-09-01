@@ -10,11 +10,14 @@ from typing import Any
 from agents_remember.controlplane.closeout_queue_store import CloseoutQueueStore
 from agents_remember.models.closeout.projection import CloseoutQueueState
 from agents_remember.models.queue.closeout_queue import CloseoutQueueRequest
-from agents_remember.tasks import read_task_doc, write_task_doc
+from agents_remember.tasks import SprintExecutionEdge, read_task_doc, write_task_doc
 from agents_remember.worktrees.activation.atomic_series_activation import (
     activation_path,
     atomic_series_source_pair,
     publish_atomic_series_selection,
+)
+from agents_remember.worktrees.integration.closeout.curator_coherence import (
+    require_current_curator_coherence,
 )
 from agents_remember.worktrees.queue.closeout_queue import QueueActor, closeout_queue_tool
 from agents_remember.worktrees.worktree_contract import load_contract
@@ -37,6 +40,25 @@ class CloseoutProjectionCensusTests(unittest.TestCase):
             actor=self.actor,
             now=NOW,
         )
+
+    def _assert_shared_topology_identity(
+        self,
+        fixture: QueueFixture,
+        master: Any,
+        projected: dict[str, Any],
+    ) -> None:
+        contract = load_contract(fixture.contracts[master].contract_path)
+        door = contract.closeout_door
+        assert door is not None
+        coherence = require_current_curator_coherence(contract)
+        self.assertEqual(
+            coherence.record.taskTopologyFingerprint,
+            door.taskTopologyFingerprint,
+        )
+        member = next(
+            item for item in projected["members"] if item["owningMaster"] == master.model_dump()
+        )
+        self.assertNotIn("door-task-topology-stale", member["reasons"])
 
     def test_rebuild_uses_only_current_waiting_doors_not_old_rows(self) -> None:
         self.fixture.declare(MASTER_A)
@@ -62,28 +84,121 @@ class CloseoutProjectionCensusTests(unittest.TestCase):
         self.assertEqual(members[0]["generationId"], current.members[0].generationId)
         self.assertEqual(members[0]["taskDocumentRef"], LEAF_A.model_dump())
 
-    def test_old_valid_row_becomes_invalid_empty_immediately_after_task_change(self) -> None:
+    def test_readiness_change_invalidates_the_current_projection(self) -> None:
         self.fixture.declare(MASTER_A)
         before = self.fixture.status()
         master_path = self.fixture.tasks / "master-a" / "task.json"
         master = read_task_doc(master_path)
-        write_task_doc(master_path.parent, master.model_copy(update={"title": "changed"}))
+        row = master.subTasks[0].model_copy(update={"status": "Completed"})
+        write_task_doc(master_path.parent, master.model_copy(update={"subTasks": [row]}))
         after = self.fixture.status()
         self.assertEqual(before["state"], "valid-built")
         self.assertEqual(after["state"], "invalid-empty")
         self.assertEqual(after["members"], [])
         self.assertIsNotNone(after["nextAction"])
 
-    def test_unrelated_sibling_change_requires_refresh_but_not_redeclaration(self) -> None:
+    def test_display_and_audit_changes_do_not_invalidate_structural_currentness(self) -> None:
         self.fixture.declare(MASTER_A)
-        generation = self.fixture.status()["members"][0]["generationId"]
+        before = self.fixture.status()
         sibling_path = self.fixture.tasks / "master-b" / "task.json"
         sibling = read_task_doc(sibling_path)
         write_task_doc(sibling_path.parent, sibling.model_copy(update={"title": "new sibling"}))
+        leaf_path = self.fixture.tasks / "master-a" / "leaf-a.json"
+        leaf = read_task_doc(leaf_path)
+        write_task_doc(
+            leaf_path.parent,
+            leaf.model_copy(update={"createdAt": "2026-09-01T00:00:00+00:00"}),
+        )
+        after = self.fixture.status()
+        self.assertEqual(after["state"], "valid-built")
+        self.assertEqual(after["sourceFingerprint"], before["sourceFingerprint"])
+        self.assertEqual(after["members"], before["members"])
+
+    def test_member_topology_refusal_is_an_exact_unreadable_status_and_rebuild(self) -> None:
+        self.fixture.declare(MASTER_A)
+        leaf_path = self.fixture.tasks / "master-a" / "leaf-a.json"
+        leaf = read_task_doc(leaf_path)
+        write_task_doc(leaf_path.parent, leaf.model_copy(update={"id": "OTHER"}))
+
+        status = self.fixture.status()
+        rebuilt = self._rebuild()
+
+        for result in (status, rebuilt):
+            self.assertEqual(result["state"], "invalid-empty")
+            self.assertIsNone(result["effectiveSourceFingerprint"])
+            self.assertEqual(result["members"], [])
+            self.assertEqual(len(result["sourceProblems"]), 1)
+            self.assertEqual(
+                result["sourceProblems"][0],
+                {
+                    "kind": "task",
+                    "address": LEAF_A.key,
+                    "state": "invalid",
+                    "errorType": "semantic-topology-parent-binding-stem-only",
+                    "repairAction": (
+                        "candidate source or file stem matches without the candidate document ID"
+                    ),
+                },
+            )
+
+    def test_relevant_dependency_edge_invalidates_v2_identity(self) -> None:
+        self.fixture.declare(MASTER_A)
+        sprint_path = self.fixture.tasks / "sprint" / "task.json"
+        sprint = read_task_doc(sprint_path)
+        graph = sprint.executionGraph
+        assert graph is not None
+        changed_graph = graph.model_copy(
+            update={
+                "edges": [
+                    SprintExecutionEdge(
+                        predecessor=MASTER_B,
+                        successor=MASTER_A,
+                        reason="B now gates A.",
+                    )
+                ]
+            }
+        )
+        write_task_doc(
+            sprint_path.parent,
+            sprint.model_copy(update={"executionGraph": changed_graph}),
+        )
+
         self.assertEqual(self.fixture.status()["state"], "invalid-empty")
         rebuilt = self._rebuild()
-        self.assertEqual(rebuilt["members"][0]["generationId"], generation)
-        self.assertEqual(rebuilt["members"][0]["classification"], "ready")
+        self.assertIn("door-task-topology-stale", rebuilt["members"][0]["reasons"])
+
+    def test_graphless_atomic_route_builds_current_waiting_member_without_selection(
+        self,
+    ) -> None:
+        fixture = QueueFixture(
+            Path(self.temporary.name) / "graphless",
+            atomic_a=True,
+            memory_mode="external",
+        )
+        sprint_path = fixture.tasks / "sprint" / "task.json"
+        sprint = read_task_doc(sprint_path)
+        write_task_doc(
+            sprint_path.parent,
+            sprint.model_copy(update={"executionGraph": None}),
+        )
+
+        projected = fixture.declare(MASTER_A)
+
+        self.assertEqual(projected["state"], "valid-built")
+        self.assertEqual(projected["members"][0]["classification"], "waiting")
+        self.assertEqual(projected["members"][0]["reasons"], ["atomic-series-not-selected"])
+        self._assert_shared_topology_identity(fixture, MASTER_A, projected)
+
+    def test_dag_route_shares_one_identity_across_coherence_door_and_queue(self) -> None:
+        fixture = QueueFixture(
+            Path(self.temporary.name) / "dag-shared-identity",
+            memory_mode="external",
+        )
+
+        projected = fixture.declare(MASTER_A)
+
+        self.assertEqual(projected["state"], "valid-built")
+        self._assert_shared_topology_identity(fixture, MASTER_A, projected)
 
     def test_review_evidence_drift_changes_source_identity_and_blocks_member(self) -> None:
         self.fixture.declare(MASTER_A)

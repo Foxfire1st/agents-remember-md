@@ -17,7 +17,7 @@ the observer never projects them as a lifecycle node.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Literal, Self
 
@@ -25,6 +25,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     field_validator,
     model_serializer,
     model_validator,
@@ -32,6 +33,15 @@ from pydantic import (
 
 from agents_remember.models.task_document import DocStatus, MasterExecutionNature, StepStatus
 from agents_remember.models.task_document_ref import TaskDocumentRef
+
+from .execution_graph_validation import (
+    ExecutionGraphAnalysis,
+    ExecutionGraphValidationError,
+    ExecutionGraphValidationWork,
+    as_execution_graph_edges,
+    find_execution_graph_cycle,
+    validate_execution_graph,
+)
 
 TASK_DOCUMENT_SCHEMA = "ar-task-document/v1"
 
@@ -336,53 +346,40 @@ class SprintExecutionGraph(_Doc):
 
     nodes: list[SprintExecutionNode] = Field(min_length=1)
     edges: list[SprintExecutionEdge] = Field(default_factory=list)
+    _executionGraphValidationWork: ExecutionGraphValidationWork = PrivateAttr(
+        default_factory=ExecutionGraphValidationWork
+    )
 
     @model_validator(mode="after")
     def _check_graph_shape(self) -> Self:
-        if len(set(self.nodes)) != len(self.nodes):
-            raise ValueError("execution-graph nodes must be unique")
-        self._check_leaf_ownership()
-        resolved = [self._resolved_edge(edge) for edge in self.edges]
-        if len(set(resolved)) != len(resolved):
-            raise ValueError("execution-graph edges must be unique")
-        self.derived_waves()
+        self._execution_graph_analysis()
         return self
 
-    def _check_leaf_ownership(self) -> None:
-        by_master: dict[TaskDocumentRef, list[SprintExecutionNode]] = {}
-        for node in self.nodes:
-            by_master.setdefault(node.ref, []).append(node)
-        for ref, nodes in by_master.items():
-            if len(nodes) > 1 and any(node.kind == "master" for node in nodes):
-                raise ValueError(
-                    "execution-graph lump and segment appearances of one master are mutually "
-                    f"exclusive: {ref.key}"
-                )
-        placed: dict[str, TaskDocumentRef] = {}
-        for node in self.nodes:
-            for leaf in node.leafIds:
-                owner = placed.get(leaf)
-                if owner is not None:
-                    raise ValueError(
-                        f"execution-graph leaf {leaf!r} is placed in more than one node "
-                        f"({owner.key} and {node.ref.key})"
-                    )
-                placed[leaf] = node.ref
+    def _execution_graph_analysis(self) -> ExecutionGraphAnalysis[SprintExecutionNode]:
+        """Run the canonical indexed analysis and retain its exact operation count."""
+
+        try:
+            analysis = validate_execution_graph(
+                self.nodes,
+                as_execution_graph_edges(self.edges),
+            )
+        except ExecutionGraphValidationError as exc:
+            self._executionGraphValidationWork = exc.work
+            raise ValueError(exc.detail) from exc
+        self._executionGraphValidationWork = analysis.work
+        return analysis
+
+    @property
+    def execution_graph_validation_work(self) -> ExecutionGraphValidationWork:
+        """Exact operations from this instance's canonical whole-graph admission."""
+
+        return self._executionGraphValidationWork
 
     def resolve_endpoint(
         self, endpoint: TaskDocumentRef | SprintExecutionEndpoint
     ) -> SprintExecutionNode:
         """Resolve one edge endpoint to exactly one declared node."""
         return resolve_graph_endpoint(self.nodes, endpoint)
-
-    def _resolved_edge(
-        self, edge: SprintExecutionEdge
-    ) -> tuple[SprintExecutionNode, SprintExecutionNode]:
-        predecessor = self.resolve_endpoint(edge.predecessor)
-        successor = self.resolve_endpoint(edge.successor)
-        if predecessor == successor:
-            raise ValueError("execution-graph edge cannot point a node to itself")
-        return predecessor, successor
 
     def master_refs(self) -> list[TaskDocumentRef]:
         """The distinct masters this graph places, in node declaration order."""
@@ -395,37 +392,8 @@ class SprintExecutionGraph(_Doc):
     def derived_waves(self) -> list[list[SprintExecutionNode]]:
         """Return deterministic topological waves over nodes, refusing a directed cycle."""
 
-        order = {node: index for index, node in enumerate(self.nodes)}
-        indegree = dict.fromkeys(self.nodes, 0)
-        successors: dict[SprintExecutionNode, list[SprintExecutionNode]] = {
-            node: [] for node in self.nodes
-        }
-        for edge in self.edges:
-            predecessor, successor = self._resolved_edge(edge)
-            indegree[successor] += 1
-            successors[predecessor].append(successor)
-        ready = [node for node in self.nodes if indegree[node] == 0]
-        waves: list[list[SprintExecutionNode]] = []
-        visited = 0
-        while ready:
-            wave = sorted(ready, key=order.__getitem__)
-            waves.append(wave)
-            visited += len(wave)
-            next_ready: list[SprintExecutionNode] = []
-            for node in wave:
-                for successor in successors[node]:
-                    indegree[successor] -= 1
-                    if indegree[successor] == 0:
-                        next_ready.append(successor)
-            ready = next_ready
-        if visited != len(self.nodes):
-            residual = [node for node in self.nodes if indegree[node] > 0]
-            cycle = _find_cycle_members(self, residual)
-            raise ValueError(
-                "execution-graph must be acyclic; cycle members: "
-                + " -> ".join(node.ref.key for node in cycle)
-            )
-        return waves
+        analysis = self._execution_graph_analysis()
+        return [list(wave) for wave in analysis.waves]
 
 
 def _find_cycle_members(
@@ -439,65 +407,16 @@ def _find_cycle_members(
     repeated node.
     """
 
-    if not residual:
-        return residual
-    by_index, adjacency = _residual_adjacency(graph)
-    residual_set = set(residual)
-    search = _CycleSearch()
-    for node in sorted(residual, key=by_index.__getitem__):
-        if node in search.visited:
-            continue
-        found = _dfs_cycle_members(node, adjacency, residual_set, by_index, search)
-        if found is not None:
-            return found
-    return residual
-
-
-def _residual_adjacency(
-    graph: SprintExecutionGraph,
-) -> tuple[
-    dict[SprintExecutionNode, int],
-    dict[SprintExecutionNode, list[SprintExecutionNode]],
-]:
-    by_index = {node: index for index, node in enumerate(graph.nodes)}
-    adjacency: dict[SprintExecutionNode, list[SprintExecutionNode]] = {
-        node: [] for node in graph.nodes
-    }
-    for edge in graph.edges:
-        predecessor, successor = graph._resolved_edge(edge)
-        adjacency[predecessor].append(successor)
-    return by_index, adjacency
-
-
-def _dfs_cycle_members(
-    node: SprintExecutionNode,
-    adjacency: dict[SprintExecutionNode, list[SprintExecutionNode]],
-    residual: set[SprintExecutionNode],
-    by_index: dict[SprintExecutionNode, int],
-    search: _CycleSearch,
-) -> list[SprintExecutionNode] | None:
-    search.stack.append(node)
-    search.on_stack.add(node)
-    for successor in sorted(adjacency[node], key=by_index.__getitem__):
-        if successor in search.on_stack:
-            return search.stack[search.stack.index(successor) :]
-        if successor in residual and successor not in search.visited:
-            found = _dfs_cycle_members(successor, adjacency, residual, by_index, search)
-            if found is not None:
-                return found
-    search.stack.pop()
-    search.on_stack.discard(node)
-    search.visited.add(node)
-    return None
-
-
-@dataclass
-class _CycleSearch:
-    """Mutable DFS traversal state shared across one cycle search."""
-
-    stack: list[SprintExecutionNode] = field(default_factory=list)
-    on_stack: set[SprintExecutionNode] = field(default_factory=set)
-    visited: set[SprintExecutionNode] = field(default_factory=set)
+    try:
+        return list(
+            find_execution_graph_cycle(
+                graph.nodes,
+                as_execution_graph_edges(graph.edges),
+                residual,
+            )
+        )
+    except ExecutionGraphValidationError as exc:
+        raise ValueError(exc.detail) from exc
 
 
 @dataclass(frozen=True)
@@ -550,14 +469,14 @@ def _latest_unblocked_segment(
     segments: list[SprintExecutionNode],
     completed_refs: set[TaskDocumentRef],
 ) -> tuple[SprintExecutionNode, bool]:
-    wave_of = {node: index for index, wave in enumerate(graph.derived_waves()) for node in wave}
+    analysis = graph._execution_graph_analysis()
+    wave_of = {node: index for index, wave in enumerate(analysis.waves) for node in wave}
     declaration = {node: index for index, node in enumerate(graph.nodes)}
     predecessors: dict[SprintExecutionNode, list[SprintExecutionNode]] = {
         node: [] for node in graph.nodes
     }
-    for edge in graph.edges:
-        predecessor, successor = graph._resolved_edge(edge)
-        predecessors[successor].append(predecessor)
+    for predecessor_index, successor_index in analysis.resolvedEdgeIndexes:
+        predecessors[graph.nodes[successor_index]].append(graph.nodes[predecessor_index])
     ordered = sorted(segments, key=lambda node: (wave_of[node], declaration[node]))
     for candidate in reversed(ordered):
         if all(predecessor.ref in completed_refs for predecessor in predecessors[candidate]):
