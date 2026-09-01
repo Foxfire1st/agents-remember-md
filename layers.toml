@@ -33,6 +33,7 @@ order = [
   "errors",
   "kernel",
   "models",
+  "certification",
   "controlplane",
   "harness_adapters",
   "conversations",
@@ -101,20 +102,31 @@ cycle with a type annotation on it. A response model that needs a domain service
 is telling you the type is wire vocabulary and belongs in this package.
 """
 
-[package.controlplane]
+[package.certification]
 rank = 3
+path = "certification/"
+present = true
+charter = """
+The repository-neutral certification contract: canonical rail and profile schemas,
+validation, deterministic planning, content identity, bounded admission, and typed terminal
+gate results. It sits below control-plane, worktree, and application consumers; concrete
+repository profiles, executors, and lifecycle terminalization remain with their owners.
+"""
+
+[package.controlplane]
+rank = 4
 path = "controlplane/"
 present = true
 charter = """
 Durable interaction records and the policy over them: gates, the operator inbox,
 expectations, escalation and retention rules, and the single-writer durable-store
-contract they share. Lowest of the domain services because it is the substrate the rest
-observe, project and act on, so the primitives its own records are aged and folded by are
-defined here rather than borrowed from a package above.
+contract they share. Lowest of the stateful interaction services because it is the
+substrate the rest observe, project and act on, so the primitives its own records are aged
+and folded by are defined here rather than borrowed from a package above.
 """
 
 [package.harness_adapters]
-rank = 4
+rank = 5
 path = "harness_adapters/"
 present = false
 arrives_in = "260731-EFA-L10"
@@ -127,7 +139,7 @@ because L10-R4 leaves shared conversation code depending on adapter contracts.
 """
 
 [package.conversations]
-rank = 5
+rank = 6
 path = "conversations/"
 present = false
 arrives_in = "260731-EFA-L11"
@@ -140,7 +152,7 @@ merely asserted.
 """
 
 [package.terminals]
-rank = 6
+rank = 7
 path = "terminals/"
 present = false
 arrives_in = "260731-EFA-L11"
@@ -154,7 +166,7 @@ for the other to compile.
 """
 
 [package.observer]
-rank = 7
+rank = 8
 path = "observer/"
 present = true
 charter = """
@@ -164,7 +176,7 @@ below everything that consumes a projection.
 """
 
 [package.tasks]
-rank = 8
+rank = 9
 path = "tasks/"
 present = true
 charter = """
@@ -174,7 +186,7 @@ operation and is ranked accordingly, whatever it is named after.
 """
 
 [package.worktrees]
-rank = 9
+rank = 10
 path = "worktrees/"
 present = true
 charter = """
@@ -183,7 +195,7 @@ integration, closeout and cleanup. Owns the contract file and every transition o
 """
 
 [package.memory_quality]
-rank = 10
+rank = 11
 path = "memory_quality/"
 present = true
 charter = """
@@ -192,7 +204,7 @@ quality gates over them. Reads code and onboarding; decides nothing about servin
 """
 
 [package.memory]
-rank = 11
+rank = 12
 path = "memory/"
 present = true
 charter = """
@@ -201,7 +213,7 @@ because adopting a baseline asks whether it is current.
 """
 
 [package.providers]
-rank = 12
+rank = 13
 path = "providers/"
 present = true
 charter = """
@@ -211,7 +223,7 @@ control -- and never reaches up to the application layer for an implementation.
 """
 
 [package.harness_control]
-rank = 13
+rank = 14
 path = "harness_control/"
 present = false
 arrives_in = "260731-EFA-L11"
@@ -223,7 +235,7 @@ adapter, which is why it is a peer of `harness_adapters` and not a subpackage of
 """
 
 [package.hosted_sessions]
-rank = 14
+rank = 15
 path = "hosted_sessions/"
 present = false
 arrives_in = "260731-EFA-L11"
@@ -234,7 +246,7 @@ control plane records.
 """
 
 [package.supervision]
-rank = 15
+rank = 16
 path = "supervision/"
 present = false
 arrives_in = "260731-EFA-L11"
@@ -248,7 +260,7 @@ decision nobody can test alone.
 """
 
 [package.serving]
-rank = 16
+rank = 17
 path = "serving/"
 present = true
 deleted_by = "260731-EFA-L12"
@@ -262,7 +274,7 @@ this one. 260731-EFA-L10 and 260731-EFA-L11 move the adapters and five packages 
 """
 
 [package.dashboard]
-rank = 17
+rank = 18
 path = "dashboard/"
 present = false
 arrives_in = "260731-EFA-L12"
@@ -275,7 +287,7 @@ concern wearing a web-shaped name goes to its real owner instead (L12-R2).
 """
 
 [package.install]
-rank = 18
+rank = 19
 path = "install/"
 present = true
 charter = """
@@ -284,7 +296,7 @@ for because it must know what a complete installation contains.
 """
 
 [package.benchmarks]
-rank = 19
+rank = 20
 path = "benchmarks/"
 present = true
 charter = """
@@ -293,7 +305,7 @@ drives the others and is depended on by nothing except the tools that expose it.
 """
 
 [package.application]
-rank = 20
+rank = 21
 path = "application/"
 present = true
 charter = """
@@ -303,7 +315,7 @@ literal type defined here is wire vocabulary in the wrong package, and belongs i
 """
 
 [package.mcp]
-rank = 21
+rank = 22
 path = "mcp/"
 present = true
 charter = """
@@ -317,7 +329,7 @@ largest inversion in the tree and it is almost entirely one module wide: on 2026
 """
 
 [package.cli]
-rank = 22
+rank = 23
 path = "cli/"
 present = true
 charter = """
@@ -326,7 +338,7 @@ of none of it.
 """
 
 [package.testing]
-rank = 23
+rank = 24
 path = "testing/"
 present = true
 charter = """
@@ -336,7 +348,7 @@ test processes; production acceptance consumers import only the evidence vocabul
 """
 
 [package.code_quality]
-rank = 24
+rank = 25
 path = "code_quality/"
 present = true
 charter = """

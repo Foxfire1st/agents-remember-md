@@ -1111,6 +1111,28 @@ consumers = [
 ]
 
 [[artifact]]
+path = "mcp/tests/certification_registry_test_support.py"
+kind = "shared-support"
+authority = "internal-canonical"
+owner = "canonical-certification-registry-test-port"
+category = "public-contract"
+fidelity = "in-process"
+cadence = "affected"
+source_version_or_generator = "canonical certification models and repository-neutral rail declarations"
+introduced_by = "260831-CCR-L11"
+lifetime = "permanent"
+permanence_rationale = "The helper owns the reusable registry composition for admission, plan, result, and scaling proofs."
+replacement_contract = "node:mcp/tests/test_certification_plan_authority.py::test_result_publication_refuses_deleted_inserted_and_substituted_plan_catalogs"
+consumer_scope = "exact"
+consumers = [
+  "mcp/tests/test_certification_contract_model_edges.py",
+  "mcp/tests/test_certification_plan_authority.py",
+  "mcp/tests/test_certification_rail_registry.py",
+  "mcp/tests/test_certification_reachability_edges.py",
+  "mcp/tests/test_certification_registry_validation_edges.py",
+]
+
+[[artifact]]
 path = "mcp/tests/test-evidence-lanes.toml"
 kind = "fixture"
 authority = "internal-canonical"

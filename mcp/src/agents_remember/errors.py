@@ -9,13 +9,44 @@ catch) the typed members of this family rather than bare ``ValueError`` /
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Literal
 
 
 class AgentsRememberError(ValueError):
     """Base class for all Agents Remember domain errors."""
+
+
+class CertificationContractError(AgentsRememberError):
+    """A rail registry, plan, or result manifest failed closed validation."""
+
+    def __init__(self, detail: str, findings: Sequence[Mapping[str, object]]) -> None:
+        self._findings = tuple(_freeze_contract_finding(finding) for finding in findings)
+        super().__init__(detail)
+
+    @property
+    def findings(self) -> tuple[Mapping[str, object], ...]:
+        return self._findings
+
+
+def _freeze_contract_finding(finding: Mapping[str, object]) -> Mapping[str, object]:
+    return MappingProxyType({key: _freeze_contract_value(value) for key, value in finding.items()})
+
+
+def _freeze_contract_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise TypeError("certification finding mapping keys must be strings")
+        return MappingProxyType({key: _freeze_contract_value(item) for key, item in value.items()})
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return tuple(_freeze_contract_value(item) for item in value)
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if value is None or isinstance(value, (str, bytes, int, float, bool)):
+        return value
+    raise TypeError("certification finding values must be immutable JSON-like data")
 
 
 class SeatOccupancyError(AgentsRememberError):

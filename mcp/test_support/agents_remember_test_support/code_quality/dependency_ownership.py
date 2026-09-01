@@ -30,11 +30,21 @@ GLOBAL_TEST_INPUTS = frozenset(
 # exact pytest consumers explicit here, then verify the declaration against
 # source-observed literal reads before trusting a targeted selection.
 CODEX_CONFIG_PATH = Path(".codex") / "config.toml"
+LAYERS_CONTRACT_PATH = Path("layers").with_suffix(".toml")
 REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
     CODEX_CONFIG_PATH: frozenset(
         {
             Path("mcp/tests/test_public_surface_conformance.py"),
             Path("mcp/tests/test_starter_renderers.py"),
+        }
+    ),
+    LAYERS_CONTRACT_PATH: frozenset(
+        {
+            Path("mcp/tests/test_application_boundary.py"),
+            Path("mcp/tests/test_l6_diff_coverage_code_quality.py"),
+            Path("mcp/tests/test_layering.py"),
+            Path("mcp/tests/test_leaf_structural_coverage.py"),
+            Path("mcp/tests/test_structural_limits.py"),
         }
     ),
 }
