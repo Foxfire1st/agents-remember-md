@@ -28,6 +28,8 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationKind,
     LifecycleOperationProjection,
     LifecycleOperationRecord,
+    lifecycle_operation_dependencies,
+    require_lifecycle_operation_dependencies,
 )
 from agents_remember.models.lifecycles.termination import WorkerTerminationEvidence
 from agents_remember.models.task_document_ref import TaskDocumentRef
@@ -437,8 +439,11 @@ def _prepare_closeout_claim(
             generation_id=door.generationId,
         )
         claimed = door_generation_for_operation(contract, context.queued, "claimed")
-        return context.queued.model_copy(
+        claimed_record = context.queued.model_copy(
             update={"doorPublication": prepare_door_publication(contract, claimed)}
+        )
+        return claimed_record.model_copy(
+            update={"dependencies": lifecycle_operation_dependencies(claimed_record)}
         )
     if door.disposition == "claimed":
         _require_retained_closeout_owner(context.store, door, context.candidate)
@@ -845,6 +850,7 @@ def _recover_launch_and_project(
     timestamp = execution.timestamp
     should_launch = created
     if should_launch:
+        require_lifecycle_operation_dependencies(current)
         lifecycle_worker_launch.launch_or_fail(contract, current, execution.launcher, store)
         current = store.read() or current
     return operation_projection(
@@ -1025,7 +1031,7 @@ def queued_operation_record(
     timestamp: datetime,
 ) -> LifecycleOperationRecord:
     stamp = timestamp.isoformat()
-    return LifecycleOperationRecord(
+    record = LifecycleOperationRecord(
         taskId=contract.task_id,
         taskName=contract.task_name,
         contractPath=contract.contract_path.as_posix(),
@@ -1053,6 +1059,9 @@ def queued_operation_record(
             else {}
         ),
     )
+    if operation_input.kind == "integrate":
+        return record.model_copy(update={"dependencies": lifecycle_operation_dependencies(record)})
+    return record
 
 
 def _integration_authority(

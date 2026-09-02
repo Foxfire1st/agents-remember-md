@@ -79,7 +79,8 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest.pop("attestation")
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            self.assertIsNone(clean_quality_executor.published_quality_attestation(reports))
+            with self.assertRaisesRegex(RuntimeError, "no complete Dagger report"):
+                clean_quality_executor.published_quality_attestation(reports)
             manifest["attestation"] = "invalid"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "no complete Dagger report"):

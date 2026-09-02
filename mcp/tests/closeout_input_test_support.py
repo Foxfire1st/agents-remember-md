@@ -13,8 +13,10 @@ from agents_remember.models.closeout.input import CloseoutCorrectedCall, Effecti
 from agents_remember.models.lifecycles.door import (
     CloseoutDoorGeneration,
     DoorAdmissionProvenance,
+    DoorDependencyInputs,
     DoorProvenance,
     DoorSchedulingProvenance,
+    closeout_door_dependencies,
 )
 from agents_remember.models.lifecycles.mutation_evidence import (
     CloseoutMutationLeg,
@@ -171,6 +173,30 @@ def _fixture_waiting_door(
         state="not-applicable",
         fingerprint=hashlib.sha256(b"test-fixture-not-applicable").hexdigest(),
     )
+    intent = contract_task_intent(contract, candidate_ref=task_ref)
+    topology = hashlib.sha256(b"test-fixture-topology").hexdigest()
+    admission = DoorAdmissionProvenance(
+        fingerprint=hashlib.sha256(b"test-fixture-admission").hexdigest()
+    )
+    scheduling = DoorSchedulingProvenance(
+        priority="normal",
+        judgmentId="TEST-FIXTURE-BELOW-SCHEDULING",
+        fingerprint=hashlib.sha256(b"test-fixture-scheduling").hexdigest(),
+    )
+    dependencies = closeout_door_dependencies(
+        DoorDependencyInputs(
+            candidate_tree=candidate.candidate_tree,
+            memory_candidate_tree=contract.memory_base_commit,
+            task_topology_fingerprint=topology,
+            task_intent=intent,
+            review=not_applicable,
+            memory=not_applicable,
+            ledger=not_applicable,
+            admission=admission,
+            scheduling=scheduling,
+            predecessor="",
+        )
+    )
     door = CloseoutDoorGeneration(
         generationId=generation_id,
         disposition="waiting",
@@ -185,19 +211,14 @@ def _fixture_waiting_door(
         codeBaseCommit=contract.code_base_commit,
         memoryBaseCommit=contract.memory_base_commit,
         ledgerMemoryCommit=contract.memory_base_commit,
-        taskTopologyFingerprint=hashlib.sha256(b"test-fixture-topology").hexdigest(),
-        taskIntent=contract_task_intent(contract, candidate_ref=task_ref),
+        taskTopologyFingerprint=topology,
+        taskIntent=intent,
         reviewProvenance=not_applicable,
         memoryProvenance=not_applicable,
         ledgerProvenance=not_applicable,
-        admissionProvenance=DoorAdmissionProvenance(
-            fingerprint=hashlib.sha256(b"test-fixture-admission").hexdigest()
-        ),
-        schedulingProvenance=DoorSchedulingProvenance(
-            priority="normal",
-            judgmentId="TEST-FIXTURE-BELOW-SCHEDULING",
-            fingerprint=hashlib.sha256(b"test-fixture-scheduling").hexdigest(),
-        ),
+        admissionProvenance=admission,
+        schedulingProvenance=scheduling,
+        dependencies=dependencies,
         declaredBy="test-fixture:lifecycle-below-scheduling",
         declaredAt="2026-08-15T00:00:00+00:00",
     )

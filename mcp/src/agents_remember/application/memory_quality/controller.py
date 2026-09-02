@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from agents_remember.application.memory_quality.runs import (
@@ -50,6 +51,7 @@ from agents_remember.worktrees.integration.closeout.curator_coherence import (
     curator_coherence_paths,
     require_current_curator_coherence,
 )
+from agents_remember.worktrees.modules.git import worktree_candidate_tree
 
 _CAPACITY_GUIDANCE = (
     "Poll an existing run or wait for active memory-quality work to finish, then submit "
@@ -81,6 +83,12 @@ class MemoryQualityExecution:
             detail_limit=self.detail_limit,
             publish_curator_report=self.publish_curator_report,
         )
+
+
+@dataclass(frozen=True)
+class _CuratorCandidateInputs:
+    code_tree: str
+    memory_tree: str
 
 
 def run_memory_quality_request(
@@ -305,6 +313,9 @@ def _resolve_execution(
 
 def _execute_memory_quality(execution: MemoryQualityExecution) -> dict[str, object]:
     scope = revalidate_memory_candidate_scope(execution.config, execution.scope)
+    candidate_inputs = (
+        _curator_candidate_inputs(scope) if execution.publish_curator_report else None
+    )
     payload = run_memory_quality_check(
         scope.onboarding_root,
         checks=execution.checks,
@@ -320,6 +331,12 @@ def _execute_memory_quality(execution: MemoryQualityExecution) -> dict[str, obje
         include_report_only_findings=execution.publish_curator_report,
     )
     scope = revalidate_memory_candidate_scope(execution.config, scope)
+    if candidate_inputs is not None:
+        _require_same_curator_candidate(
+            scope,
+            expected=candidate_inputs,
+            observed=_curator_candidate_inputs(scope),
+        )
     response: dict[str, object] = {
         "operation": "memory_quality_check",
         "repoId": scope.repo_id,
@@ -329,7 +346,13 @@ def _execute_memory_quality(execution: MemoryQualityExecution) -> dict[str, obje
     }
     if not execution.publish_curator_report:
         return response
-    _attach_curator_checklist(execution.config, scope, payload, response)
+    _attach_curator_checklist(
+        execution.config,
+        scope,
+        payload,
+        response,
+        candidate_inputs=candidate_inputs,
+    )
     return response
 
 
@@ -338,6 +361,8 @@ def _attach_curator_checklist(
     scope: MemoryScope,
     payload: dict[str, Any],
     response: dict[str, object],
+    *,
+    candidate_inputs: _CuratorCandidateInputs | None = None,
 ) -> None:
     checks = payload.get("checks")
     drift_result = checks.get(DRIFT_CHECK_NAME, {}) if isinstance(checks, dict) else {}
@@ -375,6 +400,13 @@ def _attach_curator_checklist(
         raise RuntimeError("curator publication has no enclosure-local report path")
     if scope.pair_identity is None:
         raise RuntimeError("curator publication has no exact code/memory pair identity")
+    if candidate_inputs is None:
+        raise RuntimeError("curator publication has no exact candidate tree inputs")
+    _require_same_curator_candidate(
+        scope,
+        expected=candidate_inputs,
+        observed=_curator_candidate_inputs(scope),
+    )
     checklist = write_curator_checklist(
         CuratorChecklist(
             report_path=scope.curator_report_path,
@@ -382,6 +414,8 @@ def _attach_curator_checklist(
             code_root=scope.code_root,
             onboarding_root=scope.onboarding_root,
             pair_identity=scope.pair_identity,
+            code_candidate_tree=candidate_inputs.code_tree,
+            memory_candidate_tree=candidate_inputs.memory_tree,
             quality=payload,
             repair_findings=repair_findings,
             commit_owned_findings=commit_owned_findings,
@@ -394,6 +428,61 @@ def _attach_curator_checklist(
     response.pop("reportOnlyFindings", None)
     response.update(checklist)
     _attach_coherence_readiness(scope, response)
+
+
+def _curator_candidate_inputs(scope: MemoryScope) -> _CuratorCandidateInputs:
+    """Capture both working trees without mutating either repository index."""
+
+    if scope.pair_identity is None:
+        raise RuntimeError("curator publication has no exact code/memory pair identity")
+    memory_root = scope.onboarding_root.parent
+    with (
+        TemporaryDirectory(prefix=".memory-quality-code-") as code_temporary,
+        TemporaryDirectory(prefix=".memory-quality-memory-") as memory_temporary,
+    ):
+        return _CuratorCandidateInputs(
+            code_tree=worktree_candidate_tree(
+                scope.code_root,
+                Path(code_temporary) / "index",
+            ),
+            memory_tree=worktree_candidate_tree(
+                memory_root,
+                Path(memory_temporary) / "index",
+            ),
+        )
+
+
+def _require_same_curator_candidate(
+    scope: MemoryScope,
+    *,
+    expected: _CuratorCandidateInputs,
+    observed: _CuratorCandidateInputs,
+) -> None:
+    if observed == expected:
+        return
+    pair = scope.pair_identity
+    raise MemoryCandidatePairError(
+        "memory-quality-candidate-changed",
+        "the exact code or memory candidate changed while memory quality was running",
+        failure=MemoryCandidatePairFailure(
+            field="candidateTrees",
+            contract_path="" if pair is None else pair.contractPath,
+            expected={
+                "codeCandidateTree": expected.code_tree,
+                "memoryCandidateTree": expected.memory_tree,
+            },
+            observed={
+                "codeCandidateTree": observed.code_tree,
+                "memoryCandidateTree": observed.memory_tree,
+            },
+            next_action="memory_quality_check",
+            next_args=(
+                None
+                if pair is None
+                else {"repo_id": scope.repo_id, "contract_path": pair.contractPath}
+            ),
+        ),
+    )
 
 
 def _attach_coherence_readiness(scope: MemoryScope, response: dict[str, object]) -> None:

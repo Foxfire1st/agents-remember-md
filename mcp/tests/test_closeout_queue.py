@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,6 @@ from agents_remember.models.lifecycles.door import CloseoutDoorAction, CloseoutD
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.tasks import TaskDocument, read_task_doc, write_task_doc
 from agents_remember.tasks.document_refs import ResolvedTaskDocument
-from agents_remember.tasks.task_intent import task_intent_identity
 from agents_remember.worktrees.integration.closeout.door_control import (
     DoorActor,
     closeout_door_tool,
@@ -33,7 +33,7 @@ from agents_remember.worktrees.queue.closeout_queue import (
     QueueActor,
     closeout_queue_tool,
 )
-from agents_remember.worktrees.route_review import code_candidate_tree
+from agents_remember.worktrees.route_review import build_route_review
 from agents_remember.worktrees.worktree_contract import (
     ContractTask,
     LeafIdentity,
@@ -125,29 +125,27 @@ def _leaf(contract: WorktreeContract, slug: str) -> TaskDocument:
         repository=REPO,
         path=f"{contract.task_name}/{slug}.json",
     )
-    intent = task_intent_identity(
-        contract.task_root,
+    review = build_route_review(
+        contract,
         ResolvedTaskDocument(
             ref=ref,
             path=contract.task_root / f"{slug}.json",
             document=document,
         ),
+        {
+            "verdict": "pass",
+            "verdictRef": f"notes/reports/{slug}-review.md",
+            "routes": [
+                {
+                    "route": slug,
+                    "verdict": "pass",
+                    "evidenceRef": f"notes/reports/{slug}-review.md",
+                }
+            ],
+        },
+        now=datetime.fromisoformat(NOW),
     )
-    payload["routeReview"] = {
-        "candidateTree": code_candidate_tree(contract),
-        "taskIntent": intent.model_dump(mode="json", by_alias=True),
-        "verdict": "pass",
-        "verdictRef": f"notes/reports/{slug}-review.md",
-        "reviewedAt": NOW,
-        "routes": [
-            {
-                "route": slug,
-                "verdict": "pass",
-                "evidenceRef": f"notes/reports/{slug}-review.md",
-            }
-        ],
-    }
-    return TaskDocument.model_validate(payload)
+    return document.model_copy(update={"routeReview": review})
 
 
 def _judgment_row(ref: TaskDocumentRef, priority: str) -> str:

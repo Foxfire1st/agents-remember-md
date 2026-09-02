@@ -153,6 +153,21 @@ def _observation(tmp_path: Path, *, candidate_ref: TaskDocumentRef | None = None
     )
 
 
+def _quality_source(
+    contract: WorktreeContract,
+    attestation: Path,
+    report: Path,
+    pair_identity: MemoryCandidatePairIdentity,
+) -> coherence._QualityAttestationSource:
+    return coherence._QualityAttestationSource(
+        attestation_path=attestation,
+        report_path=report,
+        pair_identity=pair_identity,
+        code_candidate_tree=coherence.capture_future_code_candidate(contract).codeCandidateTree,
+        memory_candidate_tree=coherence._memory_candidate_tree(contract),
+    )
+
+
 def _request_for(
     contract: WorktreeContract,
     *,
@@ -561,7 +576,10 @@ def test_attestation_topology_and_path_boundaries_fail_with_typed_refusals(
     pair_identity = CuratorQualityAttestation.model_validate_json(attestation_bytes).pairIdentity
     attestation.unlink()
     with pytest.raises(CuratorCoherenceError) as raised:
-        coherence._quality_attestation(contract, attestation, report, pair_identity)
+        coherence._quality_attestation(
+            contract,
+            _quality_source(contract, attestation, report, pair_identity),
+        )
     assert raised.value.status == "curator-coherence-attestation-unreadable"
     attestation.write_bytes(attestation_bytes)
 
@@ -570,7 +588,10 @@ def test_attestation_topology_and_path_boundaries_fail_with_typed_refusals(
     not_ready["curatorActionableCount"] = 1
     attestation.write_text(json.dumps(not_ready), encoding="utf-8")
     with pytest.raises(CuratorCoherenceError) as raised:
-        coherence._quality_attestation(contract, attestation, report, pair_identity)
+        coherence._quality_attestation(
+            contract,
+            _quality_source(contract, attestation, report, pair_identity),
+        )
     assert raised.value.status == "curator-coherence-memory-not-ready"
     attestation.write_bytes(attestation_bytes)
 
@@ -623,7 +644,10 @@ def test_attestation_rejects_a_different_code_memory_pair(tmp_path: Path) -> Non
     attestation.write_text(json.dumps(wrong_pair), encoding="utf-8")
 
     with pytest.raises(CuratorCoherenceError) as raised:
-        coherence._quality_attestation(contract, attestation, report, pair_identity)
+        coherence._quality_attestation(
+            contract,
+            _quality_source(contract, attestation, report, pair_identity),
+        )
 
     assert raised.value.status == "curator-coherence-memory-not-ready"
 

@@ -22,6 +22,15 @@ from agents_remember.models.lifecycles.curator_coherence import (
     CuratorCoherenceRecord,
     CuratorQualityAttestation,
     CuratorSourceCandidate,
+    require_memory_quality_attestation_dependencies,
+)
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EVIDENCE_DEPENDENCY_VALIDATOR,
+    EvidenceDependencyError,
+    build_evidence_dependencies,
+    canonical_sha256,
+    dependency,
+    require_evidence_dependencies,
 )
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.task_intent import TaskIntentIdentity
@@ -83,6 +92,15 @@ class CuratorCoherenceObservation:
     @property
     def source_candidates(self) -> list[CuratorSourceCandidate]:
         return self.attestation.sourceChangeCandidates
+
+
+@dataclass(frozen=True)
+class _QualityAttestationSource:
+    attestation_path: Path
+    report_path: Path
+    pair_identity: MemoryCandidatePairIdentity
+    code_candidate_tree: str
+    memory_candidate_tree: str
 
 
 @dataclass(frozen=True)
@@ -164,9 +182,13 @@ def observe_curator_coherence_source(
     report_path = contract.worktree_group / "reports" / QUALITY_REPORT_NAME
     attestation, attestation_digest = _quality_attestation(
         contract,
-        attestation_path,
-        report_path,
-        pair_identity,
+        _QualityAttestationSource(
+            attestation_path=attestation_path,
+            report_path=report_path,
+            pair_identity=pair_identity,
+            code_candidate_tree=code_tree,
+            memory_candidate_tree=memory_tree,
+        ),
     )
     topology_fingerprint = candidate_task_topology_fingerprint(
         sprint,
@@ -319,6 +341,7 @@ def require_current_curator_coherence(
             exc.detail,
             next_action=exc.next_action or "publish",
         ) from exc
+    _require_current_dependencies(record)
     observed = {
         "pairIdentity": observation.pair_identity.model_dump(mode="json"),
         "codeCandidateTree": observation.code_candidate_tree,
@@ -358,20 +381,100 @@ def require_current_curator_coherence(
     return validated
 
 
+def _require_current_dependencies(record: CuratorCoherenceRecord) -> None:
+    """Require the record's declared edges to equal the inputs its validator reads."""
+
+    if not isinstance(record.taskIntent, TaskIntentIdentity):
+        raise CuratorCoherenceError(
+            "curator-coherence-task-intent-missing",
+            "curator coherence has no digest-bearing task intent dependency",
+            next_action="publish",
+        )
+    evidence = {judgment.evidenceRef: judgment.evidenceSha256 for judgment in record.judgments}
+    try:
+        expected = build_evidence_dependencies(
+            "curator-coherence/v1",
+            [
+                dependency(
+                    "code-tree",
+                    "candidate",
+                    record.codeCandidateTree,
+                    algorithm="git-object",
+                ),
+                dependency(
+                    "memory-tree",
+                    "candidate",
+                    record.memoryCandidateTree,
+                    algorithm="git-object",
+                ),
+                dependency(
+                    "semantic-topology",
+                    "leaf-placement",
+                    record.taskTopologyFingerprint,
+                ),
+                dependency("task-intent", "leaf", record.taskIntent.digest),
+                dependency(
+                    "memory-attestation",
+                    record.attestationPath,
+                    record.attestationSha256,
+                ),
+                dependency(
+                    "evidence-bytes",
+                    "memory-quality-report",
+                    record.attestationReportSha256,
+                ),
+                *(
+                    dependency("evidence-bytes", path, digest)
+                    for path, digest in sorted(evidence.items())
+                ),
+                dependency(
+                    "validator",
+                    EVIDENCE_DEPENDENCY_VALIDATOR,
+                    canonical_sha256(EVIDENCE_DEPENDENCY_VALIDATOR),
+                ),
+                *(
+                    [
+                        dependency(
+                            "predecessor-record",
+                            "prior-curator-coherence-authority",
+                            record.predecessorAuthorityDigest,
+                        )
+                    ]
+                    if record.predecessorAuthorityDigest
+                    else []
+                ),
+            ],
+        )
+        observed = require_evidence_dependencies(
+            record.dependencies,
+            record_type="curator-coherence/v1",
+        )
+    except EvidenceDependencyError as exc:
+        raise CuratorCoherenceError(
+            exc.status,
+            exc.detail,
+            next_action="publish",
+        ) from exc
+    if observed != expected:
+        raise CuratorCoherenceError(
+            "curator-coherence-dependencies-stale",
+            "curator coherence direct dependencies do not match its canonical record inputs",
+            next_action="publish",
+        )
+
+
 def curator_coherence_evidence(contract: WorktreeContract) -> list[EvidenceFact]:
     return require_current_curator_coherence(contract).evidence
 
 
 def _quality_attestation(
     contract: WorktreeContract,
-    attestation_path: Path,
-    report_path: Path,
-    pair_identity: MemoryCandidatePairIdentity,
+    source: _QualityAttestationSource,
 ) -> tuple[CuratorQualityAttestation, str]:
     assert contract.memory_worktree is not None
     try:
-        attestation_bytes = attestation_path.read_bytes()
-        report_bytes = report_path.read_bytes()
+        attestation_bytes = source.attestation_path.read_bytes()
+        report_bytes = source.report_path.read_bytes()
         attestation = CuratorQualityAttestation.model_validate_json(attestation_bytes)
     except (OSError, ValidationError) as exc:
         raise CuratorCoherenceError(
@@ -380,7 +483,7 @@ def _quality_attestation(
             next_action="memory_quality_check",
         ) from exc
     expected_onboarding = (contract.memory_worktree / "onboarding").resolve().as_posix()
-    expected_report = report_path.resolve().as_posix()
+    expected_report = source.report_path.resolve().as_posix()
     expected_ready = (
         "ready-for-closeout",
         0,
@@ -390,7 +493,7 @@ def _quality_attestation(
         expected_onboarding,
         expected_report,
         _digest(report_bytes),
-        pair_identity,
+        source.pair_identity,
     )
     observed_ready = (
         attestation.checklistStatus,
@@ -409,6 +512,18 @@ def _quality_attestation(
             "memory quality and its rendered checklist do not prove exact closeout readiness",
             next_action="memory_quality_check",
         )
+    try:
+        require_memory_quality_attestation_dependencies(
+            attestation,
+            code_candidate_tree=source.code_candidate_tree,
+            memory_candidate_tree=source.memory_candidate_tree,
+        )
+    except EvidenceDependencyError as exc:
+        raise CuratorCoherenceError(
+            exc.status,
+            exc.detail,
+            next_action="memory_quality_check",
+        ) from exc
     return attestation, _digest(attestation_bytes)
 
 

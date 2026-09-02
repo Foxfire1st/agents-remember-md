@@ -209,7 +209,7 @@ class CloseoutProjectionCensusTests(unittest.TestCase):
         rebuilt = self._rebuild()
         member = rebuilt["members"][0]
         self.assertEqual(member["classification"], "blocked")
-        self.assertIn("door-review-provenance-stale", member["reasons"])
+        self.assertIn("route-review-evidence-stale", member["reasons"])
 
     def test_grade_evidence_drift_is_part_of_the_source_fingerprint(self) -> None:
         self.fixture.declare(MASTER_A)

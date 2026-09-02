@@ -19,7 +19,10 @@ from agents_remember.application.worktree_tools import (
 )
 from agents_remember.kernel.primitives.runtime_config import load_config
 from agents_remember.models.declared_caller import DeclaredCaller
-from agents_remember.models.lifecycles.operation import IntegrateOperationInput
+from agents_remember.models.lifecycles.operation import (
+    IntegrateOperationInput,
+    require_lifecycle_operation_dependencies,
+)
 from agents_remember.models.lifecycles.operation_kinds import LifecycleControlAction
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.worktrees.integration.closeout import door as closeout_door
@@ -68,6 +71,7 @@ def _disposition_preserved_artifacts(contract, record) -> dict[str, object]:
         "doorPublication",
         "doorPublicationHistory",
         "guidance",
+        "dependencies",
     ):
         record_payload.pop(mutable)
     refs = {
@@ -144,13 +148,16 @@ def test_completed_unintegrated_disposition_preserves_artifacts(
     assert result["ok"] is True
     current = store.read()
     assert current is not None and current.doorPublication is not None
+    require_lifecycle_operation_dependencies(current)
     assert result["lifecycleOperation"]["generation"] == 1
     assert current.generationDisposition == ("retired" if action == "retire" else "superseded")
     observed_contract = load_contract(finalized.contract_path)
     assert _disposition_preserved_artifacts(observed_contract, current) == preserved
     if action == "supersede":
+        assert current.dependencies != record.dependencies
         assert record.doorPublication in current.doorPublicationHistory
     else:
+        assert current.dependencies == record.dependencies
         assert current.doorPublication == record.doorPublication
         assert current.doorPublicationHistory == record.doorPublicationHistory
 

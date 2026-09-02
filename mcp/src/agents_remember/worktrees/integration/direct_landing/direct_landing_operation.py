@@ -17,6 +17,7 @@ from agents_remember.models.lifecycles.mutation_evidence import (
 from agents_remember.models.lifecycles.operation import (
     LifecycleOperationRecord,
     LifecycleOperationRecoveryCommits,
+    lifecycle_operation_dependencies,
 )
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     derive_closeout_recovery_commits,
@@ -174,7 +175,7 @@ def direct_landing_record(
     """Build a journal snapshot; callers attach the claim intent before persistence."""
 
     stamp = _stamp()
-    return LifecycleOperationRecord(
+    record = LifecycleOperationRecord(
         taskId=contract.task_id,
         taskName=contract.task_name,
         contractPath=contract.contract_path.as_posix(),
@@ -205,6 +206,9 @@ def direct_landing_record(
         ),
         recoveryCommits=LifecycleOperationRecoveryCommits(codeCommit=operation_input.codeCommit),
     )
+    if door_publication is None:
+        return record
+    return record.model_copy(update={"dependencies": lifecycle_operation_dependencies(record)})
 
 
 def reconcile_direct_landing(

@@ -9,6 +9,10 @@ from typing import Any, get_args
 from pydantic import BaseModel
 
 from agents_remember.errors import AgentsRememberError
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EvidenceDependencies,
+    EvidenceDependency,
+)
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import (
     AcceptanceObligationQuestion,
@@ -160,7 +164,12 @@ TASK_DOCUMENT_FIELD_EFFECTS: dict[type[BaseModel], dict[str, FieldEffects]] = {
         "disposition": AUDIT,
     },
     Decision: {"at": AUDIT, "decision": AUDIT, "rationale": AUDIT},
-    RouteReviewUnit: {"route": EVIDENCE, "verdict": EVIDENCE, "evidenceRef": EVIDENCE},
+    RouteReviewUnit: {
+        "route": EVIDENCE,
+        "verdict": EVIDENCE,
+        "evidenceRef": EVIDENCE,
+        "evidenceSha256": EVIDENCE,
+    },
     RouteReviewRecord: {
         "candidateTree": EVIDENCE,
         "verdict": EVIDENCE,
@@ -168,6 +177,21 @@ TASK_DOCUMENT_FIELD_EFFECTS: dict[type[BaseModel], dict[str, FieldEffects]] = {
         "reviewedAt": EVIDENCE,
         "routes": EVIDENCE,
         "taskIntent": EVIDENCE,
+        "verdictSha256": EVIDENCE,
+        "dependencies": EVIDENCE,
+        "recordDigest": EVIDENCE,
+    },
+    EvidenceDependencies: {
+        "schemaVersion": EVIDENCE,
+        "recordType": EVIDENCE,
+        "validatorVersion": EVIDENCE,
+        "edges": EVIDENCE,
+    },
+    EvidenceDependency: {
+        "kind": EVIDENCE,
+        "name": EVIDENCE,
+        "algorithm": EVIDENCE,
+        "digest": EVIDENCE,
     },
     CodeExample: {
         "id": NORMATIVE,

@@ -31,6 +31,11 @@ from pydantic import (
     model_validator,
 )
 
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EvidenceDependencies,
+    canonical_sha256,
+    require_evidence_dependencies,
+)
 from agents_remember.models.task_document import DocStatus, MasterExecutionNature, StepStatus
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import (
@@ -132,6 +137,7 @@ class RouteReviewUnit(_Doc):
     route: str
     verdict: RouteReviewVerdict
     evidenceRef: str
+    evidenceSha256: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
 
     @field_validator("route", "evidenceRef")
     @classmethod
@@ -151,6 +157,9 @@ class RouteReviewRecord(_Doc):
     reviewedAt: str
     routes: list[RouteReviewUnit] = Field(min_length=1)
     taskIntent: TaskIntentState = Field(default_factory=missing_task_intent)
+    verdictSha256: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
+    dependencies: EvidenceDependencies | None = None
+    recordDigest: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
 
     @field_validator("verdictRef", "reviewedAt")
     @classmethod
@@ -170,6 +179,22 @@ class RouteReviewRecord(_Doc):
             raise ValueError("a blocking route-review verdict requires at least one blocked route")
         if self.verdict != "block" and blocked:
             raise ValueError("a passing route-review verdict cannot contain a blocked route")
+        dependency_shape = (
+            bool(self.verdictSha256),
+            self.dependencies is not None,
+            bool(self.recordDigest),
+            all(route.evidenceSha256 for route in self.routes),
+        )
+        if any(dependency_shape) and not all(dependency_shape):
+            raise ValueError(
+                "route-review content addressing requires every evidence digest, "
+                "the dependency declaration, and the record digest"
+            )
+        if all(dependency_shape):
+            require_evidence_dependencies(self.dependencies, record_type="route-review/v1")
+            payload = self.model_dump(mode="json", by_alias=True, exclude={"recordDigest"})
+            if canonical_sha256(payload) != self.recordDigest:
+                raise ValueError("route-review record digest does not match its canonical bytes")
         return self
 
 

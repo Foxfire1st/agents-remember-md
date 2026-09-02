@@ -237,6 +237,8 @@ def test_memory_quality_attestation_is_byte_stable_for_identical_input(
         code_root=tmp_path / "code",
         onboarding_root=tmp_path / "memory" / "onboarding",
         pair_identity=_pair(tmp_path),
+        code_candidate_tree="a" * 40,
+        memory_candidate_tree="b" * 40,
         quality={"findingCount": 0},
         repair_findings=[],
         commit_owned_findings=[],

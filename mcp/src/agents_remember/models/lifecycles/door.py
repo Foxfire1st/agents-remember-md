@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -11,9 +12,18 @@ from agents_remember.models.closeout.source import (
     SchedulingGradeInput,
 )
 from agents_remember.models.declared_caller import DeclaredCaller
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EVIDENCE_DEPENDENCY_VALIDATOR,
+    EvidenceDependencies,
+    EvidenceDependencyError,
+    build_evidence_dependencies,
+    canonical_sha256,
+    dependency,
+    require_evidence_dependencies,
+)
 from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
 from agents_remember.models.task_document_ref import TaskDocumentRef
-from agents_remember.models.task_intent import TaskIntentState
+from agents_remember.models.task_intent import TaskIntentIdentity, TaskIntentState
 
 CloseoutDoorDisposition = Literal["waiting", "deferred", "withdrawn", "claimed"]
 DoorPublicationState = Literal["intent", "proven"]
@@ -101,6 +111,7 @@ class CloseoutDoorGeneration(_StrictModel):
     ledgerProvenance: DoorProvenance
     admissionProvenance: DoorAdmissionProvenance
     schedulingProvenance: DoorSchedulingProvenance
+    dependencies: EvidenceDependencies | None = None
     declaredBy: str = Field(min_length=1, max_length=8192)
     declaredAt: str = Field(min_length=1, max_length=256)
     operationKind: LifecycleOperationKind | None = None
@@ -131,6 +142,93 @@ class CloseoutDoorGeneration(_StrictModel):
         ):
             raise ValueError("door task, master, and sprint references must share a repository")
         return self
+
+
+@dataclass(frozen=True)
+class DoorDependencyInputs:
+    candidate_tree: str
+    memory_candidate_tree: str
+    task_topology_fingerprint: str
+    task_intent: TaskIntentState
+    review: DoorProvenance
+    memory: DoorProvenance
+    ledger: DoorProvenance
+    admission: DoorAdmissionProvenance
+    scheduling: DoorSchedulingProvenance
+    predecessor: str
+
+
+def closeout_door_dependencies(inputs: DoorDependencyInputs) -> EvidenceDependencies:
+    """Declare exactly the prerequisite records read by one source generation."""
+
+    if not isinstance(inputs.task_intent, TaskIntentIdentity):
+        raise ValueError("closeout door dependencies require digest-bearing task intent")
+    return build_evidence_dependencies(
+        "closeout-door/v1",
+        [
+            dependency("code-tree", "candidate", inputs.candidate_tree, algorithm="git-object"),
+            *(
+                [
+                    dependency(
+                        "memory-tree",
+                        "candidate",
+                        inputs.memory_candidate_tree,
+                        algorithm="git-object",
+                    )
+                ]
+                if inputs.memory_candidate_tree
+                else []
+            ),
+            dependency("semantic-topology", "leaf-placement", inputs.task_topology_fingerprint),
+            dependency("task-intent", "leaf", inputs.task_intent.digest),
+            dependency("review-record", "route-review", inputs.review.fingerprint),
+            dependency("coherence-record", "curator-coherence", inputs.memory.fingerprint),
+            dependency("ledger-provenance", "ledger", inputs.ledger.fingerprint),
+            dependency("admission", "candidate-admission", inputs.admission.fingerprint),
+            dependency("scheduling", "grade", inputs.scheduling.fingerprint),
+            dependency(
+                "validator",
+                EVIDENCE_DEPENDENCY_VALIDATOR,
+                canonical_sha256(EVIDENCE_DEPENDENCY_VALIDATOR),
+            ),
+            *(
+                [dependency("predecessor-record", "prior-door", inputs.predecessor)]
+                if inputs.predecessor
+                else []
+            ),
+        ],
+    )
+
+
+def require_closeout_door_dependencies(
+    generation: CloseoutDoorGeneration,
+) -> EvidenceDependencies:
+    """Require the declared dependency set to match every canonical source input."""
+
+    expected = closeout_door_dependencies(
+        DoorDependencyInputs(
+            candidate_tree=generation.candidateTree,
+            memory_candidate_tree=generation.memoryCandidateTree,
+            task_topology_fingerprint=generation.taskTopologyFingerprint,
+            task_intent=generation.taskIntent,
+            review=generation.reviewProvenance,
+            memory=generation.memoryProvenance,
+            ledger=generation.ledgerProvenance,
+            admission=generation.admissionProvenance,
+            scheduling=generation.schedulingProvenance,
+            predecessor=generation.predecessorGenerationId,
+        )
+    )
+    observed = require_evidence_dependencies(
+        generation.dependencies,
+        record_type="closeout-door/v1",
+    )
+    if observed != expected:
+        raise EvidenceDependencyError(
+            "closeout-door-dependencies-stale",
+            "closeout door direct dependencies do not match its canonical source inputs",
+        )
+    return observed
 
 
 class DoorPublicationEvidence(_StrictModel):

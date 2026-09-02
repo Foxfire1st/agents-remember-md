@@ -25,6 +25,7 @@ from agents_remember.worktrees.route_review import (
     RouteReviewError,
     code_candidate_tree,
     code_change_present,
+    require_current_route_review,
     require_current_route_review_task_intent,
 )
 from agents_remember.worktrees.source_lineage import require_current_source_lineage
@@ -232,6 +233,7 @@ def _review_provenance(
             "the canonical route-review record does not match the current candidate tree",
         )
     try:
+        require_current_route_review(contract)
         require_current_route_review_task_intent(contract, candidate)
     except RouteReviewError as exc:
         raise CloseoutQueueError(exc.status, str(exc)) from exc
@@ -244,12 +246,7 @@ def _review_provenance(
     evidence = [_door_task_evidence(contract.task_root, ref) for ref in sorted(refs)]
     return DoorProvenance(
         state="proven",
-        fingerprint=_fingerprint(
-            {
-                "record": review.model_dump(mode="json"),
-                "evidence": [fact.model_dump(mode="json") for fact in evidence],
-            }
-        ),
+        fingerprint=review.recordDigest,
         evidence=evidence,
     )
 

@@ -11,6 +11,7 @@ import traceback
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from agents_remember.kernel.primitives.checkout_coordination import declare_test_process
 from agents_remember.worktrees.modules.git import worktree_candidate_tree
@@ -221,12 +222,17 @@ def _arguments() -> argparse.Namespace:
 
 
 def _candidate_identity(repository: Path) -> dict[str, str]:
+    repository = repository.resolve()
+    with TemporaryDirectory(prefix="arspawn-e2e-candidate-index-") as temporary:
+        scratch_root = Path(temporary).resolve()
+        if scratch_root == repository or scratch_root.is_relative_to(repository):
+            raise RuntimeError(
+                "ambient-role candidate identity scratch must be outside the repository"
+            )
+        tree = worktree_candidate_tree(repository, scratch_root / "candidate.index")
     return {
         "commit": _git(repository, "rev-parse", "HEAD"),
-        "tree": worktree_candidate_tree(
-            repository,
-            repository / ".arspawn-e2e-candidate-index",
-        ),
+        "tree": tree,
     }
 
 

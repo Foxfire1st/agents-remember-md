@@ -16,6 +16,16 @@ from agents_remember.models.lifecycles.direct_landing import (
     DirectLandingOperationInput,
 )
 from agents_remember.models.lifecycles.door import DoorPublicationEvidence
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EVIDENCE_DEPENDENCY_VALIDATOR,
+    EvidenceDependencies,
+    EvidenceDependencyError,
+    EvidenceRecordType,
+    build_evidence_dependencies,
+    canonical_sha256,
+    dependency,
+    require_evidence_dependencies,
+)
 from agents_remember.models.lifecycles.legacy import LegacyCloseoutMigrationProof
 from agents_remember.models.lifecycles.mutation_evidence import (
     CloseoutMutationLeg,
@@ -396,6 +406,7 @@ class LifecycleOperationRecord(BaseModel):
     terminationReturnPhase: LifecycleOperationPhase | None = None
     cancellationEvidence: LifecycleCancellationEvidence | None = None
     legacyMigration: LegacyCloseoutMigrationProof | None = None
+    dependencies: EvidenceDependencies | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -412,6 +423,82 @@ class LifecycleOperationRecord(BaseModel):
     def _require_altitude_authority(self) -> LifecycleOperationRecord:
         _require_altitude_authority(self)
         return self
+
+
+def lifecycle_operation_dependencies(
+    record: LifecycleOperationRecord,
+) -> EvidenceDependencies:
+    """Declare the admitted candidate, door, plan, and normalized operation input."""
+
+    record_type: EvidenceRecordType
+    if record.operationKind == "closeout":
+        record_type = "lifecycle-closeout-operation/v3"
+    elif record.operationKind == "direct-landing":
+        record_type = "lifecycle-direct-landing-operation/v3"
+    else:
+        record_type = "lifecycle-integration-operation/v3"
+    input_value = record.input.model_dump(mode="json")
+    edges = [
+        dependency("candidate-state", "accepted-candidate", record.candidateState),
+        dependency("operation-input", record.operationKind, canonical_sha256(input_value)),
+        dependency(
+            "rail-plan",
+            "gate-policy",
+            canonical_sha256([rule.model_dump(mode="json") for rule in record.input.gatePolicy]),
+        ),
+        dependency(
+            "validator",
+            EVIDENCE_DEPENDENCY_VALIDATOR,
+            canonical_sha256(EVIDENCE_DEPENDENCY_VALIDATOR),
+        ),
+    ]
+    if record.operationKind in {"closeout", "direct-landing"}:
+        if record.candidateTree is None or not isinstance(record.taskIntent, TaskIntentIdentity):
+            raise EvidenceDependencyError(
+                "lifecycle-operation-candidate-dependencies-missing",
+                "commit operation lacks a code tree or digest-bearing task intent",
+            )
+        admitted = record.doorPublication
+        if admitted is None:
+            raise EvidenceDependencyError(
+                "lifecycle-operation-door-dependency-missing",
+                "commit operation has no admitted closeout-door generation",
+            )
+        edges.extend(
+            (
+                dependency(
+                    "code-tree",
+                    "candidate",
+                    record.candidateTree,
+                    algorithm="git-object",
+                ),
+                dependency("task-intent", "leaf", record.taskIntent.digest),
+                dependency(
+                    "door-generation",
+                    "admitted-door",
+                    admitted.generation.generationId,
+                ),
+            )
+        )
+    return build_evidence_dependencies(record_type, edges)
+
+
+def require_lifecycle_operation_dependencies(
+    record: LifecycleOperationRecord,
+) -> EvidenceDependencies:
+    """Refuse an operation whose declared edges differ from its admitted immutable inputs."""
+
+    expected = lifecycle_operation_dependencies(record)
+    observed = require_evidence_dependencies(
+        record.dependencies,
+        record_type=expected.recordType,
+    )
+    if observed != expected:
+        raise EvidenceDependencyError(
+            "lifecycle-operation-dependencies-stale",
+            "lifecycle operation direct dependencies do not match its admitted inputs",
+        )
+    return observed
 
 
 def _require_altitude_authority(record: LifecycleOperationRecord) -> None:

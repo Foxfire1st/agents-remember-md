@@ -44,6 +44,7 @@ from agents_remember.models.lifecycles.door import CloseoutDoorGeneration
 from agents_remember.models.lifecycles.operation import (
     GatePolicyRuleSnapshot,
     LifecycleOperationRecord,
+    lifecycle_operation_dependencies,
 )
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity
@@ -702,6 +703,7 @@ def _claim_waiting_direct_landing(
     queued = provisional.model_copy(
         update={"doorPublication": prepare_door_publication(contract, claimed)}
     )
+    queued = queued.model_copy(update={"dependencies": lifecycle_operation_dependencies(queued)})
     current, created = _create_direct_claim(store, queued, door)
     current = _publish_direct_door_proof(contract, store, current)
     return current, load_contract(contract.contract_path), created, door.sprintTaskDocumentRef

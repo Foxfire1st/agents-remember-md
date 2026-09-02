@@ -19,6 +19,9 @@ from agents_remember.kernel.git_command import run_git
 from agents_remember.memory_quality.integrity.onboarding_drift_check.models import (
     ACTIONABLE_CLASSIFICATIONS,
 )
+from agents_remember.models.lifecycles.curator_coherence import (
+    memory_quality_attestation_dependencies,
+)
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 
 REPORT_DIRECTORY_NAME = "reports"
@@ -34,6 +37,8 @@ class CuratorChecklist:
     code_root: Path
     onboarding_root: Path
     pair_identity: MemoryCandidatePairIdentity
+    code_candidate_tree: str
+    memory_candidate_tree: str
     quality: dict[str, Any]
     repair_findings: list[dict[str, Any]]
     commit_owned_findings: list[dict[str, Any]]
@@ -142,6 +147,12 @@ def write_curator_checklist(checklist: CuratorChecklist) -> dict[str, Any]:
         "reportPath": report_path.as_posix(),
         "reportSha256": hashlib.sha256(report.encode("utf-8")).hexdigest(),
     }
+    attestation["dependencies"] = memory_quality_attestation_dependencies(
+        pair_identity=checklist.pair_identity,
+        code_candidate_tree=checklist.code_candidate_tree,
+        memory_candidate_tree=checklist.memory_candidate_tree,
+        report_sha256=str(attestation["reportSha256"]),
+    ).model_dump(mode="json")
     atomic_write_text(
         attestation_path,
         json.dumps(attestation, sort_keys=True, separators=(",", ":")) + "\n",

@@ -35,6 +35,7 @@ from agents_remember.worktrees.modules.quality.published_manifest import (
     REPORT_SET_MANIFEST,
     PublishedQualityManifest,
     load_published_quality_manifest,
+    quality_report_dependencies,
     require_real_directory_or_missing,
     require_real_file_or_missing,
 )
@@ -320,7 +321,9 @@ def _publish_reports(
     destination.mkdir(parents=True, exist_ok=True)
     require_real_directory_or_missing(destination, purpose="quality report destination")
     files = _report_file_records(source, exported_names)
-    generation = _generation_digest(candidate_tree, files)
+    dependencies = quality_report_dependencies(candidate_tree, files, attestation)
+    dependencies_value = dependencies.model_dump(mode="json")
+    generation = _generation_digest(candidate_tree, files, dependencies_value)
     generations = destination / REPORT_GENERATIONS_DIRECTORY
     require_real_directory_or_missing(generations, purpose="quality generation directory")
     generations.mkdir(parents=True, exist_ok=True)
@@ -333,6 +336,7 @@ def _publish_reports(
         "generation": generation,
         "candidateTree": candidate_tree,
         "files": files,
+        "dependencies": dependencies_value,
     }
     if attestation is not None:
         manifest["attestation"] = dict(attestation)
@@ -375,10 +379,18 @@ def _report_file_records(source: Path, exported_names: set[str]) -> dict[str, di
     }
 
 
-def _generation_digest(candidate_tree: str, files: Mapping[str, object]) -> str:
+def _generation_digest(
+    candidate_tree: str,
+    files: Mapping[str, object],
+    dependencies: object,
+) -> str:
     return hashlib.sha256(
         json.dumps(
-            {"candidateTree": candidate_tree, "files": files},
+            {
+                "candidateTree": candidate_tree,
+                "files": files,
+                "dependencies": dependencies,
+            },
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")

@@ -467,8 +467,14 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 "candidateTree": CANDIDATE_TREE,
                 "files": {"result.json": {"sha256": "0" * 64, "size": 1}},
             }
+            manifest["dependencies"] = clean_quality_executor.quality_report_dependencies(
+                CANDIDATE_TREE, manifest["files"], None
+            ).model_dump(mode="json")
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "report is incomplete"):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"published Dagger report is incomplete: result\.json",
+            ):
                 clean_quality_executor.published_report_path(reports, "result.json")
 
             traversal_manifest = {

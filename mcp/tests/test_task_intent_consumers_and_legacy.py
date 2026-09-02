@@ -46,6 +46,7 @@ from agents_remember.tasks.task_intent import (
     require_current_task_intent,
     task_intent_identity,
 )
+from agents_remember.worktrees import route_review as route_review_module
 from agents_remember.worktrees.integration.closeout import door_evidence as door_evidence_module
 from agents_remember.worktrees.integration.closeout.curator_coherence_render import (
     render_curator_coherence,
@@ -131,12 +132,10 @@ def _master_document(*leaf_files: str) -> TaskDocument:
     )
 
 
-def _route_review_payload() -> dict[str, object]:
+def _route_review_author_payload() -> dict[str, object]:
     return {
-        "candidateTree": "a" * 40,
         "verdict": "pass",
         "verdictRef": "notes/review.md",
-        "reviewedAt": "2026-09-01T00:00:00+00:00",
         "routes": [
             {
                 "route": "task-intent",
@@ -144,6 +143,14 @@ def _route_review_payload() -> dict[str, object]:
                 "evidenceRef": "notes/review.md",
             }
         ],
+    }
+
+
+def _route_review_payload() -> dict[str, object]:
+    return {
+        "candidateTree": "a" * 40,
+        "reviewedAt": "2026-09-01T00:00:00+00:00",
+        **_route_review_author_payload(),
     }
 
 
@@ -354,10 +361,15 @@ def test_door_review_provenance_reuses_route_review_intent_currentness(
         document=document,
     )
     current = task_intent_identity(task_root, unresolved)
-    review_payload = _route_review_payload()
-    if observed is not None:
-        review_payload["taskIntent"] = observed.model_dump(mode="json", by_alias=True)
-    review = RouteReviewRecord.model_validate(review_payload)
+    monkeypatch.setattr(route_review_module, "code_candidate_tree", lambda _contract: "a" * 40)
+    review = route_review_module.build_route_review(
+        cast(WorktreeContract, SimpleNamespace(kind="leaf", task_root=task_root)),
+        unresolved,
+        _route_review_author_payload(),
+    )
+    review = review.model_copy(
+        update={"taskIntent": observed if observed is not None else MissingTaskIntent()}
+    )
     candidate = ResolvedTaskDocument(
         ref=LEAF,
         path=unresolved.path,
@@ -365,6 +377,11 @@ def test_door_review_provenance_reuses_route_review_intent_currentness(
     )
     contract = cast(WorktreeContract, SimpleNamespace(task_root=task_root))
     monkeypatch.setattr(door_evidence_module, "code_change_present", lambda _contract: True)
+    monkeypatch.setattr(
+        door_evidence_module,
+        "require_current_route_review",
+        lambda _contract: {"required": True, "status": "current"},
+    )
 
     with pytest.raises(CloseoutQueueError) as caught:
         door_evidence_module._review_provenance(contract, candidate, "a" * 40)

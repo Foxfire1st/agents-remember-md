@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from _evidence_catalog_fixture import write_synthetic_evidence_catalog
 from agents_remember_test_support.code_quality.dependency_ownership import (
+    AMBIENT_ROLE_RUNNER_PATH,
     CODEX_CONFIG_PATH,
     LAYERS_CONTRACT_PATH,
     DependencyOwnershipGraph,
@@ -188,6 +189,28 @@ def test_codex_starter_config_has_exact_observed_consumers() -> None:
     assert impact.tests == (
         Path("mcp/tests/test_public_surface_conformance.py"),
         Path("mcp/tests/test_starter_renderers.py"),
+    )
+    assert all(
+        any(
+            reason.kind.value == "declared-consumer"
+            and reason.detail == "verified-repository-input"
+            for reason in impact.reasons_for(test)
+        )
+        for test in impact.tests
+    )
+
+
+def test_ambient_role_runner_has_exact_pytest_consumers() -> None:
+    repository_root = Path(__file__).parents[2]
+
+    impact = DependencyOwnershipGraph(repository_root).resolve([AMBIENT_ROLE_RUNNER_PATH])
+
+    assert impact.complete
+    assert impact.fresh_rerun_reason is None
+    assert impact.tests == (
+        Path("mcp/tests/test_agents_remember_quality.py"),
+        Path("mcp/tests/test_code_quality_check.py"),
+        Path("mcp/tests/test_quality_scope_reporting.py"),
     )
     assert all(
         any(

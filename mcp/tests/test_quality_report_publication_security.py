@@ -101,7 +101,10 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
             candidate = _source(root, "candidate", attempt="candidate")
             names = clean_executor._validated_export_inventory(candidate)
             records = clean_executor._report_file_records(candidate, names)
-            generation = clean_executor._generation_digest(CANDIDATE_TREE, records)
+            dependencies = clean_executor.quality_report_dependencies(
+                CANDIDATE_TREE, records, None
+            ).model_dump(mode="json")
+            generation = clean_executor._generation_digest(CANDIDATE_TREE, records, dependencies)
             external = root / "external-generation"
             external.mkdir()
             sentinel = external / "sentinel"

@@ -1,7 +1,5 @@
 {
-  "activeWorktreeGroups": [
-    "sim-group"
-  ],
+  "activeWorktreeGroups": ["sim-group"],
   "analytics": {
     "agentPickups": [
       {
@@ -130,10 +128,7 @@
           "factState": "observed",
           "path": "/worktrees/agents-remember/sim-group"
         },
-        "completedPhases": [
-          "worktree-add",
-          "cgc-seed"
-        ],
+        "completedPhases": ["worktree-add", "cgc-seed"],
         "currentPhase": "grepai-clone",
         "edges": [
           {
@@ -223,9 +218,7 @@
         },
         "seedFallback": false,
         "setupState": "complete",
-        "sourceFiles": [
-          "/tasks/sim/enclosures/sim/series-contract.md"
-        ],
+        "sourceFiles": ["/tasks/sim/enclosures/sim/series-contract.md"],
         "sourceLineage": {
           "edges": [
             {
@@ -334,9 +327,7 @@
         "memoryWorktree": {
           "factState": "not-applicable"
         },
-        "missingFacts": [
-          "memory-worktree"
-        ],
+        "missingFacts": ["memory-worktree"],
         "phase": "provider-setup",
         "providers": [
           {
@@ -414,14 +405,10 @@
           "branch": "sim/SIM-4",
           "factState": "observed"
         },
-        "completedPhases": [
-          "worktree-add"
-        ],
+        "completedPhases": ["worktree-add"],
         "edges": [],
         "enclosure": "failed-enclosure",
-        "failedPhases": [
-          "cgc-seed"
-        ],
+        "failedPhases": ["cgc-seed"],
         "health": "failed",
         "humanReviewStatus": "pending",
         "id": "failed-enclosure",
@@ -537,10 +524,7 @@
         "ledgerRowCount": 0,
         "ledgerRows": [],
         "memoryMode": "external",
-        "missingFacts": [
-          "code-source",
-          "code-worktree"
-        ],
+        "missingFacts": ["code-source", "code-worktree"],
         "phase": "unknown",
         "providers": [],
         "repoName": "agents-remember",
@@ -563,11 +547,7 @@
           "branch": "sim/SIM-8",
           "factState": "observed"
         },
-        "completedPhases": [
-          "worktree-add",
-          "cgc-seed",
-          "grepai-clone"
-        ],
+        "completedPhases": ["worktree-add", "cgc-seed", "grepai-clone"],
         "edges": [],
         "enclosure": "complete-enclosure",
         "failedPhases": [],
@@ -814,17 +794,11 @@
         "lifecycleId": "sim-replay-lifecycle",
         "masterLifecycleId": "sim-master-lifecycle",
         "objective": "keep the mirror honest",
-        "openQuestions": [
-          "which vocabularies still have no runtime tuple?"
-        ],
+        "openQuestions": ["which vocabularies still have no runtime tuple?"],
         "orchestrates": [],
-        "references": [
-          "mcp/src/agents_remember/observer/projection.py"
-        ],
+        "references": ["mcp/src/agents_remember/observer/projection.py"],
         "repository": "agents-remember",
-        "requirements": [
-          "the guard fails when the server grows a field"
-        ],
+        "requirements": ["the guard fails when the server grows a field"],
         "sections": [
           {
             "body": "the fixture is the server here",
@@ -912,9 +886,7 @@
           "nodes": [
             {
               "kind": "segment",
-              "leafIds": [
-                "SIM-A-L1"
-              ],
+              "leafIds": ["SIM-A-L1"],
               "ref": {
                 "path": "sim-master-a/task.json",
                 "repository": "agents-remember"
@@ -922,9 +894,7 @@
             },
             {
               "kind": "segment",
-              "leafIds": [
-                "SIM-B-L1"
-              ],
+              "leafIds": ["SIM-B-L1"],
               "ref": {
                 "path": "sim-master-b/task.json",
                 "repository": "agents-remember"
@@ -936,9 +906,7 @@
           [
             {
               "kind": "segment",
-              "leafIds": [
-                "SIM-A-L1"
-              ],
+              "leafIds": ["SIM-A-L1"],
               "ref": {
                 "path": "sim-master-a/task.json",
                 "repository": "agents-remember"
@@ -948,9 +916,7 @@
           [
             {
               "kind": "segment",
-              "leafIds": [
-                "SIM-B-L1"
-              ],
+              "leafIds": ["SIM-B-L1"],
               "ref": {
                 "path": "sim-master-b/task.json",
                 "repository": "agents-remember"
@@ -962,10 +928,7 @@
         "kind": "master",
         "objective": "derive execution waves from reasoned dependencies",
         "openQuestions": [],
-        "orchestrates": [
-          "sim-master-a",
-          "sim-master-b"
-        ],
+        "orchestrates": ["sim-master-a", "sim-master-b"],
         "references": [],
         "repository": "agents-remember",
         "requirements": [],
@@ -1022,12 +985,8 @@
                 "path": "sim-master-a/task.json"
               },
               "masterTitle": "Sim Master A",
-              "leafIds": [
-                "SIM-A-L1"
-              ],
-              "leafTitles": [
-                "Shared framework"
-              ],
+              "leafIds": ["SIM-A-L1"],
+              "leafTitles": ["Shared framework"],
               "waveIndex": 1,
               "frontierState": "in-flight",
               "executionNature": "organizational",
@@ -1041,12 +1000,8 @@
                 "path": "sim-master-b/task.json"
               },
               "masterTitle": "Sim Master B",
-              "leafIds": [
-                "SIM-B-L1"
-              ],
-              "leafTitles": [
-                "Dependent work"
-              ],
+              "leafIds": ["SIM-B-L1"],
+              "leafTitles": ["Dependent work"],
               "waveIndex": 2,
               "frontierState": "waiting",
               "executionNature": "organizational",
@@ -1070,12 +1025,8 @@
                 "path": "sim-master-a/task.json"
               },
               "masterTitle": "Sim Master A",
-              "leafIds": [
-                "SIM-A-L1"
-              ],
-              "leafTitles": [
-                "Shared framework"
-              ],
+              "leafIds": ["SIM-A-L1"],
+              "leafTitles": ["Shared framework"],
               "waveIndex": 1,
               "frontierState": "landed",
               "executionNature": "organizational",
@@ -1089,12 +1040,8 @@
                 "path": "sim-master-b/task.json"
               },
               "masterTitle": "Sim Master B",
-              "leafIds": [
-                "SIM-B-L1"
-              ],
-              "leafTitles": [
-                "Dependent work"
-              ],
+              "leafIds": ["SIM-B-L1"],
+              "leafTitles": ["Dependent work"],
               "waveIndex": 2,
               "frontierState": "ready",
               "executionNature": "atomic",
@@ -1190,9 +1137,7 @@
             "repository": "agents-remember"
           },
           "priority": "low",
-          "reasons": [
-            "door-scheduling-provenance-stale"
-          ],
+          "reasons": ["door-scheduling-provenance-stale"],
           "taskDocumentRef": {
             "path": "master-b/leaf-b.json",
             "repository": "agents-remember"
@@ -1317,16 +1262,16 @@
             }
           }
         ],
+        "taskIntent": {
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "schema": "task-intent/v1"
+        },
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
         "result": {
           "reason": "fixture failure"
         },
         "startedAt": "2026-08-12T12:00:00+00:00",
-        "status": "failed",
-        "taskIntent": {
-          "digest": "9999999999999999999999999999999999999999999999999999999999999999",
-          "schema": "task-intent/v1"
-        }
+        "status": "failed"
       },
       "memoryWorktreeExists": true,
       "repoName": "agents-remember",
@@ -1821,10 +1766,7 @@
       "enclosure": "sim-enclosure",
       "fleeting": false,
       "gate": {
-        "decisions": [
-          "approve",
-          "revise"
-        ],
+        "decisions": ["approve", "revise"],
         "evidenceRefs": [
           {
             "kind": "task-doc",
@@ -1903,9 +1845,7 @@
       "gate": {
         "decidedBy": "developer",
         "decidedVia": "dashboard",
-        "decisions": [
-          "approve"
-        ],
+        "decisions": ["approve"],
         "evidenceRefs": [
           {
             "kind": "task-doc",

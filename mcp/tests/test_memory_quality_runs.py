@@ -464,6 +464,11 @@ class MemoryQualityControllerTests(unittest.TestCase):
             ) as scan,
             mock.patch.object(
                 controller,
+                "_curator_candidate_inputs",
+                return_value=controller._CuratorCandidateInputs("a" * 40, "b" * 40),
+            ),
+            mock.patch.object(
+                controller,
                 "check_missing_onboarding",
                 return_value=mock.Mock(findings=[]),
             ),

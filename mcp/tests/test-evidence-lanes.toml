@@ -60,6 +60,7 @@ unit-regression = [
   "mcp/tests/test_dispatch_agent_ambient.py",
   "mcp/tests/test_dispatch_brief.py",
   "mcp/tests/test_docker_runtime_parsers.py",
+  "mcp/tests/test_evidence_dependencies.py",
   "mcp/tests/test_execution_graph_indexed_admission.py",
   "mcp/tests/test_execution_graph_render.py",
   "mcp/tests/test_execution_graph_view.py",

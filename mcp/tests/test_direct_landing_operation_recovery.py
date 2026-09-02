@@ -28,8 +28,13 @@ from agents_remember.kernel.memory_ledger import (
 )
 from agents_remember.mcp.tools.direct_landing import direct_landing_payload
 from agents_remember.models.direct_landing import DirectLandingResponse
-from agents_remember.models.lifecycles.direct_landing import DirectLandingLedgerIntent
+from agents_remember.models.lifecycles.direct_landing import (
+    DirectLandingLedgerIntent,
+    DirectLandingOperationInput,
+)
 from agents_remember.models.lifecycles.mutation_evidence import CloseoutMutationLeg
+from agents_remember.models.lifecycles.operation import require_lifecycle_operation_dependencies
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.direct_landing import (
     DirectLandingError,
     DirectLandingRequest,
@@ -42,10 +47,14 @@ from agents_remember.worktrees.integration.direct_landing import (
 )
 from agents_remember.worktrees.integration.direct_landing.direct_landing_operation import (
     DirectLandingRuntime,
+    direct_landing_record,
     direct_landing_store,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_generation_resume import (
     requeued_same_generation,
+)
+from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_candidate import (
+    LifecycleOperationCandidate,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_control_projection import (
     legal_operation_controls,
@@ -209,7 +218,24 @@ class DirectLandingOperationRecoveryTests(unittest.TestCase):
         fixture = self._fixture()
         self._admit_without_execution(fixture)
         record = direct_landing_store(fixture["contract"]).read()
-        assert record is not None
+        assert (
+            record is not None
+            and record.doorPublication is not None
+            and isinstance(record.input, DirectLandingOperationInput)
+            and isinstance(record.taskIntent, TaskIntentIdentity)
+        )
+        rebuilt = direct_landing_record(
+            fixture["contract"],
+            record.input,
+            LifecycleOperationCandidate(
+                state=record.candidateState,
+                tree=record.candidateTree,
+                fingerprint=record.fingerprint,
+                task_intent=record.taskIntent,
+            ),
+            record.doorPublication,
+        )
+        require_lifecycle_operation_dependencies(rebuilt)
 
         observed = direct_landing_payload(fixture["config"], self._request(fixture))
 

@@ -26,12 +26,20 @@ GLOBAL_TEST_INPUTS = frozenset(
     }
 )
 
-# Non-Python product inputs cannot participate in the import graph. Keep their
-# exact pytest consumers explicit here, then verify the declaration against
-# source-observed literal reads before trusting a targeted selection.
+# Repository inputs whose pytest population differs from their broader source-consumer
+# lifecycle keep exact test consumers here. Verify each declaration against source-observed
+# pytest reads before trusting a targeted selection.
 CODEX_CONFIG_PATH = Path(".codex") / "config.toml"
 LAYERS_CONTRACT_PATH = Path("layers").with_suffix(".toml")
+AMBIENT_ROLE_RUNNER_PATH = Path("scripts") / "e2e_harness" / "run.py"
 REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
+    AMBIENT_ROLE_RUNNER_PATH: frozenset(
+        {
+            Path("mcp/tests/test_agents_remember_quality.py"),
+            Path("mcp/tests/test_code_quality_check.py"),
+            Path("mcp/tests/test_quality_scope_reporting.py"),
+        }
+    ),
     CODEX_CONFIG_PATH: frozenset(
         {
             Path("mcp/tests/test_public_surface_conformance.py"),

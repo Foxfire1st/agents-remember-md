@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,14 @@ from typing import Any
 from pydantic import ValidationError
 
 from agents_remember.errors import TaskIntentError
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EVIDENCE_DEPENDENCY_VALIDATOR,
+    EvidenceDependencyError,
+    build_evidence_dependencies,
+    canonical_sha256,
+    dependency,
+    require_evidence_dependencies,
+)
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks import RouteReviewRecord
@@ -74,16 +83,37 @@ def build_route_review(
         raise RouteReviewError("route-review-invalid-altitude", "route review belongs to a leaf")
     try:
         intent = task_intent_identity(contract.task_root, candidate)
-        record = RouteReviewRecord.model_validate(
-            {
-                **payload,
-                "candidateTree": code_candidate_tree(contract),
-                "reviewedAt": (now or datetime.now(UTC)).replace(microsecond=0).isoformat(),
-                "taskIntent": intent.model_dump(mode="json", by_alias=True),
-            }
+        candidate_tree = code_candidate_tree(contract)
+        stamped = _stamp_evidence_digests(contract.task_root, payload)
+        dependencies = build_evidence_dependencies(
+            "route-review/v1",
+            [
+                dependency("code-tree", "candidate", candidate_tree, algorithm="git-object"),
+                dependency("task-intent", "leaf", intent.digest),
+                dependency(
+                    "validator",
+                    EVIDENCE_DEPENDENCY_VALIDATOR,
+                    canonical_sha256(EVIDENCE_DEPENDENCY_VALIDATOR),
+                ),
+                *(
+                    dependency("evidence-bytes", ref, digest)
+                    for ref, digest in _stamped_evidence(stamped).items()
+                ),
+            ],
         )
-    except (TaskIntentError, ValidationError) as exc:
+        record_payload = {
+            **stamped,
+            "candidateTree": candidate_tree,
+            "reviewedAt": (now or datetime.now(UTC)).replace(microsecond=0).isoformat(),
+            "taskIntent": intent.model_dump(mode="json", by_alias=True),
+            "dependencies": dependencies.model_dump(mode="json"),
+        }
+        record_payload["recordDigest"] = canonical_sha256(record_payload)
+        record = RouteReviewRecord.model_validate(record_payload)
+    except (EvidenceDependencyError, TaskIntentError, ValidationError) as exc:
         if isinstance(exc, TaskIntentError):
+            raise RouteReviewError(exc.status, exc.detail) from exc
+        if isinstance(exc, EvidenceDependencyError):
             raise RouteReviewError(exc.status, exc.detail) from exc
         raise RouteReviewError("route-review-invalid", str(exc)) from exc
     _require_evidence_files(contract.task_root, record)
@@ -153,7 +183,7 @@ def require_current_route_review_task_intent(
         )
     try:
         current_intent = task_intent_identity(contract.task_root, candidate)
-        return require_current_task_intent(
+        accepted_intent = require_current_task_intent(
             review.taskIntent,
             current_intent,
             owner="route-review",
@@ -161,6 +191,8 @@ def require_current_route_review_task_intent(
         )
     except TaskIntentError as exc:
         raise RouteReviewError(exc.status, exc.detail) from exc
+    _require_current_dependencies(review)
+    return accepted_intent
 
 
 def document_ref(contract: WorktreeContract, path: Path) -> TaskDocumentRef:
@@ -180,23 +212,118 @@ def document_ref(contract: WorktreeContract, path: Path) -> TaskDocumentRef:
 
 
 def _require_evidence_files(task_root: Path, review: RouteReviewRecord) -> None:
-    refs = {review.verdictRef, *(route.evidenceRef for route in review.routes)}
+    expected = {
+        review.verdictRef: review.verdictSha256,
+        **{route.evidenceRef: route.evidenceSha256 for route in review.routes},
+    }
     root = task_root.resolve()
-    for ref in sorted(refs):
-        supplied = Path(ref)
-        if supplied.is_absolute():
+    for ref, digest in sorted(expected.items()):
+        observed = _evidence_file_sha256(root, ref)
+        if digest != observed:
             raise RouteReviewError(
-                "route-review-evidence-outside-task",
-                f"route-review evidence must use a task-relative path: {ref}",
+                "route-review-evidence-stale",
+                f"route-review evidence bytes changed after publication: {ref}",
             )
-        resolved = (root / supplied).resolve(strict=False)
-        if not resolved.is_relative_to(root):
+
+
+def _require_current_dependencies(review: RouteReviewRecord) -> None:
+    if not isinstance(review.taskIntent, TaskIntentIdentity):
+        raise RouteReviewError(
+            "route-review-task-intent-missing",
+            "route review has no digest-bearing task intent dependency",
+        )
+    evidence = {
+        review.verdictRef: review.verdictSha256,
+        **{route.evidenceRef: route.evidenceSha256 for route in review.routes},
+    }
+    try:
+        expected = build_evidence_dependencies(
+            "route-review/v1",
+            [
+                dependency(
+                    "code-tree",
+                    "candidate",
+                    review.candidateTree,
+                    algorithm="git-object",
+                ),
+                dependency("task-intent", "leaf", review.taskIntent.digest),
+                *(
+                    dependency("evidence-bytes", ref, digest)
+                    for ref, digest in sorted(evidence.items())
+                ),
+                dependency(
+                    "validator",
+                    EVIDENCE_DEPENDENCY_VALIDATOR,
+                    canonical_sha256(EVIDENCE_DEPENDENCY_VALIDATOR),
+                ),
+            ],
+        )
+        observed = require_evidence_dependencies(
+            review.dependencies,
+            record_type="route-review/v1",
+        )
+    except EvidenceDependencyError as exc:
+        raise RouteReviewError(exc.status, exc.detail) from exc
+    if observed != expected:
+        raise RouteReviewError(
+            "route-review-dependencies-stale",
+            "route-review direct dependencies do not match its canonical record inputs",
+        )
+
+
+def _stamp_evidence_digests(task_root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    verdict_ref = payload.get("verdictRef")
+    routes = payload.get("routes")
+    if not isinstance(verdict_ref, str) or not isinstance(routes, list):
+        raise RouteReviewError(
+            "route-review-invalid",
+            "route-review verdictRef and routes must be supplied before evidence is stamped",
+        )
+    root = task_root.resolve()
+    stamped_routes: list[dict[str, Any]] = []
+    for route in routes:
+        if not isinstance(route, dict) or not isinstance(route.get("evidenceRef"), str):
             raise RouteReviewError(
-                "route-review-evidence-outside-task",
-                f"route-review evidence escapes the task root: {ref}",
+                "route-review-invalid",
+                "every route-review route must carry one evidenceRef",
             )
-        if not resolved.is_file():
-            raise RouteReviewError(
-                "route-review-evidence-missing",
-                f"route-review evidence does not exist: {ref}",
-            )
+        ref = route["evidenceRef"]
+        stamped_routes.append({**route, "evidenceSha256": _evidence_file_sha256(root, ref)})
+    return {
+        **payload,
+        "verdictSha256": _evidence_file_sha256(root, verdict_ref),
+        "routes": stamped_routes,
+    }
+
+
+def _stamped_evidence(payload: dict[str, Any]) -> dict[str, str]:
+    evidence = {str(payload["verdictRef"]): str(payload["verdictSha256"])}
+    routes = payload["routes"]
+    assert isinstance(routes, list)  # _stamp_evidence_digests establishes this shape
+    for route in routes:
+        assert isinstance(route, dict)
+        evidence[str(route["evidenceRef"])] = str(route["evidenceSha256"])
+    return evidence
+
+
+def _evidence_file_sha256(root: Path, ref: str) -> str:
+    supplied = Path(ref)
+    if supplied.is_absolute():
+        raise RouteReviewError(
+            "route-review-evidence-outside-task",
+            f"route-review evidence must use a task-relative path: {ref}",
+        )
+    resolved = (root / supplied).resolve(strict=False)
+    if not resolved.is_relative_to(root):
+        raise RouteReviewError(
+            "route-review-evidence-outside-task",
+            f"route-review evidence escapes the task root: {ref}",
+        )
+    try:
+        payload = resolved.read_bytes()
+    except OSError as exc:
+        raise RouteReviewError(
+            "route-review-evidence-missing",
+            f"route-review evidence does not exist: {ref}",
+        ) from exc
+    return hashlib.sha256(payload).hexdigest()

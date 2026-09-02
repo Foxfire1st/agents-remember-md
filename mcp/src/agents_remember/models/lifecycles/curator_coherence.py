@@ -8,6 +8,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from agents_remember.models.base import ToolResponse
 from agents_remember.models.declared_caller import DeclaredCaller
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EVIDENCE_DEPENDENCY_VALIDATOR,
+    EvidenceDependencies,
+    EvidenceDependencyError,
+    build_evidence_dependencies,
+    canonical_sha256,
+    dependency,
+    require_evidence_dependencies,
+)
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity, TaskIntentState
@@ -25,6 +34,7 @@ CuratorDisposition = Literal[
     "capture-candidate",
 ]
 MAX_CURATOR_SOURCE_CANDIDATES = 2048
+MEMORY_QUALITY_ATTESTATION_VALIDATOR = "curator-memory-quality-attestation/v1"
 
 
 class _StrictModel(BaseModel):
@@ -66,6 +76,7 @@ class CuratorQualityAttestation(_StrictModel):
     onboardingRoot: str = Field(min_length=1, max_length=8192)
     reportPath: str = Field(min_length=1, max_length=8192)
     reportSha256: Digest = Field(pattern=r"^[0-9a-f]{64}$")
+    dependencies: EvidenceDependencies | None = None
 
     @model_validator(mode="after")
     def _candidate_collection_is_exact(self) -> Self:
@@ -75,6 +86,72 @@ class CuratorQualityAttestation(_StrictModel):
         if len(identities) != len(set(identities)):
             raise ValueError("source-change candidate identities must be unique")
         return self
+
+
+def memory_quality_attestation_dependencies(
+    *,
+    pair_identity: MemoryCandidatePairIdentity,
+    code_candidate_tree: str,
+    memory_candidate_tree: str,
+    report_sha256: str,
+) -> EvidenceDependencies:
+    """Bind the memory-quality result to exactly the candidate pair it inspected."""
+
+    return build_evidence_dependencies(
+        "memory-quality-attestation/v1",
+        [
+            dependency("candidate-state", "memory-candidate-pair", pair_identity.contractDigest),
+            dependency(
+                "code-tree",
+                "candidate",
+                code_candidate_tree,
+                algorithm="git-object",
+            ),
+            dependency(
+                "memory-tree",
+                "candidate",
+                memory_candidate_tree,
+                algorithm="git-object",
+            ),
+            dependency("evidence-bytes", "rendered-checklist", report_sha256),
+            dependency(
+                "validator",
+                MEMORY_QUALITY_ATTESTATION_VALIDATOR,
+                canonical_sha256(MEMORY_QUALITY_ATTESTATION_VALIDATOR),
+            ),
+            dependency(
+                "validator",
+                EVIDENCE_DEPENDENCY_VALIDATOR,
+                canonical_sha256(EVIDENCE_DEPENDENCY_VALIDATOR),
+            ),
+        ],
+    )
+
+
+def require_memory_quality_attestation_dependencies(
+    attestation: CuratorQualityAttestation,
+    *,
+    code_candidate_tree: str,
+    memory_candidate_tree: str,
+) -> EvidenceDependencies:
+    """Refuse an attestation whose declared inputs differ from its current source facts."""
+
+    expected = memory_quality_attestation_dependencies(
+        pair_identity=attestation.pairIdentity,
+        code_candidate_tree=code_candidate_tree,
+        memory_candidate_tree=memory_candidate_tree,
+        report_sha256=attestation.reportSha256,
+    )
+    observed = require_evidence_dependencies(
+        attestation.dependencies,
+        record_type="memory-quality-attestation/v1",
+    )
+    if observed != expected:
+        raise EvidenceDependencyError(
+            "memory-quality-attestation-dependencies-stale",
+            "memory-quality attestation dependencies do not match its canonical inputs",
+        )
+    return observed
 
 
 class CuratorCoherenceJudgment(_StrictModel):
@@ -127,6 +204,7 @@ class CuratorCoherenceRecord(_StrictModel):
     judgments: list[CuratorCoherenceRecordedJudgment] = Field(
         max_length=MAX_CURATOR_SOURCE_CANDIDATES
     )
+    dependencies: EvidenceDependencies | None = None
     predecessorAuthorityDigest: Digest = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
     publicationFingerprint: Digest = Field(pattern=r"^[0-9a-f]{64}$")
     publishedBy: str = Field(min_length=1, max_length=8192)

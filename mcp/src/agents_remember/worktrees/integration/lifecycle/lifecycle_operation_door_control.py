@@ -6,6 +6,7 @@ from agents_remember.controlplane.task_publication_lock import task_publication_
 from agents_remember.models.lifecycles.operation import (
     LifecycleOperationProjection,
     LifecycleOperationRecord,
+    lifecycle_operation_dependencies,
 )
 from agents_remember.worktrees.integration.closeout.door import (
     DoorPublicationError,
@@ -43,13 +44,14 @@ def record_door_intent(
         if record.doorPublication.state != "proven":
             raise RuntimeError("unfinished door publication must complete before another begins")
         history.append(record.doorPublication)
-    return record.model_copy(
+    updated = record.model_copy(
         update={
             "doorPublication": intent,
             "doorPublicationHistory": history,
             "generationDisposition": generation_disposition,
         }
     )
+    return updated.model_copy(update={"dependencies": lifecycle_operation_dependencies(updated)})
 
 
 def complete_pending_door(

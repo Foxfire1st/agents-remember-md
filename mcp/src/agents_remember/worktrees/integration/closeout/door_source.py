@@ -19,8 +19,11 @@ from agents_remember.models.lifecycles.door import (
     CloseoutDoorGeneration,
     CloseoutDoorRequest,
     DoorAdmissionProvenance,
+    DoorDependencyInputs,
     DoorEvidenceFact,
     DoorSchedulingProvenance,
+    closeout_door_dependencies,
+    require_closeout_door_dependencies,
 )
 from agents_remember.models.task_intent import TaskIntentIdentity, task_intent_is_missing
 from agents_remember.tasks import completion_blockers
@@ -317,6 +320,12 @@ def _transitioned_generation(
             "closeout-door-task-intent-unavailable",
             "legacy door source cannot transition until update-provenance republishes task intent",
         )
+    try:
+        require_closeout_door_dependencies(current)
+    except (ValueError, TypeError) as exc:
+        status = getattr(exc, "status", "closeout-door-dependencies-invalid")
+        detail = getattr(exc, "detail", str(exc))
+        raise CloseoutQueueError(status, detail) from exc
     target = {"defer": "deferred", "resume": "waiting", "withdraw": "withdrawn"}[request.action]
     allowed = {
         "defer": {"waiting", "deferred"},
@@ -380,7 +389,6 @@ def _declare_generation(
     contract = context.contract
     candidate = context.candidate
     master = context.master
-    sprint = context.sprint
     if candidate is None:
         raise CloseoutQueueError(
             "closeout-door-candidate-required",
@@ -395,46 +403,46 @@ def _declare_generation(
         )
     current_evidence = capture_door_candidate_evidence(contract, candidate)
     candidate_tree = current_evidence.candidate_tree
-    ledger_commit = current_evidence.ledger_memory_commit
-    grade_input = request.grade
-    admission = request.admission
-    assert grade_input is not None and admission is not None
-    grade, grade_digest, grade_facts = canonical_grade(
-        grade_input.model_dump(mode="json"),
-        authority=_grade_authority(context),
-        candidate_ref=candidate.ref,
-        owning_master=master.ref,
-    )
-    admission_provenance = DoorAdmissionProvenance(
-        **admission.model_dump(mode="json"),
-        fingerprint=_fingerprint(admission.model_dump(mode="json")),
-    )
-    scheduling = DoorSchedulingProvenance(
-        priority=grade.priority,
-        judgmentId=grade.judgmentId,
-        fingerprint=grade_digest,
-        evidence=[_door_fact(fact) for fact in grade_facts],
+    admission_provenance, scheduling = _door_policy_provenance(
+        context,
+        request,
+        candidate,
+        master,
     )
     memory_tree = current_evidence.memory_candidate_tree
     task_fingerprint = candidate_task_topology_fingerprint(
-        sprint,
+        context.sprint,
         master,
         candidate,
         graph=context.graph,
     )
     intent = _door_task_intent(contract, candidate)
+    dependencies = closeout_door_dependencies(
+        DoorDependencyInputs(
+            candidate_tree=candidate_tree,
+            memory_candidate_tree=memory_tree,
+            task_topology_fingerprint=task_fingerprint,
+            task_intent=intent,
+            review=current_evidence.review,
+            memory=current_evidence.memory,
+            ledger=current_evidence.ledger,
+            admission=admission_provenance,
+            scheduling=scheduling,
+            predecessor=predecessor,
+        )
+    )
     identity = {
         "schema": "ar-closeout-door/v1",
         "predecessor": predecessor,
         "task": candidate.ref.model_dump(mode="json"),
         "master": master.ref.model_dump(mode="json"),
-        "sprint": sprint.ref.model_dump(mode="json"),
+        "sprint": context.sprint.ref.model_dump(mode="json"),
         "contract": contract.contract_path.as_posix(),
         "candidateTree": candidate_tree,
         "memoryCandidateTree": memory_tree,
         "codeBaseCommit": contract.code_base_commit,
         "memoryBaseCommit": contract.memory_base_commit,
-        "ledgerMemoryCommit": ledger_commit,
+        "ledgerMemoryCommit": current_evidence.ledger_memory_commit,
         "taskTopologyFingerprint": task_fingerprint,
         "taskIntent": intent.model_dump(mode="json", by_alias=True),
         "review": current_evidence.review.model_dump(mode="json"),
@@ -442,6 +450,7 @@ def _declare_generation(
         "ledger": current_evidence.ledger.model_dump(mode="json"),
         "admission": admission_provenance.model_dump(mode="json"),
         "scheduling": scheduling.model_dump(mode="json"),
+        "dependencies": dependencies.model_dump(mode="json"),
     }
     return CloseoutDoorGeneration(
         generationId=_fingerprint(identity),
@@ -451,13 +460,13 @@ def _declare_generation(
         taskName=contract.task_name,
         taskDocumentRef=candidate.ref,
         owningMasterTaskDocumentRef=master.ref,
-        sprintTaskDocumentRef=sprint.ref,
+        sprintTaskDocumentRef=context.sprint.ref,
         contractPath=contract.contract_path.as_posix(),
         candidateTree=candidate_tree,
         memoryCandidateTree=memory_tree,
         codeBaseCommit=contract.code_base_commit,
         memoryBaseCommit=contract.memory_base_commit,
-        ledgerMemoryCommit=ledger_commit,
+        ledgerMemoryCommit=current_evidence.ledger_memory_commit,
         taskTopologyFingerprint=task_fingerprint,
         taskIntent=intent,
         reviewProvenance=current_evidence.review,
@@ -465,8 +474,40 @@ def _declare_generation(
         ledgerProvenance=current_evidence.ledger,
         admissionProvenance=admission_provenance,
         schedulingProvenance=scheduling,
+        dependencies=dependencies,
         declaredBy=f"{actor.role}@{actor.task_document_ref.key}",
         declaredAt=now_iso(),
+    )
+
+
+def _door_policy_provenance(
+    context: DoorSourceContext,
+    request: CloseoutDoorRequest,
+    candidate: ResolvedTaskDocument,
+    master: ResolvedTaskDocument,
+) -> tuple[DoorAdmissionProvenance, DoorSchedulingProvenance]:
+    """Resolve the two policy-owned provenance inputs for one source generation."""
+
+    grade_input = request.grade
+    admission = request.admission
+    assert grade_input is not None and admission is not None
+    grade, grade_digest, grade_facts = canonical_grade(
+        grade_input.model_dump(mode="json"),
+        authority=_grade_authority(context),
+        candidate_ref=candidate.ref,
+        owning_master=master.ref,
+    )
+    return (
+        DoorAdmissionProvenance(
+            **admission.model_dump(mode="json"),
+            fingerprint=_fingerprint(admission.model_dump(mode="json")),
+        ),
+        DoorSchedulingProvenance(
+            priority=grade.priority,
+            judgmentId=grade.judgmentId,
+            fingerprint=grade_digest,
+            evidence=[_door_fact(fact) for fact in grade_facts],
+        ),
     )
 
 

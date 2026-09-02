@@ -10,7 +10,10 @@ from typing import Literal
 from agents_remember.models.lifecycles.door import (
     CloseoutDoorDisposition,
     CloseoutDoorGeneration,
+    DoorDependencyInputs,
     DoorPublicationEvidence,
+    closeout_door_dependencies,
+    require_closeout_door_dependencies,
 )
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
 from agents_remember.models.task_intent import TaskIntentIdentity
@@ -104,6 +107,7 @@ def door_generation_for_operation(
         or record.taskIntent != waiting.taskIntent
     ):
         raise RuntimeError("waiting door and operation must bind the same canonical task intent")
+    require_closeout_door_dependencies(waiting)
     return waiting.model_copy(
         update={
             "disposition": "claimed",
@@ -124,6 +128,20 @@ def successor_waiting_door(
 
     if claimed.disposition != "claimed":
         raise RuntimeError("a waiting successor requires one exact claimed predecessor")
+    dependencies = closeout_door_dependencies(
+        DoorDependencyInputs(
+            candidate_tree=claimed.candidateTree,
+            memory_candidate_tree=claimed.memoryCandidateTree,
+            task_topology_fingerprint=claimed.taskTopologyFingerprint,
+            task_intent=claimed.taskIntent,
+            review=claimed.reviewProvenance,
+            memory=claimed.memoryProvenance,
+            ledger=claimed.ledgerProvenance,
+            admission=claimed.admissionProvenance,
+            scheduling=claimed.schedulingProvenance,
+            predecessor=claimed.generationId,
+        )
+    )
     identity = {
         "schema": "ar-closeout-door-successor/v1",
         "predecessorGenerationId": claimed.generationId,
@@ -144,6 +162,7 @@ def successor_waiting_door(
         "ledgerProvenance": claimed.ledgerProvenance.model_dump(mode="json"),
         "admissionProvenance": claimed.admissionProvenance.model_dump(mode="json"),
         "schedulingProvenance": claimed.schedulingProvenance.model_dump(mode="json"),
+        "dependencies": dependencies.model_dump(mode="json"),
     }
     return claimed.model_copy(
         update={
@@ -152,6 +171,7 @@ def successor_waiting_door(
             "disposition": "waiting",
             "declaredBy": declared_by,
             "declaredAt": declared_at,
+            "dependencies": dependencies,
             "operationKind": None,
             "operationFingerprint": "",
             "claimedOperationKey": "",

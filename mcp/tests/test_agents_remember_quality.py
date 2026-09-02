@@ -7,6 +7,7 @@ import importlib.util
 import inspect
 import json
 import os
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -183,6 +184,41 @@ def test_ambient_role_chat_runner_refuses_before_declaring_a_host_test_process()
         runner._admit_execution()
 
     declare.assert_not_called()
+
+
+def test_ambient_role_chat_candidate_identity_excludes_observer_scratch(
+    tmp_path: Path,
+) -> None:
+    runner = load_e2e_module("run.py", "test_ambient_role_chat_candidate_identity")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", repository.as_posix(), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init")
+    git("config", "user.email", "candidate@example.invalid")
+    git("config", "user.name", "Candidate Identity")
+    candidate_file = repository / "candidate.txt"
+    candidate_file.write_text("base\n", encoding="utf-8")
+    git("add", "candidate.txt")
+    git("commit", "-m", "base")
+    candidate_file.write_text("staged candidate\n", encoding="utf-8")
+    git("add", "candidate.txt")
+
+    expected_tree = git("write-tree")
+    identity = runner._candidate_identity(repository)
+    tree_paths = git("ls-tree", "-r", "--name-only", identity["tree"]).splitlines()
+
+    assert identity == {"commit": git("rev-parse", "HEAD"), "tree": expected_tree}
+    assert tree_paths == ["candidate.txt"]
+    assert all("candidate-index" not in path for path in tree_paths)
+    assert list(repository.glob(".arspawn-e2e-candidate-index*")) == []
 
 
 def test_ambient_role_chat_tmux_commands_use_only_the_fixture_socket_root(

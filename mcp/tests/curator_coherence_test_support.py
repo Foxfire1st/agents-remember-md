@@ -10,12 +10,14 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.curator_coherence import (
     CuratorCoherenceJudgment,
     CuratorCoherenceRequest,
     CuratorSourceCandidate,
+    memory_quality_attestation_dependencies,
 )
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity
@@ -23,9 +25,13 @@ from agents_remember.tasks import TaskDocument, write_task_doc
 from agents_remember.worktrees.integration.closeout.curator_coherence_publication import (
     curator_coherence_action,
 )
+from agents_remember.worktrees.integration.closeout.future_code_candidate import (
+    capture_future_code_candidate,
+)
 from agents_remember.worktrees.integration.closeout.memory_candidate_pair import (
     resolve_memory_candidate_pair,
 )
+from agents_remember.worktrees.modules.git import worktree_candidate_tree
 from agents_remember.worktrees.worktree_contract import WorktreeContract, load_contract
 
 
@@ -126,6 +132,14 @@ def write_curator_evidence(
         requested_contract_path=contract.contract_path,
         requested_repo_id=contract.repo_name,
     )
+    assert contract.memory_worktree is not None
+    code_tree = capture_future_code_candidate(contract).codeCandidateTree
+    with TemporaryDirectory(prefix=".fixture-curator-memory-") as temporary:
+        memory_tree = worktree_candidate_tree(
+            contract.memory_worktree,
+            Path(temporary) / "index",
+        )
+    report_sha256 = hashlib.sha256(text.encode()).hexdigest()
     attestation = {
         "schema": "ar-curator-memory-quality/v1",
         "checklistStatus": "ready-for-closeout",
@@ -138,7 +152,13 @@ def write_curator_evidence(
         "pairIdentity": pair.model_dump(mode="json"),
         "onboardingRoot": (contract.memory_worktree / "onboarding").resolve().as_posix(),
         "reportPath": report.resolve().as_posix(),
-        "reportSha256": hashlib.sha256(text.encode()).hexdigest(),
+        "reportSha256": report_sha256,
+        "dependencies": memory_quality_attestation_dependencies(
+            pair_identity=pair,
+            code_candidate_tree=code_tree,
+            memory_candidate_tree=memory_tree,
+            report_sha256=report_sha256,
+        ).model_dump(mode="json"),
     }
     attestation_path.write_text(
         json.dumps(attestation, sort_keys=True, separators=(",", ":")) + "\n",

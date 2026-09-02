@@ -21,6 +21,12 @@ from agents_remember.models.lifecycles.curator_coherence import (
     CuratorCoherenceRequest,
     CuratorCoherenceSnapshot,
 )
+from agents_remember.models.lifecycles.evidence_dependencies import (
+    EVIDENCE_DEPENDENCY_VALIDATOR,
+    build_evidence_dependencies,
+    canonical_sha256,
+    dependency,
+)
 from agents_remember.tasks.document_refs import TaskDocumentRefError, TaskDocumentTopology
 from agents_remember.worktrees.worktree_contract import WorktreeContract, load_contract
 
@@ -227,6 +233,62 @@ def _record(
     assert request.semantic_requirement_revision is not None
     assert request.delivery_attempt is not None
     assert request.caller is not None
+    evidence_edges = {
+        judgment.evidenceRef: judgment.evidenceSha256 for judgment in publication.judgments
+    }
+    dependencies = build_evidence_dependencies(
+        "curator-coherence/v1",
+        [
+            dependency(
+                "code-tree",
+                "candidate",
+                observation.code_candidate_tree,
+                algorithm="git-object",
+            ),
+            dependency(
+                "memory-tree",
+                "candidate",
+                observation.memory_candidate_tree,
+                algorithm="git-object",
+            ),
+            dependency(
+                "semantic-topology",
+                "leaf-placement",
+                observation.task_topology_fingerprint,
+            ),
+            dependency("task-intent", "leaf", observation.task_intent.digest),
+            dependency(
+                "memory-attestation",
+                observation.attestation_path.resolve().as_posix(),
+                observation.attestation_sha256,
+            ),
+            dependency(
+                "evidence-bytes",
+                "memory-quality-report",
+                observation.attestation.reportSha256,
+            ),
+            *(
+                dependency("evidence-bytes", path, digest)
+                for path, digest in sorted(evidence_edges.items())
+            ),
+            dependency(
+                "validator",
+                EVIDENCE_DEPENDENCY_VALIDATOR,
+                canonical_sha256(EVIDENCE_DEPENDENCY_VALIDATOR),
+            ),
+            *(
+                [
+                    dependency(
+                        "predecessor-record",
+                        "prior-curator-coherence-authority",
+                        publication.predecessor,
+                    )
+                ]
+                if publication.predecessor
+                else []
+            ),
+        ],
+    )
     provisional = CuratorCoherenceRecord(
         leafId=contract.leaf_id,
         contractPath=contract.contract_path.as_posix(),
@@ -243,6 +305,7 @@ def _record(
         attestationReportSha256=observation.attestation.reportSha256,
         sourceCandidates=observation.source_candidates,
         judgments=publication.judgments,
+        dependencies=dependencies,
         predecessorAuthorityDigest=publication.predecessor,
         publicationFingerprint=publication.fingerprint,
         publishedBy=f"{request.caller.role}@{request.caller.task_document_ref.key}",
