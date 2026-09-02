@@ -1157,6 +1157,7 @@ consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_clean_quality_executor.py",
+  "mcp/tests/test_gate_certificate_authority.py",
   "mcp/tests/test_l5_quality_and_recovery_edges.py",
   "mcp/tests/test_python_test_evidence_firewall.py",
   "mcp/tests/test_quality_gate_public_contract.py",
@@ -1188,6 +1189,7 @@ consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_clean_quality_executor.py",
+  "mcp/tests/test_gate_certificate_authority.py",
   "mcp/tests/test_l5_quality_and_recovery_edges.py",
   "mcp/tests/test_python_test_evidence_firewall.py",
   "mcp/tests/test_quality_gate_public_contract.py",
@@ -1220,6 +1222,7 @@ consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_clean_quality_executor.py",
   "mcp/tests/test_conversation_foundation.py",
+  "mcp/tests/test_gate_certificate_authority.py",
   "mcp/tests/test_l5_quality_and_recovery_edges.py",
   "mcp/tests/test_l6_diff_coverage_nw2.py",
   "mcp/tests/test_python_test_evidence_firewall.py",

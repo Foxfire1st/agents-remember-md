@@ -196,6 +196,10 @@ class TerminalWebSocketTests1(TerminalWebSocketTests):
 
     def test_get_terminal_sessions_marks_stale_tmux_rows_exited(self) -> None:
         self.catalog.upsert(_catalog_entry("stale", cwd=self.tmp, tmux_name="ar-stale"))
+        (self.tmp / "settings.json").write_text(
+            json.dumps({"orchestration": {"agentNotifier": {"enabled": False}}}),
+            encoding="utf-8",
+        )
         with TestClient(self.app) as client:
             response = client.get("/api/terminal/sessions")
         self.assertEqual(response.status_code, 200)
