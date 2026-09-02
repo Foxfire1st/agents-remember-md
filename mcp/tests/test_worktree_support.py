@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from argparse import Namespace
+from collections.abc import Mapping
 from contextlib import (
     contextmanager,
     redirect_stdout,
@@ -18,6 +19,17 @@ from unittest import mock
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.repository_profiles import (
+    admit_repository_profile_execution,
+    load_repository_profile,
+)
+from agents_remember.certification.repository_profiles.canonical import (
+    repository_profile_digest,
+)
+from agents_remember.certification.repository_profiles.models import (
+    RepositoryCertificationProfile,
+)
 from agents_remember.kernel import filesystem
 from agents_remember.kernel.memory_ledger import (
     create_initial_ledger,
@@ -46,6 +58,10 @@ from agents_remember.worktrees.closeout_input import (
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
     publish_new_lifecycle_operation_location,
 )
+from agents_remember.worktrees.modules.git import require_git
+from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
+from agents_remember.worktrees.modules.quality import gate as code_quality_gate
+from agents_remember.worktrees.queue import closeout_staged_quality
 from agents_remember.worktrees.route_review import (
     build_route_review,
     document_ref,
@@ -68,6 +84,52 @@ from curator_coherence_test_support import (
 )
 
 drift = adopt_baseline.drift
+TEST_CERTIFICATION_PROFILE_REFERENCE = Path("mcp/certification-profile-v1.json")
+
+
+def publish_passing_closeout_quality(
+    target: code_quality_gate.QualityGateTarget,
+    *,
+    diff_base: str = "",
+    plan: code_quality_gate.QualityGatePlan | None = None,
+    invocation: str = "closeout-staged",
+    attestation: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    """Publish exact-profile passing evidence for direct closeout-mechanics fixtures."""
+
+    del invocation
+    candidate_tree = require_git(target.code_worktree, ["write-tree"])
+    admitted = load_repository_profile(
+        target.repository_id,
+        target.code_worktree,
+        target.profile_reference,
+    )
+    profile_execution = admit_repository_profile_execution(
+        admitted,
+        purpose="closeout",
+        mode=(plan or code_quality_gate.QualityGatePlan()).mode,
+        candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
+    )
+    with tempfile.TemporaryDirectory() as temporary:
+        export = Path(temporary)
+        (export / "clean-quality-results.json").write_text(
+            json.dumps({"status": "passed", "exitCode": 0}) + "\n",
+            encoding="utf-8",
+        )
+        clean_quality_executor._publish_reports(  # pyright: ignore[reportPrivateUsage]
+            export,
+            target.worktree_group / "reports",
+            candidate_tree=candidate_tree,
+            profile_execution=profile_execution,
+            attestation=attestation,
+        )
+    return {
+        "required": True,
+        "passed": True,
+        "command": "fixture: published passing Dagger generation",
+        "diffBase": diff_base,
+        "candidateTree": candidate_tree,
+    }
 
 
 def _benchmark_git_subcommands(recorder: mock.Mock) -> list[str]:
@@ -117,6 +179,28 @@ def init_repo(repo: Path, branch: str = "main") -> str:  # pragma: no cover
     git(repo, "update-ref", f"refs/remotes/origin/{branch}", commit)
     git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{branch}")
     return commit
+
+
+def install_fixture_profile(repository_root: Path, repository_id: str) -> Path:
+    """Install the checked-in profile shape with fixture-owned repository identity."""
+
+    raw = json.loads((MCP_SRC.parent / "certification-profile-v1.json").read_text(encoding="utf-8"))
+    raw.update(
+        {
+            "repositoryId": repository_id,
+            "profileId": f"{repository_id}-certification",
+            "profileDigest": "0" * 64,
+        }
+    )
+    profile = RepositoryCertificationProfile.model_validate(raw)
+    profile = profile.model_copy(update={"profileDigest": repository_profile_digest(profile)})
+    destination = repository_root / TEST_CERTIFICATION_PROFILE_REFERENCE
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(profile.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return destination
 
 
 def seed_memory_ledger(memory_repo: Path, repo_name: str, code_commit: str) -> str:
@@ -389,7 +473,11 @@ def initialized_memory_repo(
 
 def open_external_contract_fixture(root: Path):
     code_repo = root / "repo-a"
-    code_base = init_repo(code_repo, "main")
+    init_repo(code_repo, "main")
+    install_fixture_profile(code_repo, "repo-a")
+    git(code_repo, "add", "-A")
+    git(code_repo, "commit", "-m", "Add repository certification profile")
+    code_base = git(code_repo, "rev-parse", "HEAD")
     memory_repo = root / "ar-coordination" / "memory-repos" / "ar-repo-a"
     memory_seed = init_repo(memory_repo, "main")
     write_ledger(memory_repo / "memory.md", create_initial_ledger("repo-a", code_base, memory_seed))
@@ -615,7 +703,11 @@ def committed_range_external_contract_fixture(root: Path):
     (raw.txt has no onboarding), and the working tree is clean.
     """
     code_repo = root / "repo-a"
-    code_base = init_repo(code_repo, "main")
+    init_repo(code_repo, "main")
+    install_fixture_profile(code_repo, "repo-a")
+    git(code_repo, "add", "-A")
+    git(code_repo, "commit", "-m", "Add repository certification profile")
+    code_base = git(code_repo, "rev-parse", "HEAD")
     memory_repo = root / "ar-coordination" / "memory-repos" / "ar-repo-a"
     memory_seed = init_repo(memory_repo, "main")
     write_ledger(memory_repo / "memory.md", create_initial_ledger("repo-a", code_base, memory_seed))
@@ -696,7 +788,11 @@ def closed_external_contract_fixture(
     root: Path, code_path: str = "feature.txt", code_content: str = "feature\n"
 ):
     code_repo = root / "repo-a"
-    code_base = init_repo(code_repo, "main")
+    init_repo(code_repo, "main")
+    install_fixture_profile(code_repo, "repo-a")
+    git(code_repo, "add", "-A")
+    git(code_repo, "commit", "-m", "Add repository certification profile")
+    code_base = git(code_repo, "rev-parse", "HEAD")
     memory_repo = root / "ar-coordination" / "memory-repos" / "ar-repo-a"
     memory_seed = init_repo(memory_repo, "main")
     write_ledger(memory_repo / "memory.md", create_initial_ledger("repo-a", code_base, memory_seed))
@@ -775,6 +871,7 @@ def closed_external_contract_fixture(
 def closeout_args(contract, *, dry_run: bool = False) -> Namespace:
     return Namespace(
         contract_path=contract.contract_path,
+        certification_profile=Path("mcp/certification-profile-v1.json"),
         approved=not dry_run,
         approval_note="" if dry_run else "developer approved commit preview",
         code_commit_message="Add feature",
@@ -785,7 +882,11 @@ def closeout_args(contract, *, dry_run: bool = False) -> Namespace:
     )
 
 
-def run_authorized_closeout_mechanics(args: Namespace) -> int:
+def run_authorized_closeout_mechanics(
+    args: Namespace,
+    *,
+    publish_code_quality: bool = False,
+) -> int:
     """Exercise commit mechanics with explicit test evidence authority, never the CLI."""
     worktree_args = worktree_manager.WorktreeArgs.from_namespace(args)
     if worktree_args.dry_run:
@@ -807,10 +908,20 @@ def run_authorized_closeout_mechanics(args: Namespace) -> int:
             arguments={"contract_path": contract.contract_path.as_posix()},
         ),
     )
-    result = worktree_manager.closeout_result(
-        replace(worktree_args, closeout_input=effective, ledger_commit_message=""),
-        contract,
+    effective_args = replace(
+        worktree_args,
+        closeout_input=effective,
+        ledger_commit_message="",
     )
+    if publish_code_quality:
+        with mock.patch.object(
+            closeout_staged_quality,
+            "run_strict_code_quality_gate",
+            side_effect=publish_passing_closeout_quality,
+        ):
+            result = worktree_manager.closeout_result(effective_args, contract)
+    else:
+        result = worktree_manager.closeout_result(effective_args, contract)
     print(json.dumps(result.payload, indent=2))
     return result.returncode
 
@@ -828,7 +939,13 @@ def integrate_args(contract, *, dry_run: bool = False) -> Namespace:
 def integrated_external_contract_fixture(root: Path):
     contract = dirty_open_external_contract_fixture(root)
     with redirect_stdout(io.StringIO()):
-        assert run_authorized_closeout_mechanics(closeout_args(contract)) == 0
+        assert (
+            run_authorized_closeout_mechanics(
+                closeout_args(contract),
+                publish_code_quality=True,
+            )
+            == 0
+        )
     closed = load_contract(contract.contract_path)
     assert closed.memory_repo_path is not None
     git(

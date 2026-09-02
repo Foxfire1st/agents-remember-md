@@ -21,6 +21,7 @@ from agents_remember.worktrees.modules.models import PATH_SAMPLE_LIMIT
 from agents_remember.worktrees.worktree_contract import load_contract, write_contract
 from closeout_input_test_support import MutationEvidenceRecorder
 from test_worktree_support import (
+    TEST_CERTIFICATION_PROFILE_REFERENCE,
     WorktreeSupportTests,
     claimed_external_contract_fixture,
     closed_external_contract_fixture,
@@ -68,6 +69,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             contract = dirty_open_external_contract_fixture(root)
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=True,
                 approval_note="developer approved commit preview",
                 code_commit_message="Add feature",
@@ -77,7 +79,10 @@ class WorktreeSupport2(WorktreeSupportTests):
                 operation_progress=MutationEvidenceRecorder(),
             )
             with redirect_stdout(io.StringIO()):
-                self.assertEqual(run_authorized_closeout_mechanics(args), 0)
+                self.assertEqual(
+                    run_authorized_closeout_mechanics(args, publish_code_quality=True),
+                    0,
+                )
             loaded = load_contract(contract.contract_path)
             self.assertEqual(loaded.closeout_status, "completed")
             self.assertTrue(loaded.approved_for_commit)
@@ -91,6 +96,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             onboarding_file = contract.memory_worktree / "onboarding" / "feature.txt.md"
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=True,
                 approval_note="developer approved commit preview",
                 code_commit_message="Add feature",
@@ -101,7 +107,10 @@ class WorktreeSupport2(WorktreeSupportTests):
             )
             output = io.StringIO()
             with redirect_stdout(output):
-                self.assertEqual(run_authorized_closeout_mechanics(args), 0)
+                self.assertEqual(
+                    run_authorized_closeout_mechanics(args, publish_code_quality=True),
+                    0,
+                )
             payload = json.loads(output.getvalue())
             loaded = load_contract(contract.contract_path)
             self.assertEqual(
@@ -156,6 +165,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             contract = committed_range_external_contract_fixture(root)
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=False,
                 approval_note="",
                 code_commit_message="Add feature",
@@ -203,6 +213,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             code_head = git(contract.code_worktree, "rev-parse", "HEAD")
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=True,
                 approval_note="developer approved commit preview",
                 code_commit_message="Add feature",
@@ -213,7 +224,10 @@ class WorktreeSupport2(WorktreeSupportTests):
             )
             output = io.StringIO()
             with redirect_stdout(output):
-                self.assertEqual(run_authorized_closeout_mechanics(args), 0)
+                self.assertEqual(
+                    run_authorized_closeout_mechanics(args, publish_code_quality=True),
+                    0,
+                )
             payload = json.loads(output.getvalue())
             self.assertEqual(payload["code_commit"], code_head)
             self.assertEqual(read_onboarding_field(sidecar, "lastVerifiedCommitHash"), code_head)
@@ -262,6 +276,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             write_passing_route_review(contract)
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=False,
                 approval_note="",
                 code_commit_message="Add second slice",
@@ -307,7 +322,13 @@ class WorktreeSupport2(WorktreeSupportTests):
                 mock.patch.object(closeout_module, "require_ordinary_worktree"),
                 redirect_stdout(output),
             ):
-                self.assertEqual(run_authorized_closeout_mechanics(closeout_args(contract)), 0)
+                self.assertEqual(
+                    run_authorized_closeout_mechanics(
+                        closeout_args(contract),
+                        publish_code_quality=True,
+                    ),
+                    0,
+                )
             closeout_payload = json.loads(output.getvalue())
             self.assertTrue(closeout_payload["integration_reopen"]["reopened"])
             reopened = load_contract(contract.contract_path)
@@ -362,7 +383,13 @@ class WorktreeSupport2(WorktreeSupportTests):
 
             output = io.StringIO()
             with redirect_stdout(output):
-                self.assertEqual(run_authorized_closeout_mechanics(closeout_args(contract)), 0)
+                self.assertEqual(
+                    run_authorized_closeout_mechanics(
+                        closeout_args(contract),
+                        publish_code_quality=True,
+                    ),
+                    0,
+                )
             closeout_payload = json.loads(output.getvalue())
             self.assertFalse(closeout_payload["integration_reopen"]["reopened"])
             loaded = load_contract(contract.contract_path)
@@ -404,6 +431,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             write_passing_route_review(synced)
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=False,
                 approval_note="",
                 code_commit_message="No-op",
@@ -431,6 +459,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             write_passing_route_review(contract)
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=False,
                 approval_note="",
                 code_commit_message="Bulk",
@@ -456,6 +485,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             memory_head = git(contract.memory_worktree, "rev-parse", "HEAD")
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=True,
                 approval_note="developer approved commit preview",
                 code_commit_message="Add feature",
@@ -482,7 +512,7 @@ class WorktreeSupport2(WorktreeSupportTests):
                 ),
                 self.assertRaisesRegex(RuntimeError, "clean memory_quality_check"),
             ):
-                run_authorized_closeout_mechanics(args)
+                run_authorized_closeout_mechanics(args, publish_code_quality=True)
             self.assertEqual(git(contract.memory_worktree, "rev-parse", "HEAD"), memory_head)
             self.assertEqual(load_contract(contract.contract_path).closeout_status, "not-started")
 
@@ -501,7 +531,13 @@ class WorktreeSupport2(WorktreeSupportTests):
             )
             write_passing_route_review(contract)
 
-            self.assertEqual(run_authorized_closeout_mechanics(closeout_args(contract)), 0)
+            self.assertEqual(
+                run_authorized_closeout_mechanics(
+                    closeout_args(contract),
+                    publish_code_quality=True,
+                ),
+                0,
+            )
 
             code_head = git(contract.code_worktree, "rev-parse", "HEAD")
             self.assertNotEqual(code_head, baseline)
@@ -541,7 +577,13 @@ class WorktreeSupport2(WorktreeSupportTests):
             output = io.StringIO()
 
             with redirect_stdout(output):
-                self.assertEqual(run_authorized_closeout_mechanics(closeout_args(contract)), 0)
+                self.assertEqual(
+                    run_authorized_closeout_mechanics(
+                        closeout_args(contract),
+                        publish_code_quality=True,
+                    ),
+                    0,
+                )
 
             payload = json.loads(output.getvalue())
             self.assertNotEqual(payload["code_commit"], baseline)
@@ -590,6 +632,7 @@ class WorktreeSupport2(WorktreeSupportTests):
             write_passing_route_review(contract)
             args = Namespace(
                 contract_path=contract.contract_path,
+                certification_profile=TEST_CERTIFICATION_PROFILE_REFERENCE,
                 approved=True,
                 approval_note="developer approved commit preview",
                 code_commit_message="Update feature",
@@ -600,7 +643,10 @@ class WorktreeSupport2(WorktreeSupportTests):
             )
             output = io.StringIO()
             with redirect_stdout(output):
-                self.assertEqual(run_authorized_closeout_mechanics(args), 0)
+                self.assertEqual(
+                    run_authorized_closeout_mechanics(args, publish_code_quality=True),
+                    0,
+                )
             payload = json.loads(output.getvalue())
             expected = drift.compute_git_blob_set_fingerprint(
                 contract.code_worktree, ["feature.txt"]

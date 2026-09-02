@@ -8,15 +8,62 @@ import tempfile
 import unittest
 from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 from unittest import mock
 
+from agents_remember.certification.repository_profiles.execution import (
+    AdmittedRepositoryProfileExecution,
+)
+from agents_remember.certification.repository_profiles.models import ProfileMode
+from agents_remember.errors import CertificationExecutorPrerequisiteError
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
 from agents_remember.worktrees.modules.quality.clean_executor import (
     CleanQualityRequest,
     run_clean_quality,
 )
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    agents_remember_profile_execution,
+    install_agents_remember_profile,
+)
 
 CANDIDATE_TREE = "c" * 40
+
+
+def quality_request(
+    repository_root: Path,
+    worktree_group: Path,
+    mode: str,
+    diff_base: str = "",
+    *,
+    memory_cap_bytes: int | None = None,
+) -> CleanQualityRequest:
+    return CleanQualityRequest(
+        code_worktree=repository_root,
+        worktree_group=worktree_group,
+        repository_id="agents-remember",
+        profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
+        mode=cast(ProfileMode, mode),
+        diff_base=diff_base,
+        memory_cap_bytes=memory_cap_bytes,
+    )
+
+
+def publish_reports(
+    source: Path,
+    destination: Path,
+    *,
+    candidate_tree: str = CANDIDATE_TREE,
+    profile_execution: AdmittedRepositoryProfileExecution | None = None,
+):
+    return clean_quality_executor._publish_reports(
+        source,
+        destination,
+        candidate_tree=candidate_tree,
+        profile_execution=(
+            profile_execution or agents_remember_profile_execution(candidate_tree=candidate_tree)
+        ),
+    )
 
 
 def git(root: Path, *args: str) -> str:
@@ -33,6 +80,7 @@ def repository(root: Path) -> Path:
     git(repo, "config", "user.email", "test@example.invalid")
     git(repo, "config", "user.name", "Test")
     (repo / "dagger.json").write_text('{"engineVersion":"v0.21.8"}\n', encoding="utf-8")
+    install_agents_remember_profile(repo)
     (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-m", "base")
@@ -40,6 +88,62 @@ def repository(root: Path) -> Path:
 
 
 class CleanQualityExecutorTests(unittest.TestCase):
+    def _assert_exact_pipeline_publication(
+        self,
+        *,
+        group: Path,
+        calls: list[list[str]],
+        result,
+    ) -> None:
+        self.assertEqual(result.returncode, 0)
+        self.assertIsNotNone(result.evidence)
+        sandbox = group / "reports/test-sandbox"
+        source = sandbox / "source"
+        self.assertEqual((source / "tracked.txt").read_text(encoding="utf-8"), "candidate\n")
+        self.assertEqual((source / "created.txt").read_text(encoding="utf-8"), "created\n")
+        self.assertEqual(git(source, "diff", "--cached", "--name-only"), "created.txt\ntracked.txt")
+        manifest = json.loads((sandbox / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            manifest["profile"]["configuredReference"], "mcp/certification-profile-v1.json"
+        )
+        self.assertEqual(manifest["executorAdapter"]["functionName"], "quality")
+        self.assertEqual(
+            (len(manifest["profile"]["profileDigest"]), len(manifest["bundleSha256"])),
+            (64, 64),
+        )
+        bundle = sandbox / "candidate.bundle"
+        self.assertTrue(bundle.is_file())
+        self.assertEqual(len(calls), 1)
+        self.assertIn(f"--source={source.as_posix()}", calls[0])
+        self.assertIn(f"--repository-bundle={bundle.as_posix()}", calls[0])
+        self.assertIn(
+            f"--execution-manifest={(sandbox / 'manifest.json').as_posix()}",
+            calls[0],
+        )
+        self.assertEqual(len(manifest["publishedArtifacts"]), 14)
+        self.assertNotIn("--attempt-nonce", " ".join(calls[0]))
+        self.assertNotIn("--candidate-head", " ".join(calls[0]))
+        self.assertNotIn("docker", " ".join(item for call in calls for item in call).lower())
+        self.assertEqual(
+            clean_quality_executor.published_report_path(
+                group / "reports", "coverage.data"
+            ).read_bytes(),
+            b"\x00coverage",
+        )
+        for proof_name in ("python-runtime.json", "python-venv-runtime.json"):
+            proof = clean_quality_executor.published_report_path(group / "reports", proof_name)
+            self.assertEqual(
+                json.loads(proof.read_text(encoding="utf-8"))["schema"],
+                "ar-python-runtime-proof/v1",
+            )
+        e2e_summary = clean_quality_executor.published_report_path(
+            group / "reports", "ambient-role-chat-e2e/summary.json"
+        )
+        self.assertEqual(
+            json.loads(e2e_summary.read_text(encoding="utf-8"))["status"],
+            "passed",
+        )
+
     def test_exact_staged_candidate_is_passed_to_one_pinned_dagger_pipeline(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
@@ -91,72 +195,34 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, stdout="exported\n", stderr="")
 
             result = run_clean_quality(
-                CleanQualityRequest(
-                    code_worktree=repo,
-                    worktree_group=group,
-                    mode="targeted",
-                    diff_base=git(repo, "rev-parse", "HEAD"),
+                quality_request(
+                    repo,
+                    group,
+                    "targeted",
+                    git(repo, "rev-parse", "HEAD"),
                     memory_cap_bytes=1024,
                 ),
                 runner=runner,
-                dagger_resolver=lambda _env: "/usr/local/bin/dagger",
+                executor_resolver=lambda _env: "/usr/local/bin/dagger",
             )
 
-            self.assertEqual(result.returncode, 0)
-            self.assertIsNotNone(result.evidence)
             sandbox = group / "reports/test-sandbox"
-            source = sandbox / "source"
-            self.assertEqual((source / "tracked.txt").read_text(encoding="utf-8"), "candidate\n")
-            self.assertEqual((source / "created.txt").read_text(encoding="utf-8"), "created\n")
-            self.assertEqual(
-                git(source, "diff", "--cached", "--name-only"), "created.txt\ntracked.txt"
-            )
-            manifest = json.loads((sandbox / "manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["daggerVersion"], "v0.21.8")
-            self.assertEqual(manifest["codexVersion"], "0.151.0")
-            self.assertEqual(len(manifest["bundleSha256"]), 64)
-            bundle = sandbox / "candidate.bundle"
-            self.assertTrue(bundle.is_file())
-            self.assertEqual(len(calls), 1)
-            self.assertIn(f"--source={source.as_posix()}", calls[0])
-            self.assertIn(f"--repository-bundle={bundle.as_posix()}", calls[0])
-            self.assertNotIn("--attempt-nonce", " ".join(calls[0]))
-            self.assertNotIn("--candidate-head", " ".join(calls[0]))
-            self.assertNotIn("docker", " ".join(item for call in calls for item in call).lower())
-            self.assertEqual(
-                clean_quality_executor.published_report_path(
-                    group / "reports", "coverage.data"
-                ).read_bytes(),
-                b"\x00coverage",
-            )
-            for proof_name in ("python-runtime.json", "python-venv-runtime.json"):
-                proof = clean_quality_executor.published_report_path(group / "reports", proof_name)
-                self.assertEqual(
-                    json.loads(proof.read_text(encoding="utf-8"))["schema"],
-                    "ar-python-runtime-proof/v1",
-                )
-            e2e_summary = clean_quality_executor.published_report_path(
-                group / "reports", "ambient-role-chat-e2e/summary.json"
-            )
-            self.assertEqual(
-                json.loads(e2e_summary.read_text(encoding="utf-8"))["status"],
-                "passed",
-            )
+            self._assert_exact_pipeline_publication(group=group, calls=calls, result=result)
 
             (sandbox / "obsolete").write_text("old", encoding="utf-8")
             run_clean_quality(
-                CleanQualityRequest(repo, group, "full", ""),
+                quality_request(repo, group, "full"),
                 runner=runner,
-                dagger_resolver=lambda _env: "/usr/local/bin/dagger",
+                executor_resolver=lambda _env: "/usr/local/bin/dagger",
             )
             self.assertFalse((sandbox / "obsolete").exists())
 
     def test_public_runner_refuses_invalid_mode_and_windows_interop_root(self) -> None:
-        request = CleanQualityRequest(Path("/repo"), Path("/enclosure"), "quick", "")
+        request = quality_request(Path("/repo"), Path("/enclosure"), "quick")
         with self.assertRaisesRegex(ValueError, "unknown clean quality mode"):
             run_clean_quality(request)
 
-        request = CleanQualityRequest(Path("/mnt/c/repo"), Path("/enclosure"), "full", "")
+        request = quality_request(Path("/mnt/c/repo"), Path("/enclosure"), "full")
         with self.assertRaisesRegex(RuntimeError, "Windows-mounted WSL path"):
             run_clean_quality(request)
 
@@ -174,9 +240,9 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 8, stdout="", stderr="engine red")
 
             result = run_clean_quality(
-                CleanQualityRequest(repo, root / "group", "full", ""),
+                quality_request(repo, root / "group", "full"),
                 runner=runner,
-                dagger_resolver=lambda _env: "dagger",
+                executor_resolver=lambda _env: "dagger",
             )
 
             self.assertEqual(result.returncode, 8)
@@ -186,6 +252,61 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 (root / "group/reports/quality-progress.json").read_text(encoding="utf-8")
             )
             self.assertEqual(progress["status"], "failed")
+
+    def test_unavailable_admitted_executor_is_a_typed_gate_owned_failure(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            repo = repository(root)
+            group = root / "group"
+
+            def unavailable(_env: Mapping[str, str]) -> str:
+                raise RuntimeError("native executable is unavailable")
+
+            with self.assertRaises(CertificationExecutorPrerequisiteError) as caught:
+                run_clean_quality(
+                    quality_request(repo, group, "full"),
+                    executor_resolver=unavailable,
+                )
+
+            self.assertEqual(
+                caught.exception.status,
+                "certification-executor-prerequisite-failed",
+            )
+            self.assertEqual(len(caught.exception.findings), 1)
+            finding = caught.exception.findings[0]
+            self.assertEqual(finding["code"], "executor-prerequisite-unavailable")
+            self.assertEqual(finding["gate"], 1)
+            self.assertEqual(finding["affectedGates"], (1, 2, 3, 4))
+            self.assertEqual(finding["correctiveOwners"], ("repository-quality",))
+            self.assertFalse((group / "reports/dagger-progress.log").exists())
+
+    def test_admitted_executor_start_failure_is_typed_and_gate_owned(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            repo = repository(root)
+            group = root / "group"
+
+            def cannot_start(
+                command: list[str], cwd: Path, env: Mapping[str, str]
+            ) -> subprocess.CompletedProcess[str]:
+                del command, cwd, env
+                raise OSError("executor permission denied")
+
+            with self.assertRaises(CertificationExecutorPrerequisiteError) as caught:
+                run_clean_quality(
+                    quality_request(repo, group, "targeted"),
+                    runner=cannot_start,
+                    executor_resolver=lambda _env: "dagger",
+                )
+
+            finding = caught.exception.findings[0]
+            self.assertEqual(finding["code"], "executor-prerequisite-unavailable")
+            self.assertEqual(finding["gate"], 1)
+            progress = json.loads(
+                (group / "reports/quality-progress.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(progress["status"], "failed")
+            self.assertEqual(progress["detail"], "admitted repository executor could not start")
 
     def test_invalid_exported_exit_code_refuses_instead_of_guessing(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
@@ -207,9 +328,9 @@ class CleanQualityExecutorTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "invalid pipeline exit code"):
                 run_clean_quality(
-                    CleanQualityRequest(repo, root / "group", "full", ""),
+                    quality_request(repo, root / "group", "full"),
                     runner=runner,
-                    dagger_resolver=lambda _env: "dagger",
+                    executor_resolver=lambda _env: "dagger",
                 )
 
     def test_exported_failure_is_the_authoritative_pipeline_exit(self) -> None:
@@ -231,9 +352,9 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, stdout="exported\n", stderr="")
 
             result = run_clean_quality(
-                CleanQualityRequest(repo, root / "group", "full", "base"),
+                quality_request(repo, root / "group", "full", "base"),
                 runner=runner,
-                dagger_resolver=lambda _env: "dagger",
+                executor_resolver=lambda _env: "dagger",
             )
 
             self.assertEqual(result.returncode, 8)
@@ -241,25 +362,46 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 (root / "group/reports/quality-progress.json").read_text(encoding="utf-8")
             )
             self.assertEqual(progress["status"], "failed")
-            self.assertEqual(progress["detail"], "Dagger Ubuntu quality failed")
+            self.assertEqual(progress["detail"], "repository certification adapter failed")
 
     def test_exported_result_validation_rejects_missing_and_contradictory_authority(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             export = Path(tmp)
-            with self.assertRaisesRegex(RuntimeError, "no valid authoritative result"):
-                clean_quality_executor._exported_pipeline_exit(export)
+            decoder = agents_remember_profile_execution(candidate_tree=CANDIDATE_TREE).decoder
+            with self.assertRaisesRegex(RuntimeError, "no safe authoritative result"):
+                clean_quality_executor._exported_pipeline_exit(
+                    export, decoder, {"clean-quality-results.json"}
+                )
             report = export / "clean-quality-results.json"
             report.write_text("not-json", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "no valid authoritative result"):
-                clean_quality_executor._exported_pipeline_exit(export)
+                clean_quality_executor._exported_pipeline_exit(
+                    export, decoder, {"clean-quality-results.json"}
+                )
+            report.write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "must be a JSON object"):
+                clean_quality_executor._exported_pipeline_exit(
+                    export, decoder, {"clean-quality-results.json"}
+                )
             report.write_text('{"status":"passed","exitCode":true}\n', encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "invalid pipeline exit code"):
-                clean_quality_executor._exported_pipeline_exit(export)
+                clean_quality_executor._exported_pipeline_exit(
+                    export, decoder, {"clean-quality-results.json"}
+                )
             report.write_text('{"status":"passed","exitCode":2}\n', encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "contradictory result"):
-                clean_quality_executor._exported_pipeline_exit(export)
+                clean_quality_executor._exported_pipeline_exit(
+                    export, decoder, {"clean-quality-results.json"}
+                )
             report.write_text('{"status":"passed","exitCode":0}\n', encoding="utf-8")
-            self.assertEqual(clean_quality_executor._exported_pipeline_exit(export), 0)
+            self.assertEqual(
+                clean_quality_executor._exported_pipeline_exit(
+                    export,
+                    decoder,
+                    {"clean-quality-results.json"},
+                ),
+                0,
+            )
 
     def test_invalid_or_unowned_exports_never_replace_durable_evidence(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
@@ -287,13 +429,14 @@ class CleanQualityExecutorTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "contradictory result"):
                 run_clean_quality(
-                    CleanQualityRequest(repo, root / "group", "full", "base"),
+                    quality_request(repo, root / "group", "full", "base"),
                     runner=contradictory,
-                    dagger_resolver=lambda _env: "dagger",
+                    executor_resolver=lambda _env: "dagger",
                 )
             self.assertEqual(
                 durable.read_text(encoding="utf-8"), '{"status":"passed","exitCode":0}\n'
             )
+
             self.assertEqual(coverage.read_text(encoding="utf-8"), "prior")
 
             export = root / "malicious"
@@ -303,11 +446,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
             )
             (export / "closeout-operation.json").write_text("forged", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "unexpected report files"):
-                clean_quality_executor._publish_reports(
-                    export,
-                    reports,
-                    candidate_tree=CANDIDATE_TREE,
-                )
+                publish_reports(export, reports)
             self.assertEqual(
                 durable.read_text(encoding="utf-8"), '{"status":"passed","exitCode":0}\n'
             )
@@ -317,13 +456,46 @@ class CleanQualityExecutorTests(unittest.TestCase):
             nested.mkdir()
             (nested / "run-3.json").write_text("forged", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "unexpected report files"):
-                clean_quality_executor._publish_reports(
-                    export,
-                    reports,
-                    candidate_tree=CANDIDATE_TREE,
-                )
+                publish_reports(export, reports)
             self.assertEqual(
                 durable.read_text(encoding="utf-8"), '{"status":"passed","exitCode":0}\n'
+            )
+
+    def test_nested_profile_artifact_directories_include_the_complete_parent_chain(self) -> None:
+        self.assertEqual(
+            clean_quality_executor._report_directories({"one/two/three/result.json"}),
+            frozenset({"one", "one/two", "one/two/three"}),
+        )
+
+    def test_not_applicable_gate_cleans_stale_managed_projection_without_requiring_it(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            source.mkdir()
+            (source / "clean-quality-results.json").write_text(
+                '{"status":"passed","exitCode":0}\n',
+                encoding="utf-8",
+            )
+            reports = root / "reports"
+            stale = reports / "ambient-role-chat-e2e/summary.json"
+            stale.parent.mkdir(parents=True)
+            stale.write_text('{"status":"stale"}\n', encoding="utf-8")
+            execution = agents_remember_profile_execution(
+                candidate_tree=CANDIDATE_TREE,
+                purpose="local-precommit",
+                mode="targeted",
+            )
+
+            manifest = publish_reports(
+                source,
+                reports,
+                profile_execution=execution,
+            )
+
+            self.assertFalse(stale.exists())
+            self.assertEqual(
+                set(cast(dict[str, object], manifest["files"])),
+                {"clean-quality-results.json"},
             )
 
     def test_report_generation_pointer_never_exposes_a_partial_copy(self) -> None:
@@ -335,11 +507,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
             (old / "clean-quality-results.json").write_text(
                 '{"status":"passed","exitCode":0,"attempt":"old"}\n', encoding="utf-8"
             )
-            clean_quality_executor._publish_reports(
-                old,
-                reports,
-                candidate_tree=CANDIDATE_TREE,
-            )
+            publish_reports(old, reports)
             manifest_before = (reports / clean_quality_executor.REPORT_SET_MANIFEST).read_bytes()
 
             new = root / "new"
@@ -379,11 +547,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                     ),
                     self.assertRaisesRegex(OSError, "injected publication failure"),
                 ):
-                    clean_quality_executor._publish_reports(
-                        new,
-                        reports,
-                        candidate_tree=CANDIDATE_TREE,
-                    )
+                    publish_reports(new, reports)
                 self.assertEqual(
                     (reports / clean_quality_executor.REPORT_SET_MANIFEST).read_bytes(),
                     manifest_before,
@@ -401,11 +565,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 ),
                 self.assertRaisesRegex(OSError, "crash before pointer"),
             ):
-                clean_quality_executor._publish_reports(
-                    new,
-                    reports,
-                    candidate_tree=CANDIDATE_TREE,
-                )
+                publish_reports(new, reports)
             selected = clean_quality_executor.published_report_path(
                 reports, "clean-quality-results.json"
             )
@@ -425,11 +585,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 raise FileExistsError(target)
 
             with mock.patch.object(Path, "rename", autospec=True, side_effect=competing_rename):
-                manifest = clean_quality_executor._publish_reports(
-                    source,
-                    root / "reports",
-                    candidate_tree=CANDIDATE_TREE,
-                )
+                manifest = publish_reports(source, root / "reports")
 
             selected = clean_quality_executor.published_report_path(
                 root / "reports", "clean-quality-results.json"
@@ -460,16 +616,40 @@ class CleanQualityExecutorTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "no complete Dagger report"):
                 clean_quality_executor.published_report_path(reports, "result.json")
 
-            generation = "a" * 64
-            manifest = {
-                "schemaVersion": "2.0",
-                "generation": generation,
-                "candidateTree": CANDIDATE_TREE,
-                "files": {"result.json": {"sha256": "0" * 64, "size": 1}},
+            files: dict[str, dict[str, object]] = {"result.json": {"sha256": "0" * 64, "size": 1}}
+            profile_identity: dict[str, object] = {
+                "profileDigest": "b" * 64,
+                "profilePlanDigest": "c" * 64,
+                "profileSelectionId": "fixture-full",
+                "executorAdapterId": "fixture-dagger",
+                "resultDecoder": {
+                    "decoderId": "fixture-result",
+                    "decoderKind": "json-exit-status",
+                    "artifactPath": "result.json",
+                    "statusField": "status",
+                    "exitCodeField": "exitCode",
+                    "passedValue": "passed",
+                    "failedValue": "failed",
+                    "artifactReferences": [],
+                    "referenceActivations": [],
+                    "consumingGates": [1, 2, 3, 4],
+                },
             }
-            manifest["dependencies"] = clean_quality_executor.quality_report_dependencies(
-                CANDIDATE_TREE, manifest["files"], None
+            dependencies = clean_quality_executor.quality_report_dependencies(
+                CANDIDATE_TREE, files, None, profile_identity
             ).model_dump(mode="json")
+            manifest_fields: dict[str, object] = {
+                "candidateTree": CANDIDATE_TREE,
+                **profile_identity,
+                "files": files,
+                "dependencies": dependencies,
+            }
+            generation = clean_quality_executor.quality_generation_digest(manifest_fields)
+            manifest = {
+                "schemaVersion": "3.0",
+                "generation": generation,
+                **manifest_fields,
+            }
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(
                 RuntimeError,
@@ -478,9 +658,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 clean_quality_executor.published_report_path(reports, "result.json")
 
             traversal_manifest = {
-                "schemaVersion": "2.0",
-                "generation": generation,
-                "candidateTree": CANDIDATE_TREE,
+                **manifest,
                 "files": {"../result.json": {"sha256": "0" * 64, "size": 1}},
             }
             manifest_path.write_text(json.dumps(traversal_manifest), encoding="utf-8")
@@ -520,11 +698,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
             with self.assertRaisesRegex(RuntimeError, "did not export"):
-                clean_quality_executor._publish_reports(
-                    root / "missing",
-                    root / "reports",
-                    candidate_tree=CANDIDATE_TREE,
-                )
+                publish_reports(root / "missing", root / "reports")
             empty = root / "empty"
             empty.mkdir()
             reports = root / "reports"
@@ -533,12 +707,8 @@ class CleanQualityExecutorTests(unittest.TestCase):
             (reports / "pytest-events.jsonl").write_text("stale", encoding="utf-8")
             (reports / "dagger-progress.log").write_text("owned elsewhere", encoding="utf-8")
             (empty / "nested").mkdir()
-            with self.assertRaisesRegex(RuntimeError, "no valid authoritative result"):
-                clean_quality_executor._publish_reports(
-                    empty,
-                    reports,
-                    candidate_tree=CANDIDATE_TREE,
-                )
+            with self.assertRaisesRegex(RuntimeError, "unexpected report files"):
+                publish_reports(empty, reports)
             self.assertTrue((reports / "coverage.json").exists())
             self.assertTrue((reports / "pytest-events.jsonl").exists())
             self.assertTrue((reports / "dagger-progress.log").exists())
@@ -724,12 +894,12 @@ class CleanQualityExecutorTests(unittest.TestCase):
             )
             self.assertEqual(current["detail"], "text detail")
 
-    def test_dagger_resolution_uses_the_native_command_boundary(self) -> None:
+    def test_profile_executor_resolution_uses_the_native_command_boundary(self) -> None:
         with mock.patch.object(
             clean_quality_executor, "native_command", return_value=["/usr/bin/dagger"]
         ) as native:
             self.assertEqual(
-                clean_quality_executor._resolve_dagger({"PATH": "/usr/bin"}),
+                clean_quality_executor._resolve_executor("dagger", {"PATH": "/usr/bin"}),
                 "/usr/bin/dagger",
             )
         native.assert_called_once_with(["dagger"], {"PATH": "/usr/bin"})

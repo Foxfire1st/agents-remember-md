@@ -37,6 +37,7 @@ from agents_remember.controlplane.operator_inbox_records import (
 from agents_remember.controlplane.operator_inbox_store import OperatorInboxStore
 from agents_remember.kernel.primitives.runtime_config import (
     McpRuntimeConfig,
+    RepositoryScope,
     RetirementSettings,
 )
 from agents_remember.mcp.tools.terminal import session_rename_payload, session_retire_payload
@@ -145,6 +146,12 @@ def _config(root: Path, **retirement_overrides: bool) -> McpRuntimeConfig:
         coordination_root=root,
         workspace_root=root,
         transcript_root=root / "logs" / "mcp",
+        repositories={
+            "repo": RepositoryScope(
+                repo_id="repo",
+                path=root / "workspace" / "repo",
+            )
+        },
         retirement=RetirementSettings(**retirement_overrides)
         if retirement_overrides
         else RetirementSettings(),

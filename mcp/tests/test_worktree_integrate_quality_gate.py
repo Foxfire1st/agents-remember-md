@@ -18,6 +18,7 @@ MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
 from _quality_evidence_fixture import publish_passing_quality_gate
+from agents_remember.errors import CertificationProfileError
 from agents_remember.models.lifecycles.operation import (
     IntegrationOperationAuthority,
     IntegrationPublicationIntent,
@@ -54,6 +55,11 @@ from agents_remember.worktrees.worktree_contract import (
     default_series_contract,
     write_contract,
 )
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    install_agents_remember_profile,
+    install_fixture_profile,
+)
 from test_worktree_support import init_repo
 
 
@@ -79,6 +85,9 @@ def integration_contract(root: Path, *, kind: str = "leaf") -> WorktreeContract:
     if not (repo / ".git").exists():
         init_repo(repo, "main")
         (repo / "ar-memory").mkdir()
+        install_agents_remember_profile(repo)
+        git(repo, "add", "-A")
+        git(repo, "commit", "-m", "Add repository certification profile")
     base = git(repo, "rev-parse", "main")
     if not git(repo, "branch", "--list", "super"):
         git(repo, "branch", "super", "main")
@@ -370,7 +379,10 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
                 quality_mod, "run_strict_code_quality_gate", return_value={"passed": True}
             ) as gate,
         ):
-            result, blocked = integrate_mod._run_integration_quality_gate(contract)
+            result, blocked = integrate_mod._run_integration_quality_gate(
+                contract,
+                args=WorktreeArgs(certification_profile=AGENTS_REMEMBER_PROFILE_REFERENCE),
+            )
 
         self.assertIsNone(blocked)
         self.assertFalse(result["required"])
@@ -424,13 +436,19 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
             assert isinstance(prepared, tuple)
             self.assertEqual(prepared[0], integrate_mod.IntegratedCommits("c1", "", ""))
             if kind == "series":
-                gate.assert_called_once_with(contract)
+                gate.assert_called_once_with(
+                    contract,
+                    args=WorktreeArgs(operation_key="a" * 64),
+                )
                 preview.assert_not_called()
             else:
                 gate.assert_not_called()
-                preview.assert_called_once_with(contract)
+                preview.assert_called_once_with(
+                    contract,
+                    profile_reference=None,
+                )
 
-    def test_agents_remember_master_integration_refuses_a_missing_self_owned_wrapper(
+    def test_master_integration_refuses_missing_profile_authority(
         self,
     ) -> None:
         contract = integration_contract(self.root, kind="series")
@@ -471,10 +489,10 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
             quality_mod.INTEGRATION_QUALITY_DECISION_SURFACE,
         )
         self.assertTrue(result.payload["developerDecisionRequired"])
-        self.assertNotIn("self-owned wrapper", str(result.payload))
+        self.assertNotIn("wrapper", str(result.payload))
         merge.assert_not_called()
 
-    def test_consumer_master_without_a_wrapper_reports_unavailable_without_blocking(
+    def test_consumer_master_without_a_profile_is_blocked_before_execution(
         self,
     ) -> None:
         contract = replace(
@@ -482,16 +500,24 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
             repo_name="consumer-repo",
         )
 
-        result, blocked = integrate_mod._run_integration_quality_gate(contract)
+        result, blocked = integrate_mod._run_integration_quality_gate(
+            contract,
+            args=WorktreeArgs(certification_profile=None),
+        )
 
-        self.assertIsNone(blocked)
-        self.assertFalse(result["required"])
-        self.assertEqual(result["status"], "wrapper-unavailable")
+        self.assertEqual(result, {})
+        self.assertIsNotNone(blocked)
+        assert blocked is not None
+        failure = cast(dict[str, object], blocked["failureEvidence"])
+        self.assertEqual(failure["errorType"], "CertificationProfileError")
 
     def test_series_integration_runs_the_full_capped_gate(self) -> None:
         contract = integration_contract(self.root, kind="series")
         exact_candidate = self.root / "exact-master-candidate"
         init_repo(exact_candidate, "main")
+        install_agents_remember_profile(exact_candidate)
+        git(exact_candidate, "add", "-A")
+        git(exact_candidate, "commit", "-m", "Add repository certification profile")
 
         with (
             mock.patch.object(
@@ -503,7 +529,7 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
             mock.patch.object(
                 quality_mod,
                 "quality_gate_settings",
-                return_value=mock.Mock(executor="dagger", memory_cap_bytes=2147483648),
+                return_value=mock.Mock(memory_cap_bytes=2147483648),
             ) as settings,
             mock.patch.object(
                 quality_mod,
@@ -511,7 +537,10 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
                 side_effect=publish_passing_quality_gate,
             ) as gate,
         ):
-            result, blocked = integrate_mod._run_integration_quality_gate(contract)
+            result, blocked = integrate_mod._run_integration_quality_gate(
+                contract,
+                args=WorktreeArgs(certification_profile=AGENTS_REMEMBER_PROFILE_REFERENCE),
+            )
 
         self.assertIsNone(blocked)
         self.assertTrue(result["passed"])
@@ -521,6 +550,8 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
             QualityGateTarget(
                 code_worktree=exact_candidate,
                 worktree_group=contract.worktree_group,
+                repository_id=contract.repo_name,
+                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
             ),
         )
         plan = kwargs["plan"]
@@ -549,18 +580,9 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
         git(repo, "commit", "-m", "base")
         base = git(repo, "rev-parse", "HEAD")
         git(repo, "switch", "-c", "atomic-candidate")
-        wrapper = (
-            repo
-            / "mcp"
-            / "test_support"
-            / "agents_remember_test_support"
-            / "code_quality"
-            / "check.py"
-        )
-        wrapper.parent.mkdir(parents=True)
-        wrapper.write_text("print('quality')\n", encoding="utf-8")
-        git(repo, "add", wrapper.relative_to(repo).as_posix())
-        git(repo, "commit", "-m", "candidate wrapper")
+        install_fixture_profile(repo, "consumer-repo")
+        git(repo, "add", AGENTS_REMEMBER_PROFILE_REFERENCE.as_posix())
+        git(repo, "commit", "-m", "candidate repository profile")
         candidate = git(repo, "rev-parse", "HEAD")
         git(repo, "switch", "main")
         contract = replace(
@@ -571,16 +593,18 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
             code_commit=candidate,
         )
 
-        candidate_preview = integrate_mod._quality_gate_preview(contract)
+        candidate_preview = integrate_mod._quality_gate_preview(
+            contract,
+            profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
+        )
 
         self.assertTrue(candidate_preview["required"])
-        wrapper.parent.mkdir(parents=True, exist_ok=True)
-        wrapper.write_text("print('ambient only')\n", encoding="utf-8")
-        git(repo, "add", wrapper.relative_to(repo).as_posix())
-        git(repo, "commit", "-m", "ambient wrapper")
-        ambient_preview = integrate_mod._quality_gate_preview(replace(contract, code_commit=base))
-        self.assertFalse(ambient_preview["required"])
-        self.assertEqual(ambient_preview["status"], "wrapper-unavailable")
+        install_fixture_profile(repo, "consumer-repo")
+        with self.assertRaises(CertificationProfileError):
+            integrate_mod._quality_gate_preview(
+                replace(contract, code_commit=base),
+                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
+            )
 
     def test_quality_gate_memory_cap_reads_the_settings_owned_value(self) -> None:
         contract = integration_contract(self.root, kind="series")
@@ -808,14 +832,6 @@ class IntegrationDryRunTests(unittest.TestCase):
     def test_dry_run_reports_the_planned_gate_without_running_it(self) -> None:
         contract = integration_contract(self.root, kind="series")
         git(contract.code_repo_path, "checkout", contract.code_work_branch)
-        wrapper = (
-            contract.code_worktree
-            / "mcp/test_support/agents_remember_test_support/code_quality/check.py"
-        )
-        wrapper.parent.mkdir(parents=True)
-        wrapper.write_text("# marker\n", encoding="utf-8")
-        git(contract.code_repo_path, "add", wrapper.relative_to(contract.code_repo_path).as_posix())
-        git(contract.code_repo_path, "commit", "-m", "candidate quality wrapper")
         candidate = git(contract.code_repo_path, "rev-parse", "HEAD")
         git(contract.code_repo_path, "checkout", "main")
         contract = replace(contract, code_commit=candidate)
@@ -843,7 +859,7 @@ class IntegrationDryRunTests(unittest.TestCase):
             mock.patch.object(
                 quality_mod,
                 "quality_gate_settings",
-                return_value=mock.Mock(executor="dagger", memory_cap_bytes=999),
+                return_value=mock.Mock(memory_cap_bytes=999),
             ),
             mock.patch.object(quality_mod, "run_strict_code_quality_gate") as gate,
             mock.patch.object(integrate_mod, "write_contract"),
@@ -853,6 +869,7 @@ class IntegrationDryRunTests(unittest.TestCase):
                     contract_path=contract.contract_path,
                     strategy="ff-only",
                     dry_run=True,
+                    certification_profile=AGENTS_REMEMBER_PROFILE_REFERENCE,
                 ),
                 contract,
             )

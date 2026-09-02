@@ -204,8 +204,8 @@ symptoms are skipped.
 
 | Intent | Command owner | Authority |
 | --- | --- | --- |
-| Targeted leaf acceptance | lifecycle-owned Dagger `quality --mode=targeted` | Certifying when the exact publication passes |
-| Master/release acceptance | lifecycle-owned Dagger `quality --mode=full` | Sole whole-system Python acceptance |
+| Targeted leaf acceptance | lifecycle-owned Dagger `quality` with an admitted targeted profile plan | Certifying when the exact publication passes |
+| Master/release acceptance | lifecycle-owned Dagger `quality` with an admitted full profile plan | Sole whole-system Python acceptance |
 | Retry/causal/measurement investigation | Explicit Dagger evidence functions | Non-accepting, candidate-bound review evidence |
 | Scheduled stress | Dagger `cadence-evidence --trigger=scheduled` | Non-accepting cadence evidence |
 | Provider refresh | Dagger `cadence-evidence --trigger=provider-bump` | Non-accepting cadence evidence |

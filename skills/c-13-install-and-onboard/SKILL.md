@@ -54,10 +54,12 @@ Run this sequence in order:
 1. Runtime scaffold: run or verify `runtime_install()`.
 2. Agentic settings: walk the developer through the orchestration defaults in
    the seeded global settings file.
-3. Memory repo: ask scaffold-new vs use-existing, unless memory already exists.
-4. Bootstrap: when a new memory repo was scaffolded, hand off to
+3. Repository certification: author, validate, and explicitly register one repository-owned
+   Gate 1-4 profile for every configured repository that will commit code.
+4. Memory repo: ask scaffold-new vs use-existing, unless memory already exists.
+5. Bootstrap: when a new memory repo was scaffolded, hand off to
    `c-03-repo-bootstrap`.
-5. Providers: when providers are enabled, start/refresh indexing and verify
+6. Providers: when providers are enabled, start/refresh indexing and verify
    readiness.
 
 This skill orchestrates and delegates. It does not reimplement
@@ -96,6 +98,10 @@ Check, in order:
    root, memory setup must remain consistent with that topology. Do not let
    memory initialization silently choose internal memory when settings clearly
    describe an external-memory layout.
+7. **Certification authority.** For every configured repository expected to commit code, report
+   its exact `repositories.<repo-id>.certificationProfile` value and whether that candidate file
+   exists inside the repository. Absence is work for Stage 3, not permission to discover a
+   wrapper, borrow another repository's profile, or leave code closeout silently uncertified.
 
 Do not check for legacy hook prerequisites such as `jq`. Hook and instruction
 files are part of the copied, rendered harness package; this skill no longer
@@ -197,7 +203,44 @@ with the same `orchestration.*` shape; repo-local leaf values override the
 global file (arrays replace). Offer this only when the developer asks for
 repo-specific behavior; do not create the file unprompted.
 
-## Stage 3 - Memory Repo: Ask Scaffold Vs Existing
+## Stage 3 - Repository Certification Profile
+
+Complete this stage for every allowed repository that will use code closeout or master
+integration. The normative field and authoring procedure are documented in
+`docs/reference/repository-certification-profile.md`.
+
+1. Read the repository's documented build, lint/type/format/structural checks, ordinary suite,
+   suite-dependent quality, integration/E2E scenarios, runtime locks, and existing ownership
+   manifests. Inspect source only to confirm those repository-owned contracts. Do not derive
+   authority from a filename, executable being present, or historical success.
+2. If `repositories.<repo-id>.certificationProfile` is absent, select and record one explicit
+   repository-relative path consistent with that repository's configuration layout. This is not a
+   conventional filename or built-in default. Add the exact path to the MCP authority settings.
+3. Author the versioned profile at that path from the repository's own contract. Include explicit
+   targeted local/closeout and full closeout selections over one rail catalog; declare all four
+   gates, including typed not-applicable gates; and declare the exact sandbox adapter, decoder,
+   artifacts, selectors, runtimes, secret policy, resource bounds, and Gate-4 teardown.
+4. Compute the canonical profile digest and compile every required selection through the installed
+   repository-profile loader. Repair every schema, authority, classification, graph, selection,
+   artifact, adapter, or decoder finding before continuing. A missing or invalid profile is
+   `certification-profile-invalid`; no Gate-1 command may start.
+5. Run the smallest focused repository verification that proves its declared adapter and decoder
+   implement the exact profile execution and terminal-artifact contract. Do not launch the full
+   suite or clean-room scenarios merely as install diagnostics.
+6. If the authority settings changed, tell the developer that the MCP/harness must restart before
+   the new boot-time repository authority is live. Remaining memory/bootstrap work may continue,
+   but report the project as not ready for code closeout until that restart is verified.
+
+Make progress autonomously from durable repository contracts. Ask the developer only when the
+repository's intended rail, posture, or clean-room boundary is genuinely ambiguous. Never copy the
+Agents Remember reference profile into another repository, create a default profile, install a
+host executor, or add a compatibility/fallback route.
+
+An older configured repository with no profile remains valid for reading, task recovery, and
+onboarding. It has no code-certification authority: an operation that would certify code must fail
+closed until this stage is completed.
+
+## Stage 4 - Memory Repo: Ask Scaffold Vs Existing
 
 Do not assume the developer wants a fresh memory repo. Ask which case applies,
 unless a memory repo is already present and resolvable:
@@ -205,10 +248,10 @@ unless a memory repo is already present and resolvable:
 1. **Scaffold a new memory repo** - they have no existing memory for this code
    repo. Run `c-00-initialize-memory-repo` (internal by default; external only if
    the developer asks or the configured topology requires it). Continue to Stage
-   4.
+   5.
 2. **Use an existing memory repo** - they already have one. Clone or checkout it
    to the resolved memory location, then adopt it as the ledgered baseline with
-   `c-10-adopt-memory-baseline`. Skip Stage 4 because its onboarding already
+   `c-10-adopt-memory-baseline`. Skip Stage 5 because its onboarding already
    exists.
 
 Internal-memory note: pre-existing internal memory lives inside the code repo
@@ -216,9 +259,9 @@ Internal-memory note: pre-existing internal memory lives inside the code repo
 `c-08-ar-coordination-context-resolver` and skip the question when the memory
 layer is already there.
 
-## Stage 4 - Bootstrap
+## Stage 5 - Bootstrap
 
-Run this stage only when Stage 3 scaffolded a new memory repo.
+Run this stage only when Stage 4 scaffolded a new memory repo.
 
 Hand off to `c-03-repo-bootstrap` to generate initial onboarding. A thin
 `overview.md` is enough to start; deeper route-local overviews and file-level
@@ -226,7 +269,7 @@ onboarding should grow as work touches new areas.
 
 Skip this stage when an existing memory repo was adopted.
 
-## Stage 5 - Configure Providers To Index
+## Stage 6 - Configure Providers To Index
 
 If providers are enabled, make them index the configured code and memory:
 
@@ -261,10 +304,12 @@ Summarize:
    resolved coordination root;
 3. agentic settings: interviewed and written, or left at the seeded defaults,
    with the global file path;
-4. memory repo: scaffolded, existing-adopted, or already present, with the
+4. repository certification: exact profile path and digest for each code repository, validation
+   result, and whether an authority-settings restart remains;
+5. memory repo: scaffolded, existing-adopted, or already present, with the
    resolved memory root;
-5. bootstrap: run via `c-03-repo-bootstrap` or skipped;
-6. providers: indexing status and any deferred/degraded state.
+6. bootstrap: run via `c-03-repo-bootstrap` or skipped;
+7. providers: indexing status and any deferred/degraded state.
 
 End by telling the developer whether the project is ready for normal work. Do
 not tell them to restart for hooks installed by this skill, because this skill no
@@ -284,3 +329,5 @@ longer installs hooks.
    `c-03-repo-bootstrap`, baseline adoption to
    `c-10-adopt-memory-baseline`, and context resolution to
    `c-08-ar-coordination-context-resolver`.
+6. It must not invent a certification profile, discover one by convention, copy another
+   repository's commands, or treat a missing/invalid profile as optional when code would commit.

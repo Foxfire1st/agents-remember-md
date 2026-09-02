@@ -932,7 +932,10 @@ def _handover_or_apply_integration(
             preview=IntegratePreview(
                 guard=guard,
                 handover_warning=handover_warning,
-                quality_gate=_quality_gate_preview(contract),
+                quality_gate=_quality_gate_preview(
+                    contract,
+                    profile_reference=args.certification_profile,
+                ),
             ),
         )
 
@@ -1094,11 +1097,14 @@ def _prepare_fresh_integration_commits(
     quality_certification = args.quality_certification
     boundary_facts = IntegrationBoundaryFacts(None, None, None)
     if contract.kind == "series":
-        quality_gate, blocked = _run_integration_quality_gate(contract)
+        quality_gate, blocked = _run_integration_quality_gate(contract, args=args)
         if blocked is not None:
             return WorktreeCommandResult(2, blocked)
     else:
-        quality_gate = _quality_gate_preview(contract)
+        quality_gate = _quality_gate_preview(
+            contract,
+            profile_reference=args.certification_profile,
+        )
     blocked = _integration_source_state_block(contract, sources)
     if blocked is not None:
         return blocked
@@ -1144,7 +1150,7 @@ def _run_integration_quality_gate(
     contract: WorktreeContract,
     *,
     completion=None,
-    args: WorktreeArgs | None = None,
+    args: WorktreeArgs,
 ) -> tuple[dict[str, object], dict[str, object] | None]:
     """Run the altitude-owned gate and translate failure into lifecycle guidance."""
 
@@ -1152,30 +1158,27 @@ def _run_integration_quality_gate(
         outcome = run_integration_quality_gate(
             contract,
             completion=completion,
-            certification=(args.quality_certification if args is not None else None),
+            certification=args.quality_certification,
             certification_sink=(
-                lambda certification: (
-                    report_operation_progress(
-                        args,
-                        "integration-quality",
-                        current_command="persist exact organizational full-gate certification",
-                        quality_certification=certification.model_dump(mode="json"),
-                    )
-                    if args is not None
-                    else None
+                lambda certification: report_operation_progress(
+                    args,
+                    "integration-quality",
+                    current_command="persist exact organizational full-gate certification",
+                    quality_certification=certification.model_dump(mode="json"),
                 )
             )
             if completion is not None
             else None,
+            profile_reference=args.certification_profile,
         )
     except IntegrationQualityFailure as error:
         if error.organizational_completion:
             failure = organizational_quality_failure_payload(
                 contract,
                 error,
-                expected_generation=args.operation_generation if args is not None else 0,
+                expected_generation=args.operation_generation,
             )
-            if args is not None and args.operation_progress is not None:
+            if args.operation_progress is not None:
                 record_organizational_completion_repair(
                     contract,
                     operation_key=args.operation_key,

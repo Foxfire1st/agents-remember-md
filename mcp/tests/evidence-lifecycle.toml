@@ -99,7 +99,7 @@ evidence_node = "mcp/tests/test_evidence_lifecycle.py::EvidenceLifecycleTests::t
 [[contract]]
 id = "ambient-role-chat-e2e"
 owner = "scripts/e2e_harness/run.py"
-evidence_node = "mcp/tests/test_agents_remember_quality.py::test_dagger_quality_builds_the_real_probe_and_targeted_wrapper_graph"
+evidence_node = "mcp/tests/test_agents_remember_quality.py::test_dagger_quality_executes_the_exact_targeted_profile_plan"
 
 [[artifact]]
 path = "mcp/tests/_control_plane.py"
@@ -299,6 +299,7 @@ consumers = [
   "mcp/tests/test_integration_organizational_decisions_l2.py",
   "mcp/tests/test_integration_ref_cas_classification_l2.py",
   "mcp/tests/test_l5_quality_and_recovery_edges.py",
+  "mcp/tests/test_repository_quality_branch_coverage.py",
   "mcp/tests/test_worktree_closeout_gate_scope.py",
   "mcp/tests/test_worktree_closeout_quality_gate.py",
   "mcp/tests/test_worktree_integrate_quality_gate.py",
@@ -753,6 +754,7 @@ consumers = [
   "mcp/tests/test_provider_current_state.py",
   "mcp/tests/test_public_surface_conformance.py",
   "mcp/tests/test_read_ar_files.py",
+  "mcp/tests/test_repository_quality_branch_coverage.py",
   "mcp/tests/test_register_scaffold.py",
   "mcp/tests/test_sequential_default_mode.py",
   "mcp/tests/test_serving_app_routes.py",
@@ -877,6 +879,7 @@ consumers = [
   "mcp/tests/test_provider_current_state.py",
   "mcp/tests/test_public_surface_conformance.py",
   "mcp/tests/test_read_ar_files.py",
+  "mcp/tests/test_repository_quality_branch_coverage.py",
   "mcp/tests/test_register_scaffold.py",
   "mcp/tests/test_sequential_default_mode.py",
   "mcp/tests/test_serving_app_routes.py",
@@ -1138,6 +1141,102 @@ consumers = [
 ]
 
 [[artifact]]
+path = "mcp/tests/repository_profile_test_support.py"
+kind = "shared-support"
+authority = "internal-canonical"
+owner = "repository-certification-profile-test-port"
+category = "public-contract"
+fidelity = "in-process"
+cadence = "affected"
+source_version_or_generator = "repository-neutral certification profile fixtures and the Agents Remember profile loader"
+introduced_by = "260831-CCR-L22"
+lifetime = "permanent"
+permanence_rationale = "The helper is the single test-side composition root for portable profile, adapter, decoder, execution, and publication proofs."
+replacement_contract = "node:mcp/tests/test_repository_certification_profiles.py::test_two_language_distinct_repositories_compile_the_same_four_gate_protocol"
+consumer_scope = "exact"
+consumers = [
+  "mcp/tests/test_agents_remember_quality.py",
+  "mcp/tests/test_clean_quality_executor.py",
+  "mcp/tests/test_l5_quality_and_recovery_edges.py",
+  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_quality_gate_public_contract.py",
+  "mcp/tests/test_quality_report_publication_security.py",
+  "mcp/tests/test_repository_certification_profiles.py",
+  "mcp/tests/test_repository_profile_authority.py",
+  "mcp/tests/test_repository_profile_branch_coverage.py",
+  "mcp/tests/test_repository_quality_branch_coverage.py",
+  "mcp/tests/test_worktree_closeout_gate_scope.py",
+  "mcp/tests/test_worktree_closeout_quality_gate.py",
+  "mcp/tests/test_worktree_integrate_quality_gate.py",
+  "mcp/tests/test_worktree_quality_gate_runner.py",
+]
+
+[[artifact]]
+path = "mcp/tests/fixtures/repository_profiles/node/package.json"
+kind = "fixture"
+authority = "internal-hand-authored"
+owner = "mcp/tests/repository_profile_test_support.py"
+category = "public-contract"
+fidelity = "independent-boundary"
+cadence = "affected"
+source_version_or_generator = "minimal Node repository manifest consumed by the portable profile runtime identity"
+introduced_by = "260831-CCR-L22"
+lifetime = "permanent"
+permanence_rationale = "The fixture proves a non-Python repository can execute its own admitted Gate 1-4 commands and artifacts."
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_portable_dagger_function_interprets_one_frozen_fixture_plan"
+consumer_scope = "exact"
+consumers = [
+  "mcp/tests/test_agents_remember_quality.py",
+  "mcp/tests/test_clean_quality_executor.py",
+  "mcp/tests/test_l5_quality_and_recovery_edges.py",
+  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_quality_gate_public_contract.py",
+  "mcp/tests/test_quality_report_publication_security.py",
+  "mcp/tests/test_repository_certification_profiles.py",
+  "mcp/tests/test_repository_profile_authority.py",
+  "mcp/tests/test_repository_profile_branch_coverage.py",
+  "mcp/tests/test_repository_quality_branch_coverage.py",
+  "mcp/tests/test_worktree_closeout_gate_scope.py",
+  "mcp/tests/test_worktree_closeout_quality_gate.py",
+  "mcp/tests/test_worktree_integrate_quality_gate.py",
+  "mcp/tests/test_worktree_quality_gate_runner.py",
+]
+
+[[artifact]]
+path = "mcp/tests/fixtures/repository_profiles/node/package-lock.json"
+kind = "fixture"
+authority = "internal-hand-authored"
+owner = "mcp/tests/repository_profile_test_support.py"
+category = "public-contract"
+fidelity = "independent-boundary"
+cadence = "affected"
+source_version_or_generator = "minimal locked Node runtime manifest consumed by the portable profile runtime identity"
+introduced_by = "260831-CCR-L22"
+lifetime = "permanent"
+permanence_rationale = "The lockfile freezes the portable Node fixture runtime input and participates in the admitted semantic digest."
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_portable_dagger_function_interprets_one_frozen_fixture_plan"
+consumer_scope = "exact"
+consumers = [
+  "mcp/tests/test_agents_remember_quality.py",
+  "mcp/tests/test_clean_quality_executor.py",
+  "mcp/tests/test_conversation_foundation.py",
+  "mcp/tests/test_l5_quality_and_recovery_edges.py",
+  "mcp/tests/test_l6_diff_coverage_nw2.py",
+  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_quality_gate_public_contract.py",
+  "mcp/tests/test_quality_report_publication_security.py",
+  "mcp/tests/test_quality_scope_reporting.py",
+  "mcp/tests/test_repository_certification_profiles.py",
+  "mcp/tests/test_repository_profile_authority.py",
+  "mcp/tests/test_repository_profile_branch_coverage.py",
+  "mcp/tests/test_repository_quality_branch_coverage.py",
+  "mcp/tests/test_worktree_closeout_gate_scope.py",
+  "mcp/tests/test_worktree_closeout_quality_gate.py",
+  "mcp/tests/test_worktree_integrate_quality_gate.py",
+  "mcp/tests/test_worktree_quality_gate_runner.py",
+]
+
+[[artifact]]
 path = "mcp/tests/test-evidence-lanes.toml"
 kind = "fixture"
 authority = "internal-canonical"
@@ -1300,7 +1399,6 @@ permanence_rationale = "The acceptance route must regenerate candidate-bound che
 replacement_contract = "contract:ambient-role-chat-e2e"
 consumer_scope = "exact-source"
 consumers = [
-  ".dagger/src/agents_remember_quality/main.py",
   "mcp/tests/test_agents_remember_quality.py",
 ]
 

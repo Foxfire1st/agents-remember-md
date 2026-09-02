@@ -891,7 +891,11 @@ def test_operation_runtime_failure_modes_and_cancelled_progress(tmp_path: Path) 
 def test_execute_operation_dispatches_closeout_and_integration_payloads(tmp_path: Path) -> None:
     contract = _contract(tmp_path)
     runtime = Mock()
-    config = SimpleNamespace()
+    config = SimpleNamespace(
+        repositories={
+            contract.repo_name: SimpleNamespace(certification_profile=Path("profile.json"))
+        }
+    )
     with patch.object(lifecycle_operation_worker, "load_config", return_value=config):
         start_closeout_operation(_input(contract), launcher=lambda *_: None)
         closeout_store = LifecycleOperationStore(

@@ -746,14 +746,17 @@ class CallerProvenanceTests(unittest.TestCase):
         dagger_command = (
             REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/quality_command.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("quality_wrapper_command", dagger_main)
+        profile = (REPOSITORY_ROOT / "mcp/certification-profile-v1.json").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("quality_wrapper_command", dagger_main)
         self.assertIn("agents_remember_test_support.code_quality.check", dagger_command)
-        self.assertIn('("dashboard-lint", ["npm", "run", "lint"])', dagger_main)
-        self.assertIn('("dashboard-coverage", ["npm", "run", "test:coverage"])', dagger_main)
-        self.assertIn('"--fail-on-flaky-tests"', dagger_main)
+        self.assertIn('"railId": "dashboard-lint"', profile)
+        self.assertIn('"test:coverage"', profile)
+        self.assertIn('"--fail-on-flaky-tests"', profile)
 
     def test_every_dashboard_ci_rail_uses_the_shared_provenance_path(self) -> None:
-        dagger_module = (REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/main.py").read_text(
+        profile = (REPOSITORY_ROOT / "mcp/certification-profile-v1.json").read_text(
             encoding="utf-8"
         )
 
@@ -769,15 +772,15 @@ class CallerProvenanceTests(unittest.TestCase):
                     "coverage": "test:coverage",
                     "diff-coverage": "coverage:diff",
                 }.get(step, step)
-                self.assertIn(f'["npm", "run", "{command}"]', dagger_module)
+                self.assertIn(f'"{command}"', profile)
 
         e2e_line = scope_reporting.dashboard_scope_line(REPOSITORY_ROOT, "e2e")
         self.assertIn("scope: dashboard-e2e", e2e_line)
         self.assertIn(" | input=", e2e_line)
         self.assertIn(" | config=", e2e_line)
         self.assertRegex(e2e_line, r"units=.*[1-9][0-9]*")
-        self.assertIn('"dashboard-e2e"', dagger_module)
-        self.assertIn('"--fail-on-flaky-tests"', dagger_module)
+        self.assertIn('"railId": "dashboard-browser-e2e"', profile)
+        self.assertIn('"--fail-on-flaky-tests"', profile)
 
         gate = (REPOSITORY_ROOT / ".githooks/_gate.sh").read_text(encoding="utf-8")
         self.assertIn("agents_remember_test_support.code_quality.scope_reporting", gate)

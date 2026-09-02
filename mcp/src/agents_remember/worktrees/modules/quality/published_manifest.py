@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import stat
@@ -11,6 +12,11 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Final, Literal
 
+from pydantic import ValidationError
+
+from agents_remember.certification.repository_profiles.models import (
+    JsonExitStatusDecoderDefinition,
+)
 from agents_remember.models.lifecycles.evidence_dependencies import (
     EVIDENCE_DEPENDENCY_VALIDATOR,
     EvidenceDependencies,
@@ -20,11 +26,44 @@ from agents_remember.models.lifecycles.evidence_dependencies import (
     require_evidence_dependencies,
 )
 
-QUALITY_MANIFEST_SCHEMA_VERSION: Final[Literal["2.0"]] = "2.0"
+QUALITY_MANIFEST_SCHEMA_VERSION: Final[Literal["3.0"]] = "3.0"
 REPORT_SET_MANIFEST = "quality-report-set.json"
 _MANIFEST_ERROR = "no complete Dagger report generation is published"
 _ALLOWED_ROOT_FIELDS = frozenset(
-    {"schemaVersion", "generation", "candidateTree", "files", "attestation", "dependencies"}
+    {
+        "schemaVersion",
+        "generation",
+        "candidateTree",
+        "profileDigest",
+        "profilePlanDigest",
+        "profileSelectionId",
+        "executorAdapterId",
+        "resultDecoder",
+        "files",
+        "attestation",
+        "dependencies",
+    }
+)
+_GENERATION_DIGEST_FIELDS = frozenset(
+    {
+        "candidateTree",
+        "profileDigest",
+        "profilePlanDigest",
+        "profileSelectionId",
+        "executorAdapterId",
+        "resultDecoder",
+        "files",
+        "dependencies",
+    }
+)
+_PROFILE_IDENTITY_FIELDS = frozenset(
+    {
+        "profileDigest",
+        "profilePlanDigest",
+        "profileSelectionId",
+        "executorAdapterId",
+        "resultDecoder",
+    }
 )
 
 
@@ -40,9 +79,14 @@ class PublishedQualityFile:
 
 @dataclass(frozen=True)
 class PublishedQualityManifest:
-    schema_version: Literal["2.0"]
+    schema_version: Literal["3.0"]
     generation: str
     candidate_tree: str
+    profile_digest: str
+    profile_plan_digest: str
+    profile_selection_id: str
+    executor_adapter_id: str
+    result_decoder: JsonExitStatusDecoderDefinition
     files: Mapping[str, PublishedQualityFile]
     attestation: Mapping[str, str] | None
     dependencies: EvidenceDependencies
@@ -82,34 +126,54 @@ def _parse_manifest(raw: object) -> PublishedQualityManifest:
     if not isinstance(candidate_tree, str) or not re.fullmatch(r"[0-9a-f]{40,64}", candidate_tree):
         raise ValueError("quality manifest candidate tree is invalid")
 
-    raw_files = raw.get("files")
-    if not isinstance(raw_files, dict):
-        raise ValueError("quality manifest files must be an object")
-    files = {
-        name: _parse_file(name, record)
-        for name, record in raw_files.items()
-        if isinstance(name, str)
+    profile_digest = _digest_field(raw, "profileDigest")
+    profile_plan_digest = _digest_field(raw, "profilePlanDigest")
+    profile_selection_id = _nonblank_field(raw, "profileSelectionId")
+    executor_adapter_id = _nonblank_field(raw, "executorAdapterId")
+    try:
+        result_decoder = JsonExitStatusDecoderDefinition.model_validate(raw.get("resultDecoder"))
+    except ValidationError as error:
+        raise ValueError("quality manifest result decoder is invalid") from error
+
+    files = _parse_files(raw.get("files"))
+    if result_decoder.artifactPath not in files:
+        raise ValueError("quality manifest result decoder names no published file")
+    attestation = _parse_attestation(raw.get("attestation"))
+    profile_identity = {
+        "profileDigest": profile_digest,
+        "profilePlanDigest": profile_plan_digest,
+        "profileSelectionId": profile_selection_id,
+        "executorAdapterId": executor_adapter_id,
+        "resultDecoder": result_decoder.model_dump(mode="json"),
     }
-    if len(files) != len(raw_files):
-        raise ValueError("quality manifest file names must be strings")
-
-    raw_attestation = raw.get("attestation")
-    attestation: Mapping[str, str] | None = None
-    if raw_attestation is not None:
-        if not isinstance(raw_attestation, dict) or any(
-            not isinstance(key, str) or not isinstance(value, str)
-            for key, value in raw_attestation.items()
-        ):
-            raise ValueError("quality manifest attestation must contain string pairs")
-        attestation = MappingProxyType(dict(raw_attestation))
-
-    dependencies = _parse_dependencies(raw, candidate_tree, files, attestation)
+    dependencies = _parse_dependencies(
+        raw,
+        candidate_tree,
+        files,
+        attestation,
+        profile_identity,
+    )
+    expected_generation = quality_generation_digest(
+        {
+            "candidateTree": candidate_tree,
+            **profile_identity,
+            "files": raw.get("files"),
+            "dependencies": dependencies.model_dump(mode="json"),
+        }
+    )
+    if generation != expected_generation:
+        raise ValueError("quality manifest generation id does not match its bound fields")
 
     return PublishedQualityManifest(
         schema_version=QUALITY_MANIFEST_SCHEMA_VERSION,
         generation=generation,
         candidate_tree=candidate_tree,
-        files=MappingProxyType(files),
+        profile_digest=profile_digest,
+        profile_plan_digest=profile_plan_digest,
+        profile_selection_id=profile_selection_id,
+        executor_adapter_id=executor_adapter_id,
+        result_decoder=result_decoder,
+        files=files,
         attestation=attestation,
         dependencies=dependencies,
     )
@@ -120,6 +184,7 @@ def _parse_dependencies(
     candidate_tree: str,
     files: Mapping[str, PublishedQualityFile],
     attestation: Mapping[str, str] | None,
+    profile_identity: Mapping[str, object],
 ) -> EvidenceDependencies:
     dependencies = EvidenceDependencies.model_validate(raw.get("dependencies"))
     require_evidence_dependencies(dependencies, record_type="quality-report/v2")
@@ -127,10 +192,56 @@ def _parse_dependencies(
         candidate_tree,
         {name: {"sha256": record.sha256, "size": record.size} for name, record in files.items()},
         attestation,
+        profile_identity,
     )
     if dependencies != expected:
         raise ValueError("quality manifest dependencies do not match its canonical inputs")
     return dependencies
+
+
+def _parse_files(raw: object) -> Mapping[str, PublishedQualityFile]:
+    if not isinstance(raw, dict):
+        raise ValueError("quality manifest files must be an object")
+    files = {
+        name: _parse_file(name, record) for name, record in raw.items() if isinstance(name, str)
+    }
+    if len(files) != len(raw):
+        raise ValueError("quality manifest file names must be strings")
+    return MappingProxyType(files)
+
+
+def quality_generation_digest(fields: Mapping[str, object]) -> str:
+    """Bind every semantic pointer field that selects one immutable generation."""
+
+    if set(fields) != _GENERATION_DIGEST_FIELDS:
+        raise ValueError("quality generation digest fields are incomplete or ambiguous")
+    return hashlib.sha256(
+        json.dumps(fields, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _parse_attestation(raw: object) -> Mapping[str, str] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str) for key, value in raw.items()
+    ):
+        raise ValueError("quality manifest attestation must contain string pairs")
+    return MappingProxyType(dict(raw))
+
+
+def _digest_field(raw: Mapping[str, object], name: str) -> str:
+    value = raw.get(name)
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise ValueError(f"quality manifest {name} is invalid")
+    return value
+
+
+def _nonblank_field(raw: Mapping[str, object], name: str) -> str:
+    value = raw.get(name)
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError(f"quality manifest {name} is invalid")
+    return value
 
 
 def _parse_file(name: str, raw: object) -> PublishedQualityFile:
@@ -151,8 +262,12 @@ def quality_report_dependencies(
     candidate_tree: str,
     files: Mapping[str, object],
     attestation: Mapping[str, str] | None,
+    profile_identity: Mapping[str, object],
 ) -> EvidenceDependencies:
     """Declare the exact candidate, execution, and report bytes read by consumers."""
+
+    if set(profile_identity) != _PROFILE_IDENTITY_FIELDS:
+        raise ValueError("quality profile dependency fields are incomplete or ambiguous")
 
     file_values = {
         name: dict(record) if isinstance(record, Mapping) else record
@@ -163,6 +278,11 @@ def quality_report_dependencies(
         [
             dependency("code-tree", "candidate", candidate_tree, algorithm="git-object"),
             dependency("rail-execution", "report-set", canonical_sha256(file_values)),
+            dependency(
+                "rail-plan",
+                "repository-profile-execution",
+                canonical_sha256(dict(profile_identity)),
+            ),
             *(
                 dependency("evidence-bytes", name, str(record["sha256"]))
                 for name, record in file_values.items()

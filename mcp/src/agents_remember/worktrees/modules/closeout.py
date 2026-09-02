@@ -10,7 +10,6 @@ from agents_remember.controlplane.enforcement import (
     evaluate_closeout_gate,
 )
 from agents_remember.controlplane.store import GateStore
-from agents_remember.kernel.agentic_settings import load_agentic_settings
 from agents_remember.kernel.primitives.observer_paths import observer_logs_root
 from agents_remember.models.closeout.input import EffectiveCloseoutInput
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
@@ -87,8 +86,8 @@ from agents_remember.worktrees.modules.onboarding_acceptance import (
 from agents_remember.worktrees.modules.quality.closeout_memory import run_memory_quality_phase
 from agents_remember.worktrees.modules.quality.gate import (
     QualityGatePlan,
+    QualityGateTarget,
     code_quality_gate_preview,
-    requires_integrated_acceptance,
     requires_strict_code_quality,
 )
 from agents_remember.worktrees.queue.closeout_preview import (
@@ -145,9 +144,13 @@ def closeout_changed_paths(contract) -> dict[str, list[str]]:
     }
 
 
-def _quality_gate_executor(contract) -> str:
-    settings = load_agentic_settings(contract.coordination_root, repo_root=contract.code_repo_path)
-    return settings.quality_gate.executor
+def _quality_gate_target(contract, args: WorktreeArgs) -> QualityGateTarget:
+    return QualityGateTarget(
+        code_worktree=contract.code_worktree,
+        worktree_group=contract.worktree_group,
+        repository_id=contract.repo_name,
+        profile_reference=args.certification_profile,
+    )
 
 
 def _bounded_paths(paths: list[str]) -> dict[str, object]:
@@ -331,7 +334,11 @@ def closeout_preview_payload(contract, args: WorktreeArgs) -> dict[str, object]:
     memory_would_commit = memory_dirty or _refresh_plans_have_work(
         refresh.metadata, refresh.entities, refresh.route_overviews, refresh.route_indexes
     )
-    code_quality_gate = _closeout_quality_gate_preview(contract, code_would_commit=code_changed)
+    code_quality_gate = _closeout_quality_gate_preview(
+        contract,
+        args,
+        code_would_commit=code_changed,
+    )
     return {
         "state": "would-closeout",
         **status_payload(contract),
@@ -795,32 +802,36 @@ def _closeout_quality_preflight(
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Run the reversible memory and code gates before approval is consumed."""
     code_quality_gate = _closeout_quality_gate_preview(
-        contract, code_would_commit=code_would_commit
+        contract,
+        args,
+        code_would_commit=code_would_commit,
     )
     report_operation_progress(
         args, "memory-preflight", current_command="run pre-refresh memory quality"
     )
     memory_quality = _memory_quality_before_refresh(contract)
     strict_required = contract.kind == "leaf" and requires_strict_code_quality(
-        contract.code_worktree,
+        _quality_gate_target(contract, args),
         code_would_commit=code_would_commit,
-        required_when_missing=requires_integrated_acceptance(contract.repo_name),
     )
     if strict_required:
         report_operation_progress(
             args, "quality", current_command="run targeted leaf quality contract"
         )
         code_quality_gate = _gate_staged_code(
-            contract.code_worktree,
-            worktree_group=contract.worktree_group,
+            _quality_gate_target(contract, args),
             diff_base=contract.code_base_commit,
-            executor=_quality_gate_executor(contract),
             candidate_tree=args.candidate_tree,
         )
     return code_quality_gate, memory_quality, strict_required
 
 
-def _closeout_quality_gate_preview(contract, *, code_would_commit: bool) -> dict[str, object]:
+def _closeout_quality_gate_preview(
+    contract,
+    args: WorktreeArgs,
+    *,
+    code_would_commit: bool,
+) -> dict[str, object]:
     if contract.kind != "leaf":
         return {
             "required": False,
@@ -832,11 +843,10 @@ def _closeout_quality_gate_preview(contract, *, code_would_commit: bool) -> dict
             ),
         }
     return code_quality_gate_preview(
-        contract.code_worktree,
+        _quality_gate_target(contract, args),
         code_would_commit=code_would_commit,
         diff_base=contract.code_base_commit,
-        plan=QualityGatePlan(mode="targeted", executor=_quality_gate_executor(contract)),
-        required_when_missing=requires_integrated_acceptance(contract.repo_name),
+        plan=QualityGatePlan(mode="targeted"),
     )
 
 
@@ -979,9 +989,8 @@ def _closeout_quality_facts(
         }
         memory_quality_before_refresh: dict[str, Any] = {}
         strict_code_quality_required = contract.kind == "leaf" and requires_strict_code_quality(
-            contract.code_worktree,
+            _quality_gate_target(contract, args),
             code_would_commit=code_would_commit,
-            required_when_missing=requires_integrated_acceptance(contract.repo_name),
         )
     else:
         attestations = _closeout_attestations(contract, worklist, coherence_no_impact)

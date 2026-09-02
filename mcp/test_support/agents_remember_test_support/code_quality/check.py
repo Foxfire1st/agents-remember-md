@@ -125,6 +125,26 @@ def print_line(message: str) -> None:  # pragma: no cover
     print(message, flush=True)
 
 
+def apply_memory_cap(cap_bytes: int, printer: Printer | None = None) -> bool:
+    """Apply the shared self-cap policy for any repository-owned quality entrypoint."""
+
+    printer = printer or print_line
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (cap_bytes, cap_bytes))
+    except (ValueError, OSError) as error:
+        printer(
+            f"memory-cap could not be applied (policy={memory_cap.QUALITY_MEMORY_CAP_POLICY}; "
+            f"mechanism={memory_cap.RLIMIT_MECHANISM}; cap={cap_bytes} bytes): {error}"
+        )
+        return False
+    os.environ[memory_cap.MEMORY_CAP_ENV] = str(cap_bytes)
+    printer(
+        f"memory-cap: policy={memory_cap.QUALITY_MEMORY_CAP_POLICY}; "
+        f"mechanism={memory_cap.RLIMIT_MECHANISM}; cap={cap_bytes} bytes"
+    )
+    return True
+
+
 # 260731-EFA-L7 R10: verbatim L7 split; unchanged branch, out of this leaf's behavior scope (mcp/test_support/agents_remember_test_support/code_quality/check.py:110).
 def run_subprocess(
     name: str, command: list[str], cwd: Path, env: Mapping[str, str]
@@ -820,22 +840,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         print_line("result: quality-wrapper FAIL")
         return 1
-    if args.memory_cap_bytes is not None:
-        try:
-            resource.setrlimit(resource.RLIMIT_AS, (args.memory_cap_bytes, args.memory_cap_bytes))
-        except (ValueError, OSError) as error:
-            print_line(
-                f"memory-cap could not be applied (policy={memory_cap.QUALITY_MEMORY_CAP_POLICY}; "
-                f"mechanism={memory_cap.RLIMIT_MECHANISM}; cap={args.memory_cap_bytes} bytes): "
-                f"{error}"
-            )
-            print_line("result: quality-wrapper FAIL")
-            return 1
-        os.environ[memory_cap.MEMORY_CAP_ENV] = str(args.memory_cap_bytes)
-        print_line(
-            f"memory-cap: policy={memory_cap.QUALITY_MEMORY_CAP_POLICY}; "
-            f"mechanism={memory_cap.RLIMIT_MECHANISM}; cap={args.memory_cap_bytes} bytes"
-        )
+    if args.memory_cap_bytes is not None and not apply_memory_cap(
+        args.memory_cap_bytes,
+        print_line,
+    ):
+        print_line("result: quality-wrapper FAIL")
+        return 1
     try:
         config = config_from_args(args, admission=admission)
         return run_quality_check(config)

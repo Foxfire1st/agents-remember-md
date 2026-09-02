@@ -32,6 +32,11 @@ from agents_remember.worktrees.worktree_contract import (
     write_contract,
 )
 from closeout_input_test_support import MutationEvidenceRecorder, closeout_worktree_args
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    install_agents_remember_profile,
+    install_fixture_profile,
+)
 from test_worktree_support import (
     closeout_args,
     dirty_open_external_contract_fixture,
@@ -43,7 +48,7 @@ from test_worktree_support import (
 )
 
 
-def _checkout_with_wrapper(root: Path) -> Path:
+def _checkout_with_profile(root: Path, *, repository_id: str = "agents-remember") -> Path:
     root.mkdir(parents=True, exist_ok=True)
     repository = subprocess.run(
         ["git", "rev-parse", "--git-dir"],
@@ -54,18 +59,24 @@ def _checkout_with_wrapper(root: Path) -> Path:
     )
     if repository.returncode != 0:
         init_repo(root)
-    wrapper = root / code_quality_gate.QUALITY_WRAPPER
-    wrapper.parent.mkdir(parents=True, exist_ok=True)
-    wrapper.write_text("# wrapper marker\n", encoding="utf-8")
+    if repository_id == "agents-remember":
+        install_agents_remember_profile(root)
+    else:
+        install_fixture_profile(root, repository_id)
     return root
 
 
 def _quality_target(
-    worktree: Path, worktree_group: Path | None = None
+    worktree: Path,
+    worktree_group: Path | None = None,
+    *,
+    repository_id: str = "agents-remember",
 ) -> code_quality_gate.QualityGateTarget:
     return code_quality_gate.QualityGateTarget(
         code_worktree=worktree,
         worktree_group=worktree_group or worktree / "enclosure",
+        repository_id=repository_id,
+        profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
     )
 
 
@@ -96,7 +107,7 @@ def _assert_closeout_commit_subjects(contract, commits: Mapping[str, str]) -> No
 
 
 class CloseoutCodeQualityGateTests(unittest.TestCase):
-    def test_agents_remember_closeout_refuses_a_missing_self_owned_wrapper(self) -> None:
+    def test_closeout_refuses_a_profile_bound_to_another_repository(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             initial = dirty_open_external_contract_fixture(Path(tmp))
             task_root = (
@@ -129,7 +140,10 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
                 mock.patch.object(closeout_module, "_claim_closeout_gate") as claim,
                 mock.patch.object(closeout_module, "accepted_code_commit") as commit,
                 mock.patch.object(closeout_staged_quality, "run_strict_code_quality_gate") as gate,
-                self.assertRaisesRegex(RuntimeError, "self-owned wrapper"),
+                self.assertRaisesRegex(
+                    ValueError,
+                    "repository certification profile authority is invalid",
+                ),
             ):
                 run_authorized_closeout_mechanics(closeout_args(contract))
 
@@ -165,6 +179,11 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
                 operation_progress=progress,
             )
             with (
+                mock.patch.object(
+                    closeout_staged_quality,
+                    "run_strict_code_quality_gate",
+                    side_effect=publish_passing_quality_gate,
+                ),
                 mock.patch.object(
                     closeout_module,
                     "write_contract",
@@ -240,6 +259,11 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
                 operation_progress=mutation_recorder,
             )
             with (
+                mock.patch.object(
+                    closeout_staged_quality,
+                    "run_strict_code_quality_gate",
+                    side_effect=publish_passing_quality_gate,
+                ),
                 mock.patch.object(
                     closeout_external,
                     "write_ledger",
@@ -547,7 +571,10 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
     def test_preview_advertises_memory_preflight_before_code_quality(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             contract = dirty_open_external_contract_fixture(Path(tmp))
-            _checkout_with_wrapper(contract.code_worktree)
+            _checkout_with_profile(
+                contract.code_worktree,
+                repository_id=contract.repo_name,
+            )
             write_passing_route_review(contract)
             output = io.StringIO()
 
@@ -569,46 +596,36 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
             )
             self.assertIn("before Pyright or pytest", payload["summary"])
 
-    def test_closeout_hands_the_gate_the_code_worktree_not_the_repository_name(self) -> None:
-        """Both closeout entry points must pass the checkout, and nothing else catches it.
-
-        The deciders take a checkout path. Handing them ``contract.repo_name`` -- the
-        signature they had before the repository-name hard-code was removed -- makes
-        ``quality_wrapper_path`` build a relative path off the process CWD, which is not a
-        file, so ``requires_strict_code_quality`` returns ``False`` and the gate the product
-        documents as mandatory silently never runs. ``contract`` is unannotated in
-        ``closeout.py``, so Pyright type-checks that mistake in silence; every other test in
-        this file patches ``requires_strict_code_quality`` out and cannot see the argument.
-        """
+    def test_closeout_hands_the_gate_the_exact_repository_profile_context(self) -> None:
+        """Preview and apply preserve repository root, identity, and configured authority."""
         with tempfile.TemporaryDirectory() as tmp:
             contract = dirty_open_external_contract_fixture(Path(tmp))
-            _checkout_with_wrapper(contract.code_worktree)
+            _checkout_with_profile(
+                contract.code_worktree,
+                repository_id=contract.repo_name,
+            )
             assert contract.memory_worktree is not None
-            write_file_onboarding(  # the planted wrapper is a changed source file too
+            write_file_onboarding(
                 contract.memory_worktree / "onboarding",
                 contract.repo_name,
-                code_quality_gate.QUALITY_WRAPPER.as_posix(),
+                AGENTS_REMEMBER_PROFILE_REFERENCE.as_posix(),
                 contract.code_base_commit,
             )
             write_passing_route_review(contract)
-            deciders: list[object] = []
+            deciders: list[code_quality_gate.QualityGateTarget] = []
             real_requires = code_quality_gate.requires_strict_code_quality
 
             def spy(
-                target: Path,
+                target: code_quality_gate.QualityGateTarget,
                 *,
                 code_would_commit: bool,
-                required_when_missing: bool = False,
             ) -> bool:
                 deciders.append(target)
                 return real_requires(
                     target,
                     code_would_commit=code_would_commit,
-                    required_when_missing=required_when_missing,
                 )
 
-            # Preview path (closeout.py:282): reports the enforced state for a dirty
-            # checkout that carries the wrapper, rather than "wrapper-unavailable".
             output = io.StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
@@ -619,7 +636,6 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
             self.assertEqual(gate["status"], code_quality_gate.GATE_ENFORCED)
             self.assertTrue(gate["required"])
 
-            # Apply path (closeout.py:589-593): the real decider runs and fires the gate.
             with (
                 mock.patch.object(closeout_module, "requires_strict_code_quality", side_effect=spy),
                 mock.patch.object(
@@ -631,17 +647,17 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
             ):
                 self.assertEqual(run_authorized_closeout_mechanics(closeout_args(contract)), 0)
 
-            self.assertEqual(deciders, [contract.code_worktree])
+            expected_target = code_quality_gate.QualityGateTarget(
+                code_worktree=contract.code_worktree,
+                worktree_group=contract.worktree_group,
+                repository_id=contract.repo_name,
+                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
+            )
+            self.assertEqual(deciders, [expected_target])
             gate_run.assert_called_once_with(
-                code_quality_gate.QualityGateTarget(
-                    code_worktree=contract.code_worktree,
-                    worktree_group=contract.worktree_group,
-                ),
+                expected_target,
                 diff_base=contract.code_base_commit,
-                plan=code_quality_gate.QualityGatePlan(
-                    mode=code_quality_gate.GATE_TARGETED,
-                    executor="dagger",
-                ),
+                plan=code_quality_gate.QualityGatePlan(mode=code_quality_gate.GATE_TARGETED),
             )
 
     def test_gate_failure_precedes_all_closeout_commits(self) -> None:
@@ -733,7 +749,6 @@ def _refusing_gate(message: str = GATE_REFUSAL):
 
 def _task_worktree(root: Path) -> tuple[Path, Path]:
     """A repository and a linked worktree off it, which is the shape closeout runs in.
-
     ``(repository checkout, task worktree)``. Both are real: the precondition under test
     is git's own distinction between the two, so a fixture that faked it would be testing
     the fixture.
@@ -741,8 +756,9 @@ def _task_worktree(root: Path) -> tuple[Path, Path]:
     repo = root / "repo"
     init_repo(repo, "main")
     (repo / "tracked.txt").write_text("one\n", encoding="utf-8")
+    install_agents_remember_profile(repo)
     git(repo, "add", "-A")
-    git(repo, "commit", "-m", "Add a tracked file")
+    git(repo, "commit", "-m", "Add a tracked file and certification profile")
     worktree = root / "task-worktree"
     git(repo, "worktree", "add", "-b", "ar/task", str(worktree), "main")
     return repo, worktree
@@ -763,8 +779,7 @@ class CertifiedIndexCommitTests(unittest.TestCase):
                 self.assertRaisesRegex(RuntimeError, "candidate changed"),
             ):
                 closeout_module._gate_staged_code(
-                    worktree,
-                    worktree_group=worktree.parent,
+                    _quality_target(worktree, worktree.parent),
                     diff_base="HEAD",
                     candidate_tree=candidate,
                 )
@@ -785,8 +800,7 @@ class CertifiedIndexCommitTests(unittest.TestCase):
                 side_effect=publish_passing_quality_gate,
             ):
                 closeout_module._gate_staged_code(
-                    worktree,
-                    worktree_group=worktree.parent,
+                    _quality_target(worktree, worktree.parent),
                     diff_base="HEAD",
                     candidate_tree=candidate,
                 )
@@ -817,8 +831,7 @@ class CertifiedIndexCommitTests(unittest.TestCase):
                 self.assertRaisesRegex(RuntimeError, "while materializing the accepted tree"),
             ):
                 closeout_module._gate_staged_code(
-                    worktree,
-                    worktree_group=worktree.parent,
+                    _quality_target(worktree, worktree.parent),
                     diff_base="HEAD",
                     candidate_tree=candidate,
                 )
@@ -844,7 +857,8 @@ class CertifiedIndexCommitTests(unittest.TestCase):
                 side_effect=publish_passing_quality_gate,
             ):
                 result = closeout_module._gate_staged_code(
-                    worktree, worktree_group=worktree.parent, diff_base="HEAD"
+                    _quality_target(worktree, worktree.parent),
+                    diff_base="HEAD",
                 )
             (worktree / "tracked.txt").write_text("three\n", encoding="utf-8")
             commit_verified_staged(worktree, "Commit the certified index")
@@ -882,8 +896,7 @@ class CertifiedIndexCommitTests(unittest.TestCase):
                 ),
             ):
                 closeout_module._gate_staged_code(
-                    worktree,
-                    worktree_group=worktree.parent,
+                    _quality_target(worktree, worktree.parent),
                     diff_base="HEAD",
                     candidate_tree=candidate,
                 )
@@ -910,8 +923,7 @@ class CertifiedIndexCommitTests(unittest.TestCase):
                 side_effect=publish_passing_quality_gate,
             ) as gate:
                 result = closeout_module._gate_staged_code(
-                    worktree,
-                    worktree_group=worktree.parent,
+                    _quality_target(worktree, worktree.parent),
                     diff_base="HEAD",
                     candidate_tree=candidate,
                 )
@@ -936,13 +948,11 @@ def _conflicted_task_worktree(root: Path) -> Path:
 
 class TaskWorktreePreconditionTests(unittest.TestCase):
     """Closeout stages, so it must first establish that staging here is free.
-
     Staging is safe in a task worktree because that checkout is disposable scratch space
     with nobody in it -- ``worktree_start`` makes it and ``lifecycle_finalize_task``
     destroys it. It is not safe in a repository's own checkout, and closeout can be handed
     one: ``default_series_contract`` records ``code_worktree=code.repo_path`` for a
     ``kind: "series"`` contract, and nothing else on the apply path would stop it.
-
     The guard tests git's own definition of a linked worktree -- ``--git-dir`` differing
     from ``--git-common-dir`` -- rather than the contract's ``kind``, because that is the
     property the safety argument actually rests on. ``kind`` is a label beside the path;
@@ -951,7 +961,6 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
 
     def test_the_repositorys_own_checkout_is_refused_before_anything_is_staged(self) -> None:
         """Asserted as the damage that does not happen, not merely as a message.
-
         Measured on git 2.43 with this guard removed: ``git add -A`` here rewrites the
         staged ``t.txt`` from the ``add -p`` selection (``one\\ntwo``) to the working-tree
         version, and stages ``secret.env`` -- writing a durable blob for a file the person
@@ -971,7 +980,8 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
                 self.assertRaises(RuntimeError) as caught,
             ):
                 closeout_module._gate_staged_code(
-                    repo, worktree_group=repo.parent, diff_base="HEAD"
+                    _quality_target(repo, repo.parent),
+                    diff_base="HEAD",
                 )
 
             # The selection survives, and the untracked secret is still untracked with no
@@ -986,7 +996,6 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
 
     def test_a_series_contracts_code_worktree_is_exactly_that_checkout(self) -> None:
         """The refusal above is aimed at a contract the system really can produce.
-
         Without this, the guard is a guess about a shape nobody builds. ``kind: "series"``
         records the repository path itself, so it is the concrete way a closeout could have
         reached a checkout a person works in.
@@ -1014,8 +1023,7 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
             self.assertEqual(series.code_worktree, repo)
             with self.assertRaises(RuntimeError) as caught:
                 closeout_module._gate_staged_code(
-                    series.code_worktree,
-                    worktree_group=series.worktree_group,
+                    _quality_target(series.code_worktree, series.worktree_group),
                     diff_base="HEAD",
                 )
             self.assertIn("is not a task worktree", str(caught.exception))
@@ -1030,7 +1038,8 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
                 side_effect=publish_passing_quality_gate,
             ):
                 result = closeout_module._gate_staged_code(
-                    worktree, worktree_group=worktree.parent, diff_base="HEAD"
+                    _quality_target(worktree, worktree.parent),
+                    diff_base="HEAD",
                 )
 
             self.assertTrue(result["required"])
@@ -1040,7 +1049,6 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
 
     def test_a_refused_gate_leaves_the_task_worktree_staged(self) -> None:
         """No rollback, stated as a test rather than left to be discovered.
-
         An earlier attempt saved the index file aside and copied it back. That machinery is
         gone: there is no snapshot to orphan, no ``index.lock`` to leave stale, and nothing
         that has to run at exit for the checkout to be in a sane state.
@@ -1051,7 +1059,8 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
 
             with _refusing_gate(), self.assertRaises(RuntimeError):
                 closeout_module._gate_staged_code(
-                    worktree, worktree_group=worktree.parent, diff_base="HEAD"
+                    _quality_target(worktree, worktree.parent),
+                    diff_base="HEAD",
                 )
 
             self.assertIn("created.py", git(worktree, "ls-files"))
@@ -1062,7 +1071,6 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
 
 class ConflictedIndexTests(unittest.TestCase):
     """A conflicted worktree fails cleanly instead of committing the markers.
-
     ``git add -A`` over an unmerged index does not refuse -- it resolves every conflict to
     whatever the working tree holds, markers included, and closeout then commits that. The
     refusal is deliberate, is checked before anything is staged, and says what state the
@@ -1081,7 +1089,8 @@ class ConflictedIndexTests(unittest.TestCase):
                 self.assertRaises(RuntimeError) as caught,
             ):
                 closeout_module._gate_staged_code(
-                    worktree, worktree_group=worktree.parent, diff_base="HEAD"
+                    _quality_target(worktree, worktree.parent),
+                    diff_base="HEAD",
                 )
 
             message = str(caught.exception)
@@ -1095,7 +1104,6 @@ class ConflictedIndexTests(unittest.TestCase):
 
     def test_the_reset_runs_after_the_conflict_check_not_before_it(self) -> None:
         """Order, asserted through what survives rather than through call bookkeeping.
-
         A mixed reset drops the unmerged index entries and removes ``MERGE_HEAD``. Run
         before the check, it would leave ``diff --diff-filter=U`` with nothing to report,
         the refusal would never fire again, and ``add -A`` would go on to stage the
@@ -1113,7 +1121,8 @@ class ConflictedIndexTests(unittest.TestCase):
                 self.assertRaises(RuntimeError),
             ):
                 closeout_module._gate_staged_code(
-                    worktree, worktree_group=worktree.parent, diff_base="HEAD"
+                    _quality_target(worktree, worktree.parent),
+                    diff_base="HEAD",
                 )
 
             gate.assert_not_called()
@@ -1154,7 +1163,8 @@ class RetryStagesWhatAFirstRunWouldTests(unittest.TestCase):
             side_effect=publish_passing_quality_gate,
         ):
             closeout_module._gate_staged_code(
-                worktree, worktree_group=worktree.parent, diff_base="HEAD"
+                _quality_target(worktree, worktree.parent),
+                diff_base="HEAD",
             )
         commit_if_dirty(worktree, message)
         return git(worktree, "rev-parse", "HEAD^{tree}")
@@ -1171,14 +1181,13 @@ class RetryStagesWhatAFirstRunWouldTests(unittest.TestCase):
             (retried / DROPPED_TOOL_ARTEFACT).write_text('{"pid": 1}\n', encoding="utf-8")
             with _refusing_gate(), self.assertRaises(RuntimeError):
                 closeout_module._gate_staged_code(
-                    retried, worktree_group=retried.parent, diff_base="HEAD"
+                    _quality_target(retried, retried.parent),
+                    diff_base="HEAD",
                 )
             self.assertIn(DROPPED_TOOL_ARTEFACT, git(retried, "ls-files"))
-
             # The leaf adds the ignore rule and retries, against a worktree still staged.
             self._end_state(retried)
             retried_tree = self._gate_then_commit(retried, "Closeout on the retry")
-
             # The same end state, closed out once, in a worktree that never saw the refusal.
             self._end_state(fresh)
             fresh_tree = self._gate_then_commit(fresh, "Closeout on a first run")

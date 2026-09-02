@@ -379,6 +379,45 @@ class McpConfigTests(unittest.TestCase):
             assert contract_path is not None
             self.assertEqual(contract_path.name, "series-contract.md")
 
+    def test_loads_explicit_repository_certification_profile_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            payload = settings_payload(root)
+            payload["repositories"]["agents-remember"]["certificationProfile"] = (
+                "mcp/certification-profile-v1.json"
+            )
+            path = root / "mcp-settings.json"
+            write_json(path, payload)
+
+            config = load_config(path)
+
+            self.assertEqual(
+                config.repositories["agents-remember"].certification_profile,
+                Path("mcp/certification-profile-v1.json"),
+            )
+
+    def test_repository_certification_profile_reference_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            payload = settings_payload(root)
+            path = root / "mcp-settings.json"
+            for invalid in (
+                ["one.json", "two.json"],
+                "../outside.json",
+                "/absolute/profile.json",
+                "C:/absolute/profile.json",
+                "mcp\\profile.json",
+                ".",
+                "mcp/",
+            ):
+                payload["repositories"]["agents-remember"]["certificationProfile"] = invalid
+                write_json(path, payload)
+                with (
+                    self.subTest(invalid=invalid),
+                    self.assertRaisesRegex(ConfigError, "certificationProfile"),
+                ):
+                    load_config(path)
+
     def test_legacy_memory_settings_includes_key_is_tolerated_and_ignored(self) -> None:
         """The dead memorySettingsIncludes plumbing was removed with 260703-L13.
 

@@ -15,12 +15,25 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.repository_profiles import (
+    canonicalize_repository_profile,
+    compile_repository_profile_plan,
+    load_repository_profile,
+    repository_profile_digest,
+)
 from agents_remember_test_support.testing.dagger_admission import (
     DAGGER_TEST_ATTESTATION_ENV,
     DaggerAdmissionError,
     dagger_admission_refusal,
 )
 from conftest import prepare_certifying_pytest_bootstrap
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    NODE_FIXTURE,
+    RUST_FIXTURE,
+    fixture_execution_manifest,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DAGGER_MANIFEST = REPOSITORY_ROOT / "dagger.json"
@@ -73,8 +86,10 @@ class FakeContainer:
         self.files: dict[str, str] = {}
         self.environment: list[tuple[object, ...]] = []
         self.operations: list[tuple[object, ...]] = []
+        self.image: str | None = None
 
     def from_(self, image: str) -> FakeContainer:
+        self.image = image
         self.operations.append(("from", image))
         return self
 
@@ -90,6 +105,49 @@ class FakeContainer:
     def with_exec(self, command: list[str], **_kwargs: object) -> FakeContainer:
         self.commands.append(command)
         self.operations.append(("exec", *command))
+        if "agents_remember_test_support.code_quality.profile_selection" in command:
+            output = command[command.index("--output") + 1]
+            self.files[output] = json.dumps(
+                {
+                    "schemaVersion": "repository-selector-result/v1",
+                    "mode": command[command.index("--mode") + 1],
+                    "baseRevision": command[command.index("--diff-base") + 1],
+                    "complete": True,
+                    "globalInvalidation": False,
+                    "changed-files": ["mcp/src/fixture.py"],
+                    "coverage-paths": ["mcp/src/agents_remember"],
+                    "coverage-roots": ["agents_remember"],
+                    "lint-paths": ["mcp/src/fixture.py"],
+                    "selected-tests": ["mcp/tests/test_fixture.py"],
+                    "size-paths": ["mcp/src/fixture.py"],
+                    "type-closure": ["mcp/src/fixture.py"],
+                }
+            )
+        if "scripts/select-tests.sh" in command:
+            output = command[-1]
+            selected = (
+                ["unit"]
+                if self.image and self.image.startswith("rust:")
+                else ["test/unit.test.mjs"]
+            )
+            self.files[output] = json.dumps(
+                {
+                    "schemaVersion": "repository-selector-result/v1",
+                    "complete": True,
+                    "selected-tests": selected,
+                }
+            )
+        for script, output_offsets in (
+            ("scripts/run-suite.mjs", (1, 2)),
+            ("scripts/run-suite.sh", (1, 2)),
+            ("scripts/run-e2e.mjs", (1,)),
+            ("scripts/run-e2e.sh", (1,)),
+        ):
+            if script not in command:
+                continue
+            script_index = command.index(script)
+            for offset in output_offsets:
+                self.files[command[script_index + offset]] = '{"status":"passed"}\n'
         return self
 
     def with_directory(self, *args: object) -> FakeContainer:
@@ -111,11 +169,34 @@ class FakeContainer:
     def directory(self, path: str) -> str:
         return path
 
+    def file(self, path: str) -> FakeFile:
+        return FakeFile(self.files[path])
+
+    async def env_variable(self, name: str) -> str | None:
+        return next(
+            (str(values[1]) for values in reversed(self.environment) if values[0] == name),
+            None,
+        )
+
+    async def exists(self, path: str, **_kwargs: object) -> bool:
+        return path in self.files
+
     async def sync(self) -> FakeContainer:
         return self
 
     async def exit_code(self) -> int:
-        return self.exit_codes.pop(0)
+        return self.exit_codes.pop(0) if self.exit_codes else 0
+
+
+class FakeFile:
+    def __init__(self, contents: str) -> None:
+        self.value = contents
+
+    async def contents(self) -> str:
+        return self.value
+
+    async def size(self) -> int:
+        return len(self.value.encode("utf-8"))
 
 
 class FakeDag:
@@ -134,6 +215,49 @@ class FakeSource:
         return path
 
 
+def execution_manifest(*, mode: str, candidate: str = "c" * 40) -> FakeFile:
+    admitted = load_repository_profile(
+        "agents-remember",
+        REPOSITORY_ROOT,
+        AGENTS_REMEMBER_PROFILE_REFERENCE,
+    )
+    selection_id = "closeout-targeted" if mode == "targeted" else "closeout-full"
+    plan = compile_repository_profile_plan(
+        admitted.canonical,
+        selection_id=selection_id,
+        candidate_identity=CandidateIdentity(kind="git-tree", value=candidate),
+    )
+    profile = admitted.canonical.profile
+    return FakeFile(
+        json.dumps(
+            {
+                "schemaVersion": "repository-certification-admission/v1",
+                "candidateTree": candidate,
+                "profile": {"profileDigest": admitted.canonical.profileDigest},
+                "profilePlan": plan.model_dump(mode="json"),
+                "executorAdapter": profile.executorAdapters[0].model_dump(mode="json"),
+                "resultDecoder": profile.resultDecoders[0].model_dump(mode="json"),
+                "publishedArtifacts": [
+                    artifact.model_dump(mode="json") for artifact in profile.publishedArtifacts
+                ],
+            }
+        )
+    )
+
+
+def admitted_command_index(commands: list[list[str]], expected: list[str]) -> int:
+    """Locate one exact profile command behind the bounded timeout launcher."""
+
+    return next(
+        index
+        for index, command in enumerate(commands)
+        if len(command) >= 5
+        and command[:3] == ["timeout", "--signal=TERM", "--kill-after=10s"]
+        and command[3].endswith("s")
+        and command[4:] == expected
+    )
+
+
 def test_agents_remember_quality_module_is_pinned_and_parseable() -> None:
     manifest = json.loads(DAGGER_MANIFEST.read_text(encoding="utf-8"))
     tree = ast.parse(DAGGER_MODULE.read_text(encoding="utf-8"), filename=DAGGER_MODULE.as_posix())
@@ -149,6 +273,7 @@ def test_agents_remember_quality_module_is_pinned_and_parseable() -> None:
     }
     assert public_functions == {
         "quality",
+        "portable_certification",
         "cadence_evidence",
         "causal_evidence",
         "retry_evidence",
@@ -161,8 +286,11 @@ def test_agents_remember_quality_module_is_pinned_and_parseable() -> None:
 
 
 def test_ambient_role_chat_harness_is_wired_and_parseable() -> None:
-    dagger_source = DAGGER_MODULE.read_text(encoding="utf-8")
-    assert "scripts/e2e_harness/run.py" in dagger_source
+    profile = json.loads(
+        (REPOSITORY_ROOT / AGENTS_REMEMBER_PROFILE_REFERENCE).read_text(encoding="utf-8")
+    )
+    commands = [rail["execution"]["command"] for rail in profile["rails"]]
+    assert any("scripts/e2e_harness/run.py" in command for command in commands)
 
     for relative in E2E_HARNESS_PYTHON:
         path = REPOSITORY_ROOT / relative
@@ -305,6 +433,7 @@ def test_candidate_setup_precedes_every_attempt_specific_cache_input() -> None:
     assert tuple(inspect.signature(module._candidate_base).parameters) == (
         "source",
         "repository_bundle",
+        "image_reference",
     )
     operations = fake_dag.container_value.operations
     runtime_build_index = next(
@@ -329,8 +458,6 @@ def test_candidate_setup_precedes_every_attempt_specific_cache_input() -> None:
         "AR_QUALITY_RETRY_CACHE",
         "AR_DAGGER_TEST_ATTESTATION",
         "AR_QUALITY_ATTEMPT_NONCE",
-        "AR_CODEX_PROBE_MODE",
-        "AR_CODEX_PROBE_REPORT",
         "AR_QUALITY_PROGRESS_REPORT",
         "COVERAGE_FILE",
     }
@@ -346,6 +473,14 @@ def test_candidate_setup_precedes_every_attempt_specific_cache_input() -> None:
     )
 
     assert len(late_indices) == len(late_names)
+    assert all(
+        operation[:2]
+        not in {
+            ("env", "AR_CODEX_PROBE_MODE"),
+            ("env", "AR_CODEX_PROBE_REPORT"),
+        }
+        for operation in operations
+    )
     assert runtime_build_index < source_index < install_index
     assert all(index > install_index for index in late_indices)
     assert retry_cache_index > install_index
@@ -366,6 +501,81 @@ def test_candidate_setup_precedes_every_attempt_specific_cache_input() -> None:
         "venv",
         module.VENV_ROOT,
     ) in operations[:install_index]
+
+
+def test_real_codex_probe_activation_belongs_only_to_the_explicit_gate_four_rail() -> None:
+    admitted = load_repository_profile(
+        "agents-remember",
+        REPOSITORY_ROOT,
+        AGENTS_REMEMBER_PROFILE_REFERENCE,
+    )
+    codex_rail = next(
+        rail
+        for rail in admitted.canonical.profile.rails
+        if rail.identity.railId == "codex-read-only-probe"
+    )
+    assert codex_rail.gate == 4
+    assert codex_rail.execution.command[:3] == (
+        "env",
+        "AR_CODEX_PROBE_MODE=real",
+        "AR_CODEX_PROBE_REPORT={reports}/codex-probe.json",
+    )
+
+    local_plan = compile_repository_profile_plan(
+        admitted.canonical,
+        selection_id="local-targeted",
+        candidate_identity=CandidateIdentity(kind="git-tree", value="c" * 40),
+    )
+    assert local_plan.gates[3].applicability == "not-applicable"
+    assert local_plan.gates[3].rails == ()
+    assert all(
+        "AR_CODEX_PROBE" not in token
+        for rail in admitted.canonical.profile.rails
+        if rail.gate < 4
+        for token in rail.execution.command
+    )
+
+
+def test_gate_four_not_applicable_result_does_not_claim_real_codex_execution() -> None:
+    module = load_dagger_module()
+    progress = module._QualityProgress(
+        container=FakeContainer([]),
+        exit_code=0,
+        attempted=["python-suite", "python-crap", "python-diff-coverage"],
+        completed=["python-suite", "python-crap", "python-diff-coverage"],
+    )
+
+    payload = module._quality_result_payload(
+        progress,
+        started_at="2026-09-02T00:00:00+00:00",
+        mode="targeted",
+        attempt_nonce=VALID_DAGGER_NONCE,
+    )
+
+    assert "codexMode" not in payload
+    assert payload["codexProtocol"] is None
+    assert payload["promptSubmitted"] is False
+
+
+@pytest.mark.parametrize("step", ("codex-read-only-probe", "ambient-role-chat-e2e"))
+def test_attempted_gate_four_codex_rail_preserves_real_mode_fact(step: str) -> None:
+    module = load_dagger_module()
+    progress = module._QualityProgress(
+        container=FakeContainer([]),
+        exit_code=1,
+        attempted=[step],
+        completed=[],
+        step_exit_codes={step: 1},
+    )
+
+    payload = module._quality_result_payload(
+        progress,
+        started_at="2026-09-02T00:00:00+00:00",
+        mode="targeted",
+        attempt_nonce=VALID_DAGGER_NONCE,
+    )
+
+    assert payload["codexMode"] == "real"
 
 
 def test_python_suite_refuses_missing_or_mismatched_dagger_attestation(tmp_path: Path) -> None:
@@ -412,9 +622,13 @@ def test_python_suite_accepts_matching_dagger_attestation(tmp_path: Path) -> Non
 
 def test_agents_remember_quality_exports_failures_as_the_only_authoritative_result() -> None:
     source = DAGGER_MODULE.read_text(encoding="utf-8")
+    profile = json.loads(
+        (REPOSITORY_ROOT / AGENTS_REMEMBER_PROFILE_REFERENCE).read_text(encoding="utf-8")
+    )
 
     assert "expect=ReturnType.ANY" in source
-    assert "clean-quality-results.json" in source
+    assert profile["resultDecoders"][0]["artifactPath"] == "clean-quality-results.json"
+    assert "clean-quality-results.json" not in source
     assert "async def verify" not in source
 
 
@@ -441,15 +655,14 @@ def test_retry_matrix_distinguishes_pytest_execution_from_explicit_skip(
 
 
 @pytest.mark.parametrize(
-    ("mode", "diff_base", "memory_cap", "message"),
+    ("diff_base", "memory_cap", "message"),
     [
-        ("quick", "base", 0, "unknown quality mode"),
-        ("full", "", 0, "diff_base must name"),
-        ("full", "base", -1, "memory_cap_bytes cannot be negative"),
+        ("", 0, "diff_base must name"),
+        ("base", -1, "memory_cap_bytes cannot be negative"),
     ],
 )
 def test_dagger_quality_refuses_invalid_public_inputs(
-    mode: str, diff_base: str, memory_cap: int, message: str
+    diff_base: str, memory_cap: int, message: str
 ) -> None:
     module = load_dagger_module()
 
@@ -458,8 +671,8 @@ def test_dagger_quality_refuses_invalid_public_inputs(
             module.AgentsRememberQuality().quality(
                 object(),
                 object(),
+                object(),
                 diff_base=diff_base,
-                mode=mode,
                 memory_cap_bytes=memory_cap,
             )
         )
@@ -478,9 +691,9 @@ def test_dagger_route_measurement_refuses_single_observation_distributions() -> 
         )
 
 
-def test_dagger_quality_builds_the_real_probe_and_targeted_wrapper_graph() -> None:
+def test_dagger_quality_executes_the_exact_targeted_profile_plan() -> None:
     module = load_dagger_module()
-    fake_dag = FakeDag([0, 0, 0, 0])
+    fake_dag = FakeDag([])
 
     with (
         patch.object(module, "dag", fake_dag),
@@ -490,7 +703,7 @@ def test_dagger_quality_builds_the_real_probe_and_targeted_wrapper_graph() -> No
             module.AgentsRememberQuality().quality(
                 FakeSource(),
                 object(),
-                mode="targeted",
+                execution_manifest(mode="targeted"),
                 diff_base="a" * 40,
                 memory_cap_bytes=1024,
             )
@@ -502,17 +715,29 @@ def test_dagger_quality_builds_the_real_probe_and_targeted_wrapper_graph() -> No
     assert any(command[-1] == "mcp/tests/test_codex_clean_room_probe.py" for command in commands)
     assert ["git", "fetch", "--no-tags", "/tmp/ar-candidate.bundle", "HEAD"] in commands
     assert ["git", "add", "--all"] in commands
-    wrapper = next(
+    selector = next(
         command
         for command in commands
-        if "agents_remember_test_support.code_quality.check" in command
+        if "agents_remember_test_support.code_quality.profile_selection" in command
     )
-    assert "--targeted" in wrapper
-    assert wrapper[wrapper.index("--pytest-phase-report") + 1] == "/reports/pytest-phases.json"
-    assert wrapper[wrapper.index("--causal-failure-report") + 1] == (
-        "/reports/causal-failures.json"
+    assert selector[selector.index("--mode") + 1] == "targeted"
+    assert selector[selector.index("--diff-base") + 1] == "a" * 40
+    suite = next(command for command in commands if "python-suite" in command)
+    assert suite[suite.index("--memory-cap-bytes") + 1] == "1024"
+    assert not any(
+        "agents_remember_test_support.code_quality.check" in command for command in commands
     )
-    assert wrapper[-4:] == ["--diff-base", "a" * 40, "--memory-cap-bytes", "1024"]
+    assert admitted_command_index(commands, ["npm", "ci"]) < admitted_command_index(
+        commands, ["npm", "run", "build"]
+    )
+    assert commands.index(suite) < commands.index(
+        next(command for command in commands if "python-crap" in command)
+    )
+    assert commands.index(next(command for command in commands if "python-crap" in command)) < (
+        commands.index(
+            next(command for command in commands if "scripts/e2e_harness/run.py" in command)
+        )
+    )
     payload = json.loads(fake_dag.container_value.files["/reports/clean-quality-results.json"])
     assert payload["status"] == "passed"
     assert payload["startedAt"] <= payload["finishedAt"]
@@ -530,12 +755,12 @@ def test_dagger_quality_builds_the_real_probe_and_targeted_wrapper_graph() -> No
         command[:2] == ["sh", "-c"] and "/tmp/ar-quality/dagger-test-attestation" in command[-1]
         for command in commands
     )
-    assert payload["completedSteps"] == [
+    assert payload["completedSteps"][0:2] == [
         "environment",
-        "codex-read-only-probe",
-        "ambient-role-chat-e2e",
-        "quality-wrapper",
+        "selector:agents-remember-test-selection",
     ]
+    assert payload["completedSteps"][-1] == "teardown-process-cleanliness"
+    assert len(payload["completedSteps"]) == 34
     assert payload["attemptedSteps"] == payload["completedSteps"]
     assert payload["skippedSteps"] == []
     assert payload["failedStep"] is None
@@ -551,31 +776,182 @@ def test_dagger_quality_builds_the_real_probe_and_targeted_wrapper_graph() -> No
     }
 
 
+@pytest.mark.parametrize("fixture", (NODE_FIXTURE, RUST_FIXTURE))
+def test_portable_dagger_function_interprets_one_frozen_fixture_plan(fixture) -> None:
+    module = load_dagger_module()
+    fake_dag = FakeDag([])
+    candidate = "d" * 40
+    manifest = FakeFile(json.dumps(fixture_execution_manifest(fixture, candidate_tree=candidate)))
+
+    with (
+        patch.object(module, "dag", fake_dag),
+        patch.object(module.secrets, "token_hex", return_value=VALID_DAGGER_NONCE),
+    ):
+        result = asyncio.run(
+            module.AgentsRememberQuality().portable_certification(
+                object(),
+                object(),
+                manifest,
+                diff_base="base-commit",
+            )
+        )
+
+    commands = fake_dag.container_value.commands
+    assert result.exit_code == 0
+    assert fake_dag.container_value.image == fixture.image_reference
+    assert admitted_command_index(commands, list(fixture.gate_one_command)) >= 0
+    expected_suite: list[str] = []
+    for token in fixture.suite_command:
+        if token == "{selected-tests}":
+            expected_suite.extend(["unit"] if fixture is RUST_FIXTURE else ["test/unit.test.mjs"])
+        else:
+            expected_suite.append(token.replace("{reports}", "/reports"))
+    assert admitted_command_index(commands, expected_suite) >= 0
+    payload = json.loads(fake_dag.container_value.files["/reports/result.json"])
+    assert payload["status"] == "passed"
+    assert payload["exit-code"] == 0
+    assert payload["profileDigest"] == json.loads(manifest.value)["profile"]["profileDigest"]
+    assert {
+        f"publication:{fixture.suite_publication}",
+        f"publication:{fixture.coverage_publication}",
+        f"publication:{fixture.e2e_publication}",
+    } <= set(payload["completedSteps"])
+
+
+def test_profile_selector_shape_failure_is_a_typed_terminal_step() -> None:
+    module = load_dagger_module()
+    manifest = fixture_execution_manifest(NODE_FIXTURE, candidate_tree="d" * 40)
+    plan = module.load_execution_manifest(json.dumps(manifest))
+
+    class IncompleteSelectorContainer(FakeContainer):
+        def with_exec(self, command: list[str], **kwargs: object) -> FakeContainer:
+            container = super().with_exec(command, **kwargs)
+            if "scripts/select-tests.sh" in command:
+                self.files[command[-1]] = json.dumps(
+                    {
+                        "schemaVersion": "repository-selector-result/v1",
+                        "complete": False,
+                        "selected-tests": [],
+                    }
+                )
+            return container
+
+    container = IncompleteSelectorContainer([])
+    progress = module._QualityProgress(
+        container=container,
+        exit_code=0,
+        attempted=[],
+        completed=[],
+        step_exit_codes={},
+    )
+    selector = plan.selectors[0]
+    name = f"selector:{selector.selector_id}"
+    expected_path = f"/tmp/ar-profile/{selector.definition['resultPath']}"
+
+    observed_path, values = asyncio.run(
+        module._run_profile_selector(
+            progress,
+            selector,
+            scalar_values={
+                "reports": "/reports",
+                "selection-mode": "full",
+                "diff-base": "base-commit",
+                "memory-cap-bytes": "0",
+                "clean-room": "/workspace",
+            },
+        )
+    )
+
+    assert observed_path == expected_path
+    assert values == {}
+    assert progress.exit_code == 65
+    assert progress.attempted == [name]
+    assert progress.completed == []
+    assert progress.step_exit_codes == {name: 65}
+    assert progress.failure_details == {
+        name: "selector result has the wrong schema or is incomplete"
+    }
+
+
+def test_dagger_quality_refuses_a_rail_runtime_outside_the_admitted_adapter() -> None:
+    module = load_dagger_module()
+    admitted = load_repository_profile(
+        "agents-remember",
+        REPOSITORY_ROOT,
+        AGENTS_REMEMBER_PROFILE_REFERENCE,
+    )
+    profile = admitted.canonical.profile
+    rail = profile.rails[0]
+    changed = profile.model_copy(
+        update={
+            "profileDigest": "0" * 64,
+            "rails": (
+                rail.model_copy(
+                    update={
+                        "runtimeInputs": rail.runtimeInputs.model_copy(
+                            update={"imageDigest": "0" * 64}
+                        )
+                    }
+                ),
+                *profile.rails[1:],
+            ),
+        }
+    )
+    changed = changed.model_copy(update={"profileDigest": repository_profile_digest(changed)})
+    canonical = canonicalize_repository_profile(changed)
+    candidate = "c" * 40
+    plan = compile_repository_profile_plan(
+        canonical,
+        selection_id="closeout-full",
+        candidate_identity=CandidateIdentity(kind="git-tree", value=candidate),
+    )
+    manifest = FakeFile(
+        json.dumps(
+            {
+                "schemaVersion": "repository-certification-admission/v1",
+                "candidateTree": candidate,
+                "profile": {"profileDigest": canonical.profileDigest},
+                "profilePlan": plan.model_dump(mode="json"),
+                "executorAdapter": profile.executorAdapters[0].model_dump(mode="json"),
+                "resultDecoder": profile.resultDecoders[0].model_dump(mode="json"),
+                "publishedArtifacts": [
+                    artifact.model_dump(mode="json") for artifact in profile.publishedArtifacts
+                ],
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="runtime images outside the admitted adapter"):
+        asyncio.run(
+            module.AgentsRememberQuality().quality(
+                object(),
+                object(),
+                manifest,
+                diff_base="base-commit",
+            )
+        )
+
+
 def test_dagger_quality_treats_unselected_ambient_e2e_as_an_explicit_skip() -> None:
     module = load_dagger_module()
-    fake_dag = FakeDag([0, 0, module.E2E_NOT_SELECTED_EXIT_CODE, 0])
+    fake_dag = FakeDag([0, 0, *([0] * 27), module.E2E_NOT_SELECTED_EXIT_CODE, *([0] * 4)])
 
     with patch.object(module, "dag", fake_dag):
         result = asyncio.run(
             module.AgentsRememberQuality().quality(
-                FakeSource(), object(), mode="targeted", diff_base="base-commit"
+                FakeSource(),
+                object(),
+                execution_manifest(mode="targeted"),
+                diff_base="base-commit",
             )
         )
 
     payload = json.loads(fake_dag.container_value.files["/reports/clean-quality-results.json"])
     assert result.exit_code == 0
     assert payload["status"] == "passed"
-    assert payload["attemptedSteps"] == [
-        "environment",
-        "codex-read-only-probe",
-        "ambient-role-chat-e2e",
-        "quality-wrapper",
-    ]
-    assert payload["completedSteps"] == [
-        "environment",
-        "codex-read-only-probe",
-        "quality-wrapper",
-    ]
+    assert "ambient-role-chat-e2e" in payload["attemptedSteps"]
+    assert "ambient-role-chat-e2e" not in payload["completedSteps"]
+    assert payload["completedSteps"][-1] == "teardown-process-cleanliness"
     assert payload["skippedSteps"] == ["ambient-role-chat-e2e"]
     assert payload["failedStep"] is None
     assert payload["stepExitCodes"]["ambient-role-chat-e2e"] == module.E2E_NOT_SELECTED_EXIT_CODE
@@ -635,80 +1011,85 @@ def test_dagger_cadence_evidence_refuses_unknown_trigger() -> None:
 
 def test_dagger_quality_full_uses_explicit_diff_base_without_targeted_flags() -> None:
     module = load_dagger_module()
-    fake_dag = FakeDag([0] * 11)
+    fake_dag = FakeDag([])
 
     with patch.object(module, "dag", fake_dag):
         asyncio.run(
-            module.AgentsRememberQuality().quality(FakeSource(), object(), diff_base="base-commit")
+            module.AgentsRememberQuality().quality(
+                FakeSource(),
+                object(),
+                execution_manifest(mode="full"),
+                diff_base="base-commit",
+            )
         )
 
-    wrapper = next(
-        command
-        for command in fake_dag.container_value.commands
-        if "agents_remember_test_support.code_quality.check" in command
+    suite = next(
+        command for command in fake_dag.container_value.commands if "python-suite" in command
     )
-    assert "--targeted" not in wrapper
-    assert wrapper[-2:] == ["--diff-base", "base-commit"]
-    assert "--memory-cap-bytes" not in wrapper
+    assert suite[suite.index("--mode") + 1] == "full"
+    assert suite[suite.index("--diff-base") + 1] == "base-commit"
+    assert suite[suite.index("--memory-cap-bytes") + 1] == "0"
     commands = fake_dag.container_value.commands
-    assert ["npm", "ci"] in commands
-    assert ["npm", "run", "lint"] in commands
-    assert ["npm", "run", "typecheck"] in commands
-    assert ["npm", "run", "test:coverage"] in commands
-    assert ["npm", "run", "coverage:diff"] in commands
-    assert ["npm", "run", "e2e", "--", "--fail-on-flaky-tests"] in commands
-    assert ["npm", "run", "build"] in commands
+    assert admitted_command_index(commands, ["npm", "ci"]) >= 0
+    assert admitted_command_index(commands, ["npm", "run", "lint"]) >= 0
+    assert admitted_command_index(commands, ["npm", "run", "typecheck"]) >= 0
+    assert admitted_command_index(commands, ["npm", "run", "test:coverage"]) >= 0
+    assert admitted_command_index(commands, ["npm", "run", "coverage:diff"]) >= 0
+    assert (
+        admitted_command_index(
+            commands,
+            ["npm", "run", "e2e", "--", "--fail-on-flaky-tests"],
+        )
+        >= 0
+    )
+    assert admitted_command_index(commands, ["npm", "run", "build"]) >= 0
     assert ("CI", "1") in fake_dag.container_value.environment
 
 
-def test_dagger_quality_stops_at_the_first_failed_dashboard_rail() -> None:
+def test_dagger_quality_stops_before_later_gates_after_a_profile_rail_failure() -> None:
     module = load_dagger_module()
-    fake_dag = FakeDag([0, 0, 0, 0, 0, 7])
+    fake_dag = FakeDag([0, 0, 7])
 
     with patch.object(module, "dag", fake_dag):
         result = asyncio.run(
             module.AgentsRememberQuality().quality(
-                FakeSource(), object(), mode="full", diff_base="base-commit"
+                FakeSource(),
+                object(),
+                execution_manifest(mode="full"),
+                diff_base="base-commit",
             )
         )
 
     payload = json.loads(fake_dag.container_value.files["/reports/clean-quality-results.json"])
     assert result.exit_code == 7
-    assert payload["completedSteps"][-2:] == ["quality-wrapper", "dashboard-install"]
-    assert payload["attemptedSteps"][-2:] == ["dashboard-install", "dashboard-lint"]
-    assert payload["failedStep"] == "dashboard-lint"
-    assert ["npm", "run", "typecheck"] not in fake_dag.container_value.commands
+    assert payload["completedSteps"] == [
+        "environment",
+        "selector:agents-remember-test-selection",
+    ]
+    assert payload["attemptedSteps"][-1] == "causal-preflight"
+    assert payload["failedStep"] == "causal-preflight"
+    assert not any("python-suite" in command for command in fake_dag.container_value.commands)
 
 
 @pytest.mark.parametrize(
-    ("exit_codes", "attempted", "completed", "failed", "prompt_submitted"),
+    ("exit_codes", "attempted", "completed", "failed"),
     [
-        ([9], ["environment"], [], "environment", False),
+        ([9], ["environment"], [], "environment"),
         (
             [0, 7],
-            ["environment", "codex-read-only-probe"],
+            ["environment", "selector:agents-remember-test-selection"],
             ["environment"],
-            "codex-read-only-probe",
-            False,
+            "selector:agents-remember-test-selection",
         ),
         (
             [0, 0, 7],
-            ["environment", "codex-read-only-probe", "ambient-role-chat-e2e"],
-            ["environment", "codex-read-only-probe"],
-            "ambient-role-chat-e2e",
-            None,
-        ),
-        (
-            [0, 0, 0, 7],
             [
                 "environment",
-                "codex-read-only-probe",
-                "ambient-role-chat-e2e",
-                "quality-wrapper",
+                "selector:agents-remember-test-selection",
+                "causal-preflight",
             ],
-            ["environment", "codex-read-only-probe", "ambient-role-chat-e2e"],
-            "quality-wrapper",
-            True,
+            ["environment", "selector:agents-remember-test-selection"],
+            "causal-preflight",
         ),
     ],
 )
@@ -717,14 +1098,18 @@ def test_dagger_quality_exports_failure_at_the_exact_completed_boundary(
     attempted: list[str],
     completed: list[str],
     failed: str,
-    prompt_submitted: bool | None,
 ) -> None:
     module = load_dagger_module()
     fake_dag = FakeDag(exit_codes)
 
     with patch.object(module, "dag", fake_dag):
         result = asyncio.run(
-            module.AgentsRememberQuality().quality(FakeSource(), object(), diff_base="base-commit")
+            module.AgentsRememberQuality().quality(
+                FakeSource(),
+                object(),
+                execution_manifest(mode="full"),
+                diff_base="base-commit",
+            )
         )
 
     payload = json.loads(fake_dag.container_value.files["/reports/clean-quality-results.json"])
@@ -733,6 +1118,6 @@ def test_dagger_quality_exports_failure_at_the_exact_completed_boundary(
     assert payload["attemptedSteps"] == attempted
     assert payload["completedSteps"] == completed
     assert payload["failedStep"] == failed
-    assert payload["promptSubmitted"] is prompt_submitted
+    assert payload["promptSubmitted"] is False
     assert "causalFailureReport" not in payload
     assert "causalFailureSummary" not in payload

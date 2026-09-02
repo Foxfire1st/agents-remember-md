@@ -10,6 +10,7 @@ import sys
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
+import pytest
 from agents_remember.kernel.atomic_write import atomic_write_text
 from agents_remember.kernel.harnesses import Harness
 from agents_remember.kernel.platform_subprocess import windows_interop_reason
@@ -70,7 +71,7 @@ class _FakeReadOnlyTransport:
 
 
 def _selected_mode() -> tuple[str, str | None]:
-    requested = os.environ.get("AR_CODEX_PROBE_MODE", "auto")
+    requested = os.environ.get("AR_CODEX_PROBE_MODE", "fake")
     if requested not in {"auto", "real", "fake"}:
         raise AssertionError(f"unknown AR_CODEX_PROBE_MODE: {requested}")
     resolved = shutil.which("codex")
@@ -83,7 +84,7 @@ def _selected_mode() -> tuple[str, str | None]:
     return ("real", native) if native is not None else ("fake", None)
 
 
-def test_codex_initialize_and_thread_list_use_real_when_available() -> None:
+def test_codex_initialize_and_thread_list_use_selected_transport() -> None:
     mode, executable = _selected_mode()
     fake = _FakeReadOnlyTransport()
     if mode == "real":
@@ -117,3 +118,23 @@ def test_codex_initialize_and_thread_list_use_real_when_available() -> None:
     }
     if report := os.environ.get("AR_CODEX_PROBE_REPORT"):
         atomic_write_text(Path(report), json.dumps(evidence, indent=2) + "\n")
+
+
+def test_codex_probe_defaults_to_fake_without_explicit_gate_four_activation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AR_CODEX_PROBE_MODE", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda _command: "/usr/bin/codex")
+    monkeypatch.setattr(sys.modules[__name__], "windows_interop_reason", lambda _executable: None)
+
+    assert _selected_mode() == ("fake", None)
+
+
+def test_codex_probe_real_mode_requires_an_explicit_native_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AR_CODEX_PROBE_MODE", "real")
+    monkeypatch.setattr(shutil, "which", lambda _command: "/usr/bin/codex")
+    monkeypatch.setattr(sys.modules[__name__], "windows_interop_reason", lambda _executable: None)
+
+    assert _selected_mode() == ("real", "/usr/bin/codex")

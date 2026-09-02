@@ -11,10 +11,10 @@ from agents_remember.models.task_document_ref import TaskDocumentRef
 
 
 class QualityMemoryPolicy(StrictResponseModel):
-    """How the accepting Dagger container's memory is governed."""
+    """How the admitted repository adapter's container memory is governed."""
 
     mode: Literal["container-host-managed", "explicit-cap"]
-    pytestProcesses: Literal["auto"]
+    processPolicy: Literal["profile-adapter-owned"]
     swap: Literal["container-host-managed"]
 
 
@@ -46,6 +46,11 @@ class QualityGateResult(StrictResponseModel):
     diffBase: str | None = None
     mode: str | None = None
     executor: str | None = None
+    executorAdapterId: str | None = None
+    profileDigest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    profilePlanDigest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    profileSelectionId: str | None = None
+    resultArtifact: str | None = None
     reportPath: str | None = Field(default=None, max_length=16384)
     publishedResultPath: str | None = Field(default=None, max_length=16384)
     memoryPolicy: QualityMemoryPolicy | None = None

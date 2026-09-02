@@ -22,6 +22,11 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store i
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
 from agents_remember.worktrees.modules.quality import gate as code_quality_gate
 from agents_remember.worktrees.series_closeout import atomic_series_ledger_prefix
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    REPOSITORY_ROOT,
+    agents_remember_profile_execution,
+)
 
 
 class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
@@ -48,13 +53,16 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                     export,
                     reports,
                     candidate_tree="c" * 40,
+                    profile_execution=agents_remember_profile_execution(candidate_tree="c" * 40),
                     attestation={"id": "one"},
                 )
             target = code_quality_gate.QualityGateTarget(
-                code_worktree=root,
+                code_worktree=REPOSITORY_ROOT,
                 worktree_group=root,
+                repository_id="agents-remember",
+                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
             )
-            plan = code_quality_gate.QualityGatePlan(mode="full", executor="dagger")
+            plan = code_quality_gate.QualityGatePlan(mode="full")
 
             result_path.write_text(
                 json.dumps({"status": "failed", "exitCode": 1}) + "\n",
@@ -64,6 +72,7 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                 export,
                 reports,
                 candidate_tree="c" * 40,
+                profile_execution=agents_remember_profile_execution(candidate_tree="c" * 40),
                 attestation={"id": "one"},
             )
             self.assertIsNone(
@@ -141,13 +150,17 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                 export,
                 reports,
                 candidate_tree=candidate_tree,
+                profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
                 attestation={"id": "one"},
             )
             target = code_quality_gate.QualityGateTarget(
-                code_worktree=root,
+                code_worktree=REPOSITORY_ROOT,
                 worktree_group=root,
+                repository_id="agents-remember",
+                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
             )
-            plan = code_quality_gate.QualityGatePlan(mode="full", executor="dagger")
+            plan = code_quality_gate.QualityGatePlan(mode="full")
+            manifest = clean_quality_executor.load_published_quality_manifest(reports)
             fresh = code_quality_gate._strict_quality_success_payload(
                 target,
                 diff_base="a" * 40,
@@ -156,6 +169,7 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                     candidate_tree=candidate_tree,
                     result_sha256="d" * 64,
                 ),
+                manifest=manifest,
             )
             with mock.patch.object(
                 code_quality_gate,
@@ -171,17 +185,20 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
             assert recovered is not None
             self.assertEqual(recovered["reportPath"], fresh["reportPath"])
             self.assertEqual(Path(str(fresh["reportPath"])).name, "test-results.md")
-            self.assertNotIn("publishedResultPath", fresh)
+            self.assertEqual(recovered["publishedResultPath"], fresh["publishedResultPath"])
             published = Path(str(recovered["publishedResultPath"]))
             self.assertEqual(published.name, "clean-quality-results.json")
             self.assertEqual(json.loads(published.read_text(encoding="utf-8"))["exitCode"], 0)
 
             (export / "clean-quality-results.json").write_text("[]\n", encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "no valid authoritative result"):
+            with self.assertRaisesRegex(RuntimeError, "must be a JSON object"):
                 clean_quality_executor._publish_reports(
                     export,
                     reports,
                     candidate_tree=candidate_tree,
+                    profile_execution=agents_remember_profile_execution(
+                        candidate_tree=candidate_tree
+                    ),
                     attestation={"id": "two"},
                 )
 
@@ -189,12 +206,19 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
         contract = self.owner._certified_contract(final=True)
         plan = completion.preview_organizational_completion(contract)
         assert plan is not None
-        with mock.patch.object(
-            quality,
-            "run_strict_code_quality_gate",
-            side_effect=fixture_mod._full_gate(contract),
-        ) as gate:
-            outcome = quality.run_integration_quality_gate(contract, completion=plan)
+        with (
+            mock.patch.object(quality, "requires_strict_code_quality", return_value=True),
+            mock.patch.object(
+                quality,
+                "run_strict_code_quality_gate",
+                side_effect=fixture_mod._full_gate(contract),
+            ) as gate,
+        ):
+            outcome = quality.run_integration_quality_gate(
+                contract,
+                completion=plan,
+                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
+            )
         gate.assert_called_once()
         self.assertIsNotNone(outcome.certification)
 

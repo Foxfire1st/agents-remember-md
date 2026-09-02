@@ -79,11 +79,9 @@ def _run_reviewed_pre_commit_hook(code_worktree: Path, candidate_tree: str | Non
 
 
 def gate_staged_code(
-    code_worktree: Path,
+    target: QualityGateTarget,
     *,
-    worktree_group: Path,
     diff_base: str,
-    executor: str = "dagger",
     candidate_tree: str | None = None,
 ) -> dict[str, object]:
     """Stage and certify exactly what closeout will commit.
@@ -94,6 +92,8 @@ def gate_staged_code(
     refused attempt. A candidate tree, when supplied, is proven before staging, after
     staging, and after any configured pre-commit hook.
     """
+    code_worktree = target.code_worktree
+    worktree_group = target.worktree_group
     _refuse_outside_a_linked_worktree(code_worktree)
     _refuse_conflicted_worktree(code_worktree)
     if candidate_tree is not None:
@@ -123,9 +123,9 @@ def gate_staged_code(
         )
     pre_commit_hook_ran = _run_reviewed_pre_commit_hook(code_worktree, candidate_tree)
     result = run_strict_code_quality_gate(
-        QualityGateTarget(code_worktree=code_worktree, worktree_group=worktree_group),
+        target,
         diff_base=diff_base,
-        plan=QualityGatePlan(mode="targeted", executor=executor),
+        plan=QualityGatePlan(mode="targeted"),
     )
     certified_tree = require_git(code_worktree, ["write-tree"])
     evidence = require_published_quality_evidence(

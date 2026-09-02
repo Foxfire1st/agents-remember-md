@@ -17,6 +17,7 @@ from agents_remember.application.worktree_services import (
     bind_worktree_services,
     build_default_worktree_services,
 )
+from agents_remember.kernel.authority import require_repo
 from agents_remember.kernel.primitives.checkout_coordination import (
     declare_lifecycle_operation_process,
 )
@@ -304,8 +305,14 @@ def execute_operation(record: LifecycleOperationRecord, runtime: OperationRuntim
         return
     operation_input = record.input
     config = load_config(operation_input.configPath)
+    current_contract = load_contract(Path(operation_input.contractPath))
+    certification_profile = require_repo(
+        config,
+        current_contract.repo_name,
+    ).certification_profile
     common = {
         "contract_path": Path(operation_input.contractPath),
+        "certification_profile": certification_profile,
         "approved": True,
         "operation_key": record.operationKey,
         "operation_generation": record.generation,
@@ -323,7 +330,6 @@ def execute_operation(record: LifecycleOperationRecord, runtime: OperationRuntim
             approval_note=operation_input.approvalNote,
             closeout_input=operation_input.effectiveInput,
         )
-        current_contract = load_contract(Path(operation_input.contractPath))
         result = closeout_result(args, current_contract)
         payload = {
             **result.payload,
@@ -337,7 +343,6 @@ def execute_operation(record: LifecycleOperationRecord, runtime: OperationRuntim
             strategy=operation_input.strategy,
             ledger_commit_message=operation_input.ledgerCommitMessage,
         )
-        current_contract = load_contract(Path(operation_input.contractPath))
         result = integrate_result(args, current_contract)
         payload = integration_completion_payload(config, operation_input, result)
     else:

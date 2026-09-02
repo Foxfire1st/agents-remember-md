@@ -1,0 +1,2810 @@
+{
+  "schemaVersion": "repository-certification-profile/v1",
+  "semanticRevision": "1.0.0",
+  "repositoryId": "agents-remember",
+  "profileId": "agents-remember-certification",
+  "profileDigest": "d8fc1225932de5f46946fc410c40e544018bff8b34da0c706615abdd307d96a4",
+  "selections": [
+    {
+      "selectionId": "closeout-full",
+      "purpose": "closeout",
+      "mode": "full",
+      "executorAdapterId": "certifying-dagger",
+      "resultDecoderId": "quality-terminal-result",
+      "gates": [
+        {
+          "gate": 1,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "causal-preflight",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-build",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-codegen",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-lint",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-typecheck",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dependency-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "evidence-lifecycle",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "file-size",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-harness",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-projection-types",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-runtime",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-skills",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "layering",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "pyright",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "quality-config-scope",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-cc",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-mi",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff-format",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "runtime-capability",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "test-selection-ownership",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-full:gate-1:v1",
+          "population": "full pre-test quality population",
+          "reason": null
+        },
+        {
+          "gate": 2,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "dashboard-suite",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-suite",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-full:gate-2:v1",
+          "population": "full ordinary suite population",
+          "reason": null
+        },
+        {
+          "gate": 3,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "dashboard-diff-coverage",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-crap",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-diff-coverage",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-full:gate-3:v1",
+          "population": "full post-test quality population",
+          "reason": null
+        },
+        {
+          "gate": 4,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "ambient-role-chat-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "codex-read-only-probe",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-browser-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "provider-runtime-integration",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "teardown-process-cleanliness",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-full:gate-4:v1",
+          "population": "full clean-room integration population",
+          "reason": null
+        }
+      ]
+    },
+    {
+      "selectionId": "closeout-targeted",
+      "purpose": "closeout",
+      "mode": "targeted",
+      "executorAdapterId": "certifying-dagger",
+      "resultDecoderId": "quality-terminal-result",
+      "gates": [
+        {
+          "gate": 1,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "causal-preflight",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-build",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-codegen",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-lint",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-typecheck",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dependency-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "evidence-lifecycle",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "file-size",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-harness",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-projection-types",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-runtime",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-skills",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "layering",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "pyright",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "quality-config-scope",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-cc",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-mi",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff-format",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "runtime-capability",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "test-selection-ownership",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-targeted:gate-1:v1",
+          "population": "targeted pre-test quality population",
+          "reason": null
+        },
+        {
+          "gate": 2,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "dashboard-suite",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-suite",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-targeted:gate-2:v1",
+          "population": "targeted ordinary suite population",
+          "reason": null
+        },
+        {
+          "gate": 3,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "dashboard-diff-coverage",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-crap",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-diff-coverage",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-targeted:gate-3:v1",
+          "population": "targeted post-test quality population",
+          "reason": null
+        },
+        {
+          "gate": 4,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "ambient-role-chat-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "codex-read-only-probe",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-browser-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "provider-runtime-integration",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "teardown-process-cleanliness",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "closeout-targeted:gate-4:v1",
+          "population": "targeted clean-room integration population",
+          "reason": null
+        }
+      ]
+    },
+    {
+      "selectionId": "local-targeted",
+      "purpose": "local-precommit",
+      "mode": "targeted",
+      "executorAdapterId": "certifying-dagger",
+      "resultDecoderId": "quality-terminal-result",
+      "gates": [
+        {
+          "gate": 1,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "causal-preflight",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-build",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-codegen",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-lint",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-typecheck",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dependency-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "evidence-lifecycle",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "file-size",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-harness",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-projection-types",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-runtime",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-skills",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "layering",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "pyright",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "quality-config-scope",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-cc",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-mi",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff-format",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "runtime-capability",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "test-selection-ownership",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "local-targeted:gate-1:v1",
+          "population": "targeted pre-test quality population",
+          "reason": null
+        },
+        {
+          "gate": 2,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "dashboard-suite",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-suite",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "local-targeted:gate-2:v1",
+          "population": "targeted ordinary suite population",
+          "reason": null
+        },
+        {
+          "gate": 3,
+          "status": "applicable",
+          "railIds": [
+            {
+              "railId": "dashboard-diff-coverage",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-crap",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-diff-coverage",
+              "version": "1.0.0"
+            }
+          ],
+          "selectionIdentity": "local-targeted:gate-3:v1",
+          "population": "targeted post-test quality population",
+          "reason": null
+        },
+        {
+          "gate": 4,
+          "status": "not-applicable",
+          "railIds": [],
+          "selectionIdentity": "local-targeted:gate-4:v1",
+          "population": null,
+          "reason": "Local pre-commit does not enter the clean-room integration environment"
+        }
+      ]
+    }
+  ],
+  "rails": [
+    {
+      "identity": {
+        "railId": "ambient-role-chat-e2e",
+        "version": "1.0.0"
+      },
+      "gate": 4,
+      "railClass": "integration-test",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "ambient-role-chat-e2e",
+      "prerequisites": [
+        {
+          "railId": "dashboard-diff-coverage",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-crap",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-diff-coverage",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "ambient-role-chat-e2e-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [
+        {
+          "artifactId": "ambient-role-summary",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        }
+      ],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "ambient-role-chat-e2e-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "scripts/e2e_harness/run.py",
+          "--mode",
+          "{selection-mode}",
+          "--diff-base",
+          "{diff-base}",
+          "--reports",
+          "{reports}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 3600,
+        "resourcePolicyId": "clean-room-bounded",
+        "successExitCodes": [0, 78],
+        "skippedExitCodes": [78],
+        "cleanRoom": true,
+        "teardownPolicy": "always",
+        "executionEvidence": "profile://agents-remember/rails/ambient-role-chat-e2e"
+      }
+    },
+    {
+      "identity": {
+        "railId": "causal-preflight",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "causal-preflight",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "causal-preflight-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "causal-preflight-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.causal_preflight",
+          "--project-root",
+          ".",
+          "--report",
+          "{reports}/causal-failures.json"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/causal-preflight"
+      }
+    },
+    {
+      "identity": {
+        "railId": "codex-read-only-probe",
+        "version": "1.0.0"
+      },
+      "gate": 4,
+      "railClass": "integration-test",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "codex-read-only-probe",
+      "prerequisites": [
+        {
+          "railId": "dashboard-diff-coverage",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-crap",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-diff-coverage",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "codex-read-only-probe-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [
+        {
+          "artifactId": "codex-probe-result",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        }
+      ],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "codex-read-only-probe-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "env",
+          "AR_CODEX_PROBE_MODE=real",
+          "AR_CODEX_PROBE_REPORT={reports}/codex-probe.json",
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "-n=0",
+          "mcp/tests/test_codex_clean_room_probe.py"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "clean-room-bounded",
+        "cleanRoom": true,
+        "teardownPolicy": "always",
+        "executionEvidence": "profile://agents-remember/rails/codex-read-only-probe"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-browser-e2e",
+        "version": "1.0.0"
+      },
+      "gate": 4,
+      "railClass": "integration-test",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-browser-e2e",
+      "prerequisites": [
+        {
+          "railId": "dashboard-diff-coverage",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-crap",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-diff-coverage",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-browser-e2e-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [
+        {
+          "artifactId": "dashboard-e2e-result",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        }
+      ],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-browser-e2e-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "run",
+          "e2e",
+          "--",
+          "--fail-on-flaky-tests"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 3600,
+        "resourcePolicyId": "clean-room-bounded",
+        "cleanRoom": true,
+        "teardownPolicy": "always",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-browser-e2e"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-build",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-build",
+      "prerequisites": [
+        {
+          "railId": "dashboard-prerequisites",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-build-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-build-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-build"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-codegen",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-codegen",
+      "prerequisites": [
+        {
+          "railId": "dashboard-prerequisites",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-codegen-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-codegen-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "run",
+          "codegen"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-codegen"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-diff-coverage",
+        "version": "1.0.0"
+      },
+      "gate": 3,
+      "railClass": "post-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-diff-coverage",
+      "prerequisites": [
+        {
+          "railId": "dashboard-suite",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [
+        "dashboard-coverage-data"
+      ],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-diff-coverage-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-diff-coverage-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "run",
+          "coverage:diff"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-diff-coverage"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-lint",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-lint",
+      "prerequisites": [
+        {
+          "railId": "dashboard-prerequisites",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-lint-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-lint-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "run",
+          "lint"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-lint"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-prerequisites",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-prerequisites",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-prerequisites-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-prerequisites-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "ci"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-prerequisites"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-suite",
+        "version": "1.0.0"
+      },
+      "gate": 2,
+      "railClass": "ordinary-test-suite",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-suite",
+      "prerequisites": [
+        {
+          "railId": "dashboard-prerequisites",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-suite-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [
+        {
+          "artifactId": "dashboard-coverage-data",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        },
+        {
+          "artifactId": "dashboard-suite-result",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        }
+      ],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-suite-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "run",
+          "test:coverage"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": [
+          "dashboard-tests",
+          "targeted-or-full-mode"
+        ],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-suite"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dashboard-typecheck",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dashboard-typecheck",
+      "prerequisites": [
+        {
+          "railId": "dashboard-prerequisites",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dashboard-typecheck-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dashboard-typecheck-adapter",
+        "workingDirectory": "dashboard",
+        "command": [
+          "npm",
+          "run",
+          "typecheck"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-typecheck"
+      }
+    },
+    {
+      "identity": {
+        "railId": "dependency-prerequisites",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "dependency-prerequisites",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "dependency-prerequisites-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "dependency-prerequisites-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/agents-remember-python/current/bin/uv",
+          "pip",
+          "check",
+          "--python",
+          "/opt/ar-venv/bin/python"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/dependency-prerequisites"
+      }
+    },
+    {
+      "identity": {
+        "railId": "evidence-lifecycle",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "evidence-lifecycle",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "evidence-lifecycle-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "evidence-lifecycle-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.testing.evidence_lifecycle",
+          "--project-root",
+          "."
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/evidence-lifecycle"
+      }
+    },
+    {
+      "identity": {
+        "railId": "file-size",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "file-size",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "file-size-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "file-size-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.file_size",
+          "--project-root",
+          ".",
+          "{size-paths}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["size-paths"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/file-size"
+      }
+    },
+    {
+      "identity": {
+        "railId": "generated-harness",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "generated-harness",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "generated-harness-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "generated-harness-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "scripts/sync-harness.py",
+          "--check"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/generated-harness"
+      }
+    },
+    {
+      "identity": {
+        "railId": "generated-projection-types",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "generated-projection-types",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "generated-projection-types-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "generated-projection-types-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "scripts/sync-projection-types.py",
+          "--check"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/generated-projection-types"
+      }
+    },
+    {
+      "identity": {
+        "railId": "generated-runtime",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "generated-runtime",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "generated-runtime-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "generated-runtime-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "scripts/sync-runtime.py",
+          "--check"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/generated-runtime"
+      }
+    },
+    {
+      "identity": {
+        "railId": "generated-skills",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "generated-skills",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "generated-skills-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "generated-skills-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "scripts/sync-skills.py",
+          "--check"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/generated-skills"
+      }
+    },
+    {
+      "identity": {
+        "railId": "layering",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "layering",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "layering-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "layering-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.layering",
+          "--project-root",
+          "."
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/layering"
+      }
+    },
+    {
+      "identity": {
+        "railId": "provider-runtime-integration",
+        "version": "1.0.0"
+      },
+      "gate": 4,
+      "railClass": "integration-test",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "provider-runtime-integration",
+      "prerequisites": [
+        {
+          "railId": "dashboard-diff-coverage",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-crap",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-diff-coverage",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "provider-runtime-integration-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [
+        {
+          "artifactId": "provider-integration-result",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        }
+      ],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "provider-runtime-integration-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "-n=0",
+          "mcp/tests/test_provider_workflow_integration.py"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 3600,
+        "resourcePolicyId": "clean-room-bounded",
+        "cleanRoom": true,
+        "teardownPolicy": "always",
+        "executionEvidence": "profile://agents-remember/rails/provider-runtime-integration"
+      }
+    },
+    {
+      "identity": {
+        "railId": "pyright",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "pyright",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "pyright-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "pyright-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "pyright",
+          "--project",
+          ".",
+          "--pythonpath",
+          "/opt/ar-venv/bin/python",
+          "{type-closure}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["type-closure"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/pyright"
+      }
+    },
+    {
+      "identity": {
+        "railId": "quality-config-scope",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "quality-config-scope",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "quality-config-scope-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "quality-config-scope-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.profile_rails",
+          "quality-config",
+          "--project-root",
+          ".",
+          "--mode",
+          "{selection-mode}",
+          "--diff-base",
+          "{diff-base}",
+          "--scope",
+          "{selector-output}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["configuration", "tracked-input-census"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/quality-config-scope"
+      }
+    },
+    {
+      "identity": {
+        "railId": "python-crap",
+        "version": "1.0.0"
+      },
+      "gate": 3,
+      "railClass": "post-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "python-crap",
+      "prerequisites": [
+        {
+          "railId": "python-suite",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [
+        "python-coverage-json"
+      ],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "python-crap-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "python-crap-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.profile_rails",
+          "python-crap",
+          "--project-root",
+          ".",
+          "--mode",
+          "{selection-mode}",
+          "--diff-base",
+          "{diff-base}",
+          "--scope",
+          "{selector-output}",
+          "--reports",
+          "{reports}",
+          "--memory-cap-bytes",
+          "{memory-cap-bytes}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["coverage-paths", "tracked-input-census"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/python-crap"
+      }
+    },
+    {
+      "identity": {
+        "railId": "python-diff-coverage",
+        "version": "1.0.0"
+      },
+      "gate": 3,
+      "railClass": "post-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "python-diff-coverage",
+      "prerequisites": [
+        {
+          "railId": "python-suite",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [
+        "python-coverage-json"
+      ],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "python-diff-coverage-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "python-diff-coverage-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.profile_rails",
+          "python-diff-coverage",
+          "--project-root",
+          ".",
+          "--mode",
+          "{selection-mode}",
+          "--diff-base",
+          "{diff-base}",
+          "--scope",
+          "{selector-output}",
+          "--reports",
+          "{reports}",
+          "--memory-cap-bytes",
+          "{memory-cap-bytes}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["changed-files", "coverage-paths"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/python-diff-coverage"
+      }
+    },
+    {
+      "identity": {
+        "railId": "python-suite",
+        "version": "1.0.0"
+      },
+      "gate": 2,
+      "railClass": "ordinary-test-suite",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "python-suite",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "python-suite-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [
+        {
+          "artifactId": "python-coverage-data",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        },
+        {
+          "artifactId": "python-coverage-json",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        },
+        {
+          "artifactId": "python-suite-result",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        }
+      ],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "python-suite-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.profile_rails",
+          "python-suite",
+          "--project-root",
+          ".",
+          "--mode",
+          "{selection-mode}",
+          "--diff-base",
+          "{diff-base}",
+          "--scope",
+          "{selector-output}",
+          "--reports",
+          "{reports}",
+          "--memory-cap-bytes",
+          "{memory-cap-bytes}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": [
+          "evidence-lane",
+          "targeted-or-full-mode",
+          "tracked-input-census"
+        ],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/python-suite"
+      }
+    },
+    {
+      "identity": {
+        "railId": "radon-cc",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "report-only",
+      "orderKey": "radon-cc",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "radon-cc-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "radon-cc-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "radon",
+          "cc",
+          "{coverage-paths}",
+          "-s",
+          "-n",
+          "B",
+          "--order",
+          "SCORE"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["coverage-paths"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/radon-cc"
+      }
+    },
+    {
+      "identity": {
+        "railId": "radon-mi",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "report-only",
+      "orderKey": "radon-mi",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "radon-mi-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "radon-mi-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "radon",
+          "mi",
+          "{coverage-paths}",
+          "-s",
+          "-n",
+          "B"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["coverage-paths"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/radon-mi"
+      }
+    },
+    {
+      "identity": {
+        "railId": "ruff",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "ruff",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "ruff-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "ruff-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "ruff",
+          "check",
+          "{lint-paths}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["lint-paths"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/ruff"
+      }
+    },
+    {
+      "identity": {
+        "railId": "ruff-format",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "ruff-format",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "ruff-format-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "ruff-format-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "ruff",
+          "format",
+          "--check",
+          "{lint-paths}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": ["lint-paths"],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/ruff-format"
+      }
+    },
+    {
+      "identity": {
+        "railId": "runtime-capability",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "runtime-capability",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "runtime-capability-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "runtime-capability-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "scripts/check-python-runtime.py",
+          "--expected-version",
+          "3.13.15",
+          "--expected-base-prefix",
+          "/opt/agents-remember-python/current",
+          "--require-linux-pidfd"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/runtime-capability"
+      }
+    },
+    {
+      "identity": {
+        "railId": "test-selection-ownership",
+        "version": "1.0.0"
+      },
+      "gate": 1,
+      "railClass": "pre-test-quality",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "test-selection-ownership",
+      "prerequisites": [],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "test-selection-ownership-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "test-selection-ownership-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.profile_rails",
+          "selection-ownership",
+          "--project-root",
+          ".",
+          "--mode",
+          "{selection-mode}",
+          "--diff-base",
+          "{diff-base}",
+          "--scope",
+          "{selector-output}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": "agents-remember-test-selection",
+        "inputSelectors": [
+          "changed-files",
+          "evidence-lane",
+          "tracked-input-census"
+        ],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 1800,
+        "resourcePolicyId": "quality-bounded",
+        "cleanRoom": false,
+        "teardownPolicy": "not-required",
+        "executionEvidence": "profile://agents-remember/rails/test-selection-ownership"
+      }
+    },
+    {
+      "identity": {
+        "railId": "teardown-process-cleanliness",
+        "version": "1.0.0"
+      },
+      "gate": 4,
+      "railClass": "integration-test",
+      "ownerClass": "repository-quality",
+      "correctiveOwner": "repository-quality",
+      "posture": "enforcing",
+      "orderKey": "teardown-process-cleanliness",
+      "prerequisites": [
+        {
+          "railId": "ambient-role-chat-e2e",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "codex-read-only-probe",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "dashboard-browser-e2e",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "provider-runtime-integration",
+          "version": "1.0.0"
+        }
+      ],
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "runtimeIdentity": "cpython-3.13.15",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+      },
+      "evidenceContract": [
+        {
+          "evidenceId": "teardown-process-cleanliness-evidence",
+          "mediaType": "application/json",
+          "maxBytes": 10485760
+        }
+      ],
+      "outputArtifacts": [
+        {
+          "artifactId": "teardown-proof",
+          "schemaVersion": "agents-remember-quality-artifact/v1",
+          "mediaType": "application/json",
+          "requiredOnPass": true
+        }
+      ],
+      "execution": {
+        "adapterKind": "container-command",
+        "adapterId": "teardown-process-cleanliness-adapter",
+        "workingDirectory": ".",
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.profile_rails",
+          "verify-teardown",
+          "--summary",
+          "{reports}/ambient-role-chat-e2e/summary.json"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "scopeProviderId": null,
+        "inputSelectors": [],
+        "resultDecoderId": "quality-terminal-result",
+        "timeoutSeconds": 600,
+        "resourcePolicyId": "clean-room-bounded",
+        "cleanRoom": true,
+        "teardownPolicy": "always",
+        "executionEvidence": "profile://agents-remember/rails/teardown-process-cleanliness"
+      }
+    }
+  ],
+  "selectors": [
+    {
+      "selectorId": "agents-remember-test-selection",
+      "schemaVersion": "repository-selector-result/v1",
+      "version": "1.0.0",
+      "configurationDigest": "41d9a68aae0ec67307f51d171587c0973b7e2e6b23b9a3390b8fc743635e10ad",
+      "inputUniverse": [
+        "configuration and generated projections",
+        "fixtures support and plugins",
+        "production and test sources",
+        "runtime and harness files"
+      ],
+      "outputArtifacts": [
+        "changed-files",
+        "coverage-paths",
+        "coverage-roots",
+        "lint-paths",
+        "selected-tests",
+        "size-paths",
+        "type-closure"
+      ],
+      "workingDirectory": ".",
+      "command": [
+        "/opt/ar-venv/bin/python",
+        "-m",
+        "agents_remember_test_support.code_quality.profile_selection",
+        "--project-root",
+        ".",
+        "--mode",
+        "{selection-mode}",
+        "--diff-base",
+        "{diff-base}",
+        "--output",
+        "{selector-output}"
+      ],
+      "resultPath": ".quality-profile/agents-remember-test-selection.json"
+    }
+  ],
+  "executorAdapters": [
+    {
+      "adapterId": "certifying-dagger",
+      "adapterKind": "dagger-module",
+      "version": "0.21.8",
+      "executable": "dagger",
+      "functionName": "quality",
+      "sourceArgument": "source",
+      "repositoryBundleArgument": "repository-bundle",
+      "diffBaseArgument": "diff-base",
+      "memoryCapArgument": "memory-cap-bytes",
+      "planArgument": "execution-manifest",
+    "reportsField": "reports",
+    "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+    "runtimeDigest": "d5582420d11a32655d9c7bdecf77d0400a7bb2ea77a2181badb0427cc42abd9d",
+      "consumingGates": [1, 2, 3, 4]
+    }
+  ],
+  "resultDecoders": [
+    {
+      "decoderId": "quality-terminal-result",
+      "decoderKind": "json-exit-status",
+      "artifactPath": "clean-quality-results.json",
+      "statusField": "status",
+      "exitCodeField": "exitCode",
+      "passedValue": "passed",
+      "failedValue": "failed",
+      "artifactReferences": [
+        {
+          "fieldPath": {
+            "segments": [
+              "causalFailureReport"
+            ]
+          },
+          "cardinality": "single",
+          "nullPolicy": "ignore-reference"
+        },
+        {
+          "fieldPath": {
+            "segments": [
+              "causalFailureSummary"
+            ]
+          },
+          "cardinality": "single",
+          "nullPolicy": "ignore-reference"
+        },
+        {
+          "fieldPath": {
+            "segments": [
+              "ambientRoleChatEvidence",
+              "summary"
+            ]
+          },
+          "cardinality": "single",
+          "nullPolicy": "ignore-reference",
+          "nullParentPolicy": "ignore-reference"
+        },
+        {
+          "fieldPath": {
+            "segments": [
+              "ambientRoleChatEvidence",
+              "runs"
+            ]
+          },
+          "cardinality": "list",
+          "nullParentPolicy": "ignore-reference"
+        }
+      ],
+      "referenceActivations": [
+        {
+          "listFieldPath": {
+            "segments": [
+              "completedSteps"
+            ]
+          },
+          "containsValue": "causal-preflight",
+          "nullPolicy": "ignore-activation",
+          "referenceFieldPaths": [
+            {
+              "segments": [
+                "causalFailureReport"
+              ]
+            },
+            {
+              "segments": [
+                "causalFailureSummary"
+              ]
+            }
+          ]
+        }
+      ],
+      "consumingGates": [1, 2, 3, 4]
+    }
+  ],
+  "publishedArtifacts": [
+    {
+      "path": "ambient-role-chat-e2e/run-1.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [4]
+    },
+    {
+      "path": "ambient-role-chat-e2e/run-2.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [4]
+    },
+    {
+      "path": "ambient-role-chat-e2e/summary.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [4]
+    },
+    {
+      "path": "causal-failures.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [1]
+    },
+    {
+      "path": "causal-failures.md",
+      "mediaType": "text/markdown",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [1]
+    },
+    {
+      "path": "clean-quality-results.json",
+      "mediaType": "application/json",
+      "required": true,
+      "maxBytes": 134217728,
+      "publisherGates": [1, 2, 3, 4]
+    },
+    {
+      "path": "codex-probe.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [4]
+    },
+    {
+      "path": "coverage.data",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 536870912,
+      "publisherGates": [2]
+    },
+    {
+      "path": "coverage.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [2]
+    },
+    {
+      "path": "pytest-events.jsonl",
+      "mediaType": "application/x-ndjson",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [2]
+    },
+    {
+      "path": "pytest-phases.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [2]
+    },
+    {
+      "path": "python-runtime.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [1]
+    },
+    {
+      "path": "python-venv-runtime.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [1]
+    },
+    {
+      "path": "quality-progress.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [1, 2, 3, 4]
+    }
+  ]
+}

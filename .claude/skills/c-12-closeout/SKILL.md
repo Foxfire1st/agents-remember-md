@@ -86,8 +86,8 @@ default.
 
 Approval remains outside and before apply: preview, relay, and the applicable explicit or delegated
 authority must be complete before `worktree_closeout_apply`. Once apply begins, it reruns its
-read-only validations and — when code would commit **and repository policy configures an integrated
-acceptance adapter** — resets the index, stages the whole task worktree, and runs the leaf
+read-only validations and — when code would commit — requires the repository's explicit
+certification profile, resets the index, stages the whole task worktree, and runs the leaf
 change-set-scoped acceptance contract over exactly that staged content as the first
 apply-time gate, before any code, memory, ledger, contract, or applied-gate **commit**. That index
 write is the one mutation that precedes the gate, and it is why the gate can see files the task
@@ -99,18 +99,21 @@ the repository-prescribed acceptance implementation exactly once before creating
 commit. Leaf integration lands that certified commit without rerunning acceptance. The
 repository-prescribed full check runs exactly once per master at the master integration gate;
 series/master closeout does not rerun it. `memory_quality_check` is explicitly carved out: it stays
-a per-leaf closeout gate. A missing or failed required acceptance implementation refuses loudly,
-never passes silently.
+a per-leaf closeout gate. Every code-committing repository requires one explicit
+`repositories.<repo-id>.certificationProfile`; missing, ambiguous, invalid, or incomplete authority
+refuses as `certification-profile-invalid` before repository execution, never passes silently.
 
 The concrete executor, permitted environment, command arguments, retry semantics, resource policy,
-and evidence contract belong to the resolved repository memory, especially
-`system/git-workflow.md`, `system/coding-guidelines.md`, and `system/tools.md`. Read those files and
-follow their one path. Do not infer an executor from this skill, substitute a familiar test runner,
-or add a compatibility fallback.
+and evidence contract for Gates 1-4 belong to that exact repository-owned profile. Repository
+memory such as `system/git-workflow.md`, `system/coding-guidelines.md`, and `system/tools.md`
+explains the intended workflow but is not alternate execution authority. Do not discover a fixed
+wrapper, infer an executor from this skill, substitute a familiar test runner, or add a default,
+compatibility, or host fallback.
 
-The durable evidence location, publication semantics, payload fields, and reclamation lifecycle
-belong to the repository's resolved acceptance policy. Relay exactly the evidence reference that
-policy requires; do not invent a universal filename or assume another repository's report store.
+The profile declares the exact bounded artifact inventory and authoritative result decoder. The
+lifecycle owns atomic enclosure publication and reclamation. Relay the published evidence path
+returned by the current result; do not invent a universal repository result filename or assume
+another repository's artifact set.
 
 Any retry or proof-reuse behavior is repository policy, not seat discretion. A retry may consume
 only the evidence and conditions explicitly authorized by the repository's concrete acceptance
@@ -128,14 +131,12 @@ commit carries it. Resetting first recomputes what gets staged on every run unde
 in force at that moment, and `--mixed` is index-only, so no file content is touched.
 
 Two refusals guard that staging step, and because they guard it they run exactly where the gate
-runs. With the integrated adapter present, closeout refuses outright, before staging anything, when the code
+runs. For every code-certifying closeout, closeout refuses outright before staging anything when the code
 checkout is **not** a task worktree (git reports the same `--git-dir` and `--git-common-dir`, which
 is what the repository's own checkout looks like; a series/master contract records that path), and
-when the code worktree has unresolved merge conflicts. A consuming repository carrying **no** adapter runs
-no gate, so neither refusal applies to it: its closeout stages nothing early and reaches the
-ordinary commit step's own `git add -A` exactly as it always has. The preview reports that state as
-`wrapper-unavailable` rather than passing it off as checked. Repository memory owns the required
-scope, risk, and evidence thresholds at each altitude.
+when the code worktree has unresolved merge conflicts. A repository carrying no valid profile has
+no legal code-closeout route: preview and apply refuse instead of skipping the gate. Older tasks
+without code changes remain valid and do not need a profile merely to be read or recovered.
 
 For a developer-gated closeout, the relay follows the `l-01-agent-lifecycles` orchestrator hand-off protocol: run the
 preview/dry-run first, then call
@@ -256,13 +257,13 @@ Markdown report or search historical filenames. A missing or stale authority ret
    the report-only review surface, while a stale pointer, an absent or ambiguous anchor, or
    unverifiable provenance refuses in seconds. The curator clears the same
    `memory_quality_check` during the leaf, so findings here are the exception, not the rule
-5. when code would commit and repository policy configures integrated acceptance, reset the index, stage the whole
-   task worktree, and run the leaf change-set-scoped acceptance contract over exactly
+5. when code would commit, require and admit the exact configured repository profile, reset the
+   index, stage the whole task worktree, and run the leaf change-set-scoped acceptance contract over exactly
    that staged content, before any commit; a refusal leaves the worktree staged and commits
    nothing, and the next run's reset means it starts from the working tree either way. The full
    repository check is NOT a leaf gate — it runs once per master at the master
-   integration gate. If policy requires an adapter, a missing adapter refuses; otherwise the
-   repository's documented no-adapter behavior applies and must be reported explicitly.
+   integration gate. Missing, invalid, incomplete, or candidate-incoherent profile authority
+   refuses before repository execution; there is no no-adapter code-commit route.
 6. commit code changes and capture `C2` plus its commit date
 7. run the `c-02-memory-quality-control` skill's drift check against `C2` to produce the full memory update worklist
 8. verify each changed source file's sidecar content was updated in this task (by the curator's pass
@@ -285,12 +286,11 @@ Before step 1, require the same current passing task-bound route review for ever
 1. run the same missing-onboarding and changed-sidecar preconditions before preview
 2. complete preview and the applicable explicit or delegated commit authority
 3. call `worktree_closeout_apply`; its initial validations are read-only
-4. when code would commit and the checkout carries the integrated adapter, reset the index, stage the whole
+4. when code would commit, require and admit the exact configured repository profile, reset the index, stage the whole
    task worktree, and run the leaf change-set-scoped acceptance contract over exactly
    that staged content, before any commit — a refusal leaves the worktree staged and commits
-   nothing, and the next run's reset restages from the working tree regardless. A checkout with no
-   configured integrated adapter reports that state explicitly; repository policy decides whether
-   absence is permitted or must refuse.
+   nothing, and the next run's reset restages from the working tree regardless. Missing or invalid
+   profile authority refuses; internal-memory topology does not create an optional adapter route.
 5. commit the code and internal-memory changes together
 6. update the task contract closeout state
 
@@ -355,8 +355,9 @@ verification metadata is missing, external memory is not resolved, the code and
 memory checkouts are on different selected branches, or no code or memory
 changes exist.
 
-For a repository whose policy requires integrated acceptance, closeout also fails without any
-commit when the leaf change-set-scoped acceptance contract is unavailable or exits non-zero.
+For every code-committing repository, closeout also fails without any commit when its exact
+configured profile is missing/invalid, its admitted executor prerequisite is unavailable, or the
+leaf change-set-scoped acceptance contract exits non-zero.
 It is "without any
 commit" rather than "without mutation": closeout resets the index and stages the
 whole task worktree before the gate so the gate can see created files, and
@@ -367,10 +368,10 @@ reported source, test, coverage, or environment issue, rerun the repository-pres
 and closeout preview, and only then retry apply; never bypass the failure with a
 direct commit.
 
-The next two refusals are preconditions of that staging step, so they run where the integrated gate
-runs. A repository whose policy does not require or provide that adapter reaches the ordinary
-commit step. A repository that requires the adapter refuses if the candidate removes or disables
-   it; a candidate cannot turn required acceptance into an optional no-adapter result.
+The next two refusals are preconditions of that staging step, so they run where the profile gate
+runs. A repository with no valid configured profile has no legal code-commit path. A candidate
+cannot remove, disable, relocate, or invalidate its profile/adapter and thereby turn required
+acceptance into an optional result.
 
 Where the gate runs, closeout refuses before staging anything when the code
 checkout is not a task worktree. The test is git's own: in a linked worktree

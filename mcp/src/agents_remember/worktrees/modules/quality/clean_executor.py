@@ -9,11 +9,30 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.repository_profiles.adapters import (
+    DaggerModuleExecutorAdapter,
+    JsonExitStatusDecoder,
+    RepositoryExecutionRequest,
+)
+from agents_remember.certification.repository_profiles.authority import (
+    load_repository_profile,
+)
+from agents_remember.certification.repository_profiles.execution import (
+    AdmittedRepositoryProfileExecution,
+    admit_repository_profile_execution,
+)
+from agents_remember.certification.repository_profiles.models import (
+    JsonExitStatusDecoderDefinition,
+    ProfileMode,
+    PublishedArtifactDefinition,
+)
+from agents_remember.errors import CertificationExecutorPrerequisiteError
 from agents_remember.kernel.atomic_write import (
     atomic_write_bytes,
     atomic_write_text,
@@ -35,6 +54,7 @@ from agents_remember.worktrees.modules.quality.published_manifest import (
     REPORT_SET_MANIFEST,
     PublishedQualityManifest,
     load_published_quality_manifest,
+    quality_generation_digest,
     quality_report_dependencies,
     require_real_directory_or_missing,
     require_real_file_or_missing,
@@ -44,56 +64,24 @@ from agents_remember.worktrees.modules.quality.report_publication_paths import (
     remove_legacy_report_projection,
     report_tree_inventory,
 )
-from agents_remember.worktrees.modules.quality.result_artifacts import (
-    validate_result_artifact_references,
-)
 
-DAGGER_VERSION = "v0.21.8"
-CODEX_VERSION = "0.151.0"
-PLAYWRIGHT_IMAGE = (
-    "mcr.microsoft.com/playwright:v1.60.0-noble@"
-    "sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9"
-)
 CLEAN_SANDBOX_NAME = "test-sandbox"
 DAGGER_PROGRESS_MAX_BYTES = 512 * 1024
 DAGGER_RESULT_MAX_BYTES = 128 * 1024
 DAGGER_STREAM_CHUNK_BYTES = 64 * 1024
 DAGGER_PROGRESS_TRUNCATION = "[older Dagger output truncated]\n"
 REPORT_GENERATIONS_DIRECTORY = ".quality-report-generations"
-EXPORTED_REPORT_NAMES = frozenset(
-    {
-        "ambient-role-chat-e2e/run-1.json",
-        "ambient-role-chat-e2e/run-2.json",
-        "ambient-role-chat-e2e/summary.json",
-        "causal-failures.json",
-        "causal-failures.md",
-        "clean-quality-results.json",
-        "codex-probe.json",
-        "coverage.data",
-        "coverage.json",
-        "pytest-events.jsonl",
-        "pytest-phases.json",
-        "python-runtime.json",
-        "python-venv-runtime.json",
-        "quality-progress.json",
-    }
-)
-EXPORTED_REPORT_DIRECTORIES = frozenset(
-    parent.as_posix()
-    for name in EXPORTED_REPORT_NAMES
-    for parent in (Path(name).parent,)
-    if parent != Path(".")
-)
-
 CommandRunner = Callable[[list[str], Path, Mapping[str, str]], subprocess.CompletedProcess[str]]
-DaggerResolver = Callable[[Mapping[str, str]], str]
+ExecutorResolver = Callable[[Mapping[str, str]], str]
 
 
 @dataclass(frozen=True)
 class CleanQualityRequest:
     code_worktree: Path
     worktree_group: Path
-    mode: str
+    repository_id: str
+    profile_reference: Path | None
+    mode: ProfileMode
     diff_base: str
     memory_cap_bytes: int | None = None
     attestation: Mapping[str, str] | None = None
@@ -105,6 +93,7 @@ class CleanQualityOutcome:
 
     process: subprocess.CompletedProcess[str]
     evidence: CertifyingTestEvidence | None
+    manifest: PublishedQualityManifest | None
 
     @property
     def args(self) -> object:
@@ -127,6 +116,9 @@ class CleanQualityOutcome:
 class _PreparedSandbox:
     root: Path
     candidate_tree: str
+    head: str
+    staged_overlay_sha256: str
+    bundle_sha256: str
 
 
 def clean_sandbox_root(worktree_group: Path) -> Path:
@@ -137,9 +129,9 @@ def run_clean_quality(
     request: CleanQualityRequest,
     *,
     runner: CommandRunner | None = None,
-    dagger_resolver: DaggerResolver | None = None,
+    executor_resolver: ExecutorResolver | None = None,
 ) -> CleanQualityOutcome:
-    """Run the canonical Dagger pipeline; never fall back to host quality rails."""
+    """Run the exact profile-declared Dagger adapter; never fall back to host rails."""
     if request.mode not in {"targeted", "full"}:
         raise ValueError(f"unknown clean quality mode: {request.mode}")
     for path in (request.code_worktree, request.worktree_group):
@@ -147,10 +139,15 @@ def run_clean_quality(
             raise RuntimeError(f"clean quality refuses {path}: {reason}")
     prepared = _prepare_sandbox(request)
     source = prepared.root / "source"
-    bundle = prepared.root / "candidate.bundle"
     export_root = prepared.root / "export"
-    env = native_path_environment(os.environ)
-    dagger = (dagger_resolver or _resolve_dagger)(env)
+    profile_execution = _admit_prepared_profile(request, prepared)
+    _write_sandbox_manifest(request, prepared, profile_execution)
+    env, command = _executor_command(
+        request,
+        prepared,
+        profile_execution,
+        executor_resolver=executor_resolver,
+    )
     execute = runner or (
         lambda command, cwd, command_env: _stream_dagger(
             command,
@@ -160,36 +157,113 @@ def run_clean_quality(
         )
     )
     atomic_write_text(request.worktree_group / "reports" / "dagger-progress.log", "")
-    common = [
-        dagger,
-        "--progress=plain",
-        "call",
-        "quality",
-        f"--source={source.as_posix()}",
-        f"--repository-bundle={bundle.as_posix()}",
-        f"--mode={request.mode}",
-    ]
-    if request.diff_base:
-        common.append(f"--diff-base={request.diff_base}")
-    if request.memory_cap_bytes is not None:
-        common.append(f"--memory-cap-bytes={request.memory_cap_bytes}")
-    _write_current(request.worktree_group, "dagger", "start pinned Ubuntu quality pipeline")
-    exported = execute(
-        [*common, "reports", "export", f"--path={export_root.as_posix()}"],
-        source,
-        env,
+    _write_current(
+        request.worktree_group,
+        "executor",
+        f"start admitted repository adapter {profile_execution.executor.adapterId}",
     )
+    try:
+        exported = execute(
+            command,
+            source,
+            env,
+        )
+    except OSError as error:
+        _write_current(
+            request.worktree_group,
+            "failed",
+            "admitted repository executor could not start",
+            status="failed",
+        )
+        raise _executor_prerequisite_failure(profile_execution) from error
     if exported.returncode != 0:
         _write_current(
             request.worktree_group, "failed", "Dagger pipeline/export failed", status="failed"
         )
-        return CleanQualityOutcome(exported, None)
-    pipeline_exit = _exported_pipeline_exit(export_root)
-    manifest = _publish_reports(
+        return CleanQualityOutcome(exported, None, None)
+    return _publish_executor_outcome(
+        request,
+        prepared,
+        profile_execution,
+        exported,
+        export_root=export_root,
+    )
+
+
+def _admit_prepared_profile(
+    request: CleanQualityRequest,
+    prepared: _PreparedSandbox,
+) -> AdmittedRepositoryProfileExecution:
+    admitted = load_repository_profile(
+        request.repository_id,
+        prepared.root / "source",
+        request.profile_reference,
+    )
+    return admit_repository_profile_execution(
+        admitted,
+        purpose="closeout",
+        mode=request.mode,
+        candidate_identity=CandidateIdentity(kind="git-tree", value=prepared.candidate_tree),
+    )
+
+
+def _executor_command(
+    request: CleanQualityRequest,
+    prepared: _PreparedSandbox,
+    execution: AdmittedRepositoryProfileExecution,
+    *,
+    executor_resolver: ExecutorResolver | None,
+) -> tuple[dict[str, str], list[str]]:
+    try:
+        env = native_path_environment(os.environ)
+        executable = (
+            executor_resolver(env)
+            if executor_resolver is not None
+            else _resolve_executor(execution.executor.executable, env)
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise _executor_prerequisite_failure(execution) from error
+    executor = execution.executor.model_copy(update={"executable": executable})
+    command = DaggerModuleExecutorAdapter().command(
+        executor,
+        RepositoryExecutionRequest(
+            candidate_source=prepared.root / "source",
+            repository_bundle=prepared.root / "candidate.bundle",
+            execution_manifest=prepared.root / "manifest.json",
+            mode=execution.selection.mode,
+            diff_base=request.diff_base,
+            export_root=prepared.root / "export",
+            memory_cap_bytes=request.memory_cap_bytes,
+        ),
+    )
+    return env, list(command)
+
+
+def _publish_executor_outcome(
+    request: CleanQualityRequest,
+    prepared: _PreparedSandbox,
+    profile_execution: AdmittedRepositoryProfileExecution,
+    exported: subprocess.CompletedProcess[str],
+    *,
+    export_root: Path,
+) -> CleanQualityOutcome:
+    _publish_reports(
         export_root,
         request.worktree_group / "reports",
         candidate_tree=prepared.candidate_tree,
+        profile_execution=profile_execution,
         attestation=request.attestation,
+    )
+    manifest = load_published_quality_manifest(request.worktree_group / "reports")
+    published_report_path_from_manifest(
+        request.worktree_group / "reports",
+        manifest,
+        manifest.result_decoder.artifactPath,
+    )
+    pipeline_exit = _exported_pipeline_exit(
+        published_generation_root(request.worktree_group / "reports", manifest),
+        manifest.result_decoder,
+        manifest.files,
     )
     evidence = (
         _certifying_evidence_from_verified_dagger(
@@ -203,7 +277,7 @@ def run_clean_quality(
     _write_current(
         request.worktree_group,
         "complete" if pipeline_exit == 0 else "failed",
-        f"Dagger Ubuntu quality {outcome}",
+        f"repository certification adapter {outcome}",
         status="completed" if pipeline_exit == 0 else "failed",
     )
     return CleanQualityOutcome(
@@ -214,6 +288,7 @@ def run_clean_quality(
             stderr=exported.stderr,
         ),
         evidence,
+        manifest,
     )
 
 
@@ -252,49 +327,67 @@ def _prepare_sandbox(request: CleanQualityRequest) -> _PreparedSandbox:
         run_git(source, ["bundle", "create", bundle.as_posix(), "HEAD"]),
         "bundle candidate ancestry",
     )
+    return _PreparedSandbox(
+        root=sandbox,
+        candidate_tree=candidate_tree,
+        head=head,
+        staged_overlay_sha256=hashlib.sha256(staged.encode("utf-8")).hexdigest(),
+        bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(),
+    )
+
+
+def _write_sandbox_manifest(
+    request: CleanQualityRequest,
+    prepared: _PreparedSandbox,
+    execution: AdmittedRepositoryProfileExecution,
+) -> None:
+    source = prepared.root / "source"
     manifest = {
-        "head": head,
-        "stagedOverlaySha256": hashlib.sha256(staged.encode("utf-8")).hexdigest(),
+        "schemaVersion": "repository-certification-admission/v1",
+        "head": prepared.head,
+        "stagedOverlaySha256": prepared.staged_overlay_sha256,
         "source": request.code_worktree.as_posix(),
-        "daggerVersion": DAGGER_VERSION,
-        "image": PLAYWRIGHT_IMAGE,
-        "codexVersion": CODEX_VERSION,
-        "bundleSha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
-        "candidateTree": candidate_tree,
+        "bundleSha256": prepared.bundle_sha256,
+        "candidateTree": prepared.candidate_tree,
+        "profile": {
+            "configuredReference": request.profile_reference.as_posix()
+            if request.profile_reference is not None
+            else None,
+            "sourcePath": execution.admitted.source_path.relative_to(source).as_posix(),
+            "sourceSha256": execution.admitted.source_sha256,
+            "profileDigest": execution.admitted.canonical.profileDigest,
+        },
+        "profilePlan": execution.plan.model_dump(mode="json"),
+        "executorAdapter": execution.executor.model_dump(mode="json"),
+        "resultDecoder": execution.decoder.model_dump(mode="json"),
+        "publishedArtifacts": [
+            artifact.model_dump(mode="json") for artifact in execution.published_artifacts
+        ],
     }
-    atomic_write_text(sandbox / "manifest.json", json.dumps(manifest, indent=2) + "\n")
-    return _PreparedSandbox(sandbox, candidate_tree)
+    atomic_write_text(
+        prepared.root / "manifest.json",
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+    )
 
 
-def _published_result_sha256(manifest: Mapping[str, object]) -> str:
-    raw_files = manifest.get("files")
-    if not isinstance(raw_files, dict):
-        raise RuntimeError("published Dagger manifest has no file inventory")
-    raw_result = raw_files.get("clean-quality-results.json")
-    if not isinstance(raw_result, dict):
-        raise RuntimeError("published Dagger manifest has no authoritative result")
-    digest = raw_result.get("sha256")
-    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-        raise RuntimeError("published Dagger result digest is invalid")
-    return digest
+def _published_result_sha256(manifest: PublishedQualityManifest) -> str:
+    return manifest.require_file(manifest.result_decoder.artifactPath).sha256
 
 
-def _exported_pipeline_exit(export_root: Path) -> int:
-    report = export_root / "clean-quality-results.json"
-    try:
-        payload = json.loads(report.read_text(encoding="utf-8"))
-        exit_code = payload["exitCode"]
-        status = payload["status"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
-        raise RuntimeError(f"Dagger exported no valid authoritative result: {report}") from error
-    if isinstance(exit_code, bool) or not isinstance(exit_code, int) or exit_code < 0:
-        raise RuntimeError(f"Dagger exported an invalid pipeline exit code: {exit_code!r}")
-    expected_status = "passed" if exit_code == 0 else "failed"
-    if status != expected_status:
-        raise RuntimeError(
-            f"Dagger exported a contradictory result: status={status!r}, exitCode={exit_code}"
+def _exported_pipeline_exit(
+    export_root: Path,
+    decoder: JsonExitStatusDecoderDefinition,
+    available_artifacts: Collection[str],
+) -> int:
+    return (
+        JsonExitStatusDecoder()
+        .decode(
+            decoder,
+            export_root,
+            available_artifacts,
         )
-    return exit_code
+        .exit_code
+    )
 
 
 def _publish_reports(
@@ -302,6 +395,7 @@ def _publish_reports(
     destination: Path,
     *,
     candidate_tree: str,
+    profile_execution: AdmittedRepositoryProfileExecution,
     attestation: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Publish one immutable evidence generation, then atomically point readers at it.
@@ -315,39 +409,80 @@ def _publish_reports(
         raise RuntimeError(f"Dagger did not export its reports directory: {source}")
     if re.fullmatch(r"[0-9a-f]{40,64}", candidate_tree) is None:
         raise RuntimeError("Dagger publication candidate tree is invalid")
-    _exported_pipeline_exit(source)
-    exported_names = _validated_export_inventory(source)
+    published_artifacts = profile_execution.published_artifacts
+    managed_artifacts = profile_execution.admitted.canonical.profile.publishedArtifacts
+    exported_names = _validated_export_inventory(source, published_artifacts)
+    pipeline_exit = _exported_pipeline_exit(
+        source,
+        profile_execution.decoder,
+        exported_names,
+    )
+    if pipeline_exit == 0:
+        _require_pass_publications(exported_names, published_artifacts)
+    managed_files = frozenset(item.path for item in managed_artifacts)
+    managed_directories = _declared_report_directories(managed_artifacts)
     require_real_directory_or_missing(destination, purpose="quality report destination")
     destination.mkdir(parents=True, exist_ok=True)
     require_real_directory_or_missing(destination, purpose="quality report destination")
     files = _report_file_records(source, exported_names)
-    dependencies = quality_report_dependencies(candidate_tree, files, attestation)
+    profile_identity = _profile_identity(profile_execution)
+    dependencies = quality_report_dependencies(
+        candidate_tree,
+        files,
+        attestation,
+        profile_identity,
+    )
     dependencies_value = dependencies.model_dump(mode="json")
-    generation = _generation_digest(candidate_tree, files, dependencies_value)
+    generation = _generation_digest(
+        candidate_tree,
+        files,
+        profile_identity,
+        dependencies_value,
+    )
     generations = destination / REPORT_GENERATIONS_DIRECTORY
     require_real_directory_or_missing(generations, purpose="quality generation directory")
     generations.mkdir(parents=True, exist_ok=True)
     generation_root = generations / generation
     previous_generation = _published_generation_or_none(destination)
-    _preflight_report_destination(destination, generation_root)
+    _preflight_report_destination(
+        destination,
+        generation_root,
+        exported_files=managed_files,
+        exported_directories=managed_directories,
+    )
     _ensure_generation(source, generation_root, files)
     manifest: dict[str, object] = {
         "schemaVersion": QUALITY_MANIFEST_SCHEMA_VERSION,
         "generation": generation,
         "candidateTree": candidate_tree,
+        **profile_identity,
         "files": files,
         "dependencies": dependencies_value,
     }
     if attestation is not None:
         manifest["attestation"] = dict(attestation)
-    _preflight_report_destination(destination, generation_root)
+    _preflight_report_destination(
+        destination,
+        generation_root,
+        exported_files=managed_files,
+        exported_directories=managed_directories,
+    )
     _prune_report_generations(
         generations,
         generation,
         protected=(() if previous_generation is None else (previous_generation,)),
     )
-    _remove_legacy_report_projection(destination)
-    _preflight_report_destination(destination, generation_root)
+    _remove_legacy_report_projection(
+        destination,
+        exported_files=managed_files,
+        exported_directories=managed_directories,
+    )
+    _preflight_report_destination(
+        destination,
+        generation_root,
+        exported_files=managed_files,
+        exported_directories=managed_directories,
+    )
     atomic_write_text(
         destination / REPORT_SET_MANIFEST,
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
@@ -355,18 +490,55 @@ def _publish_reports(
     return manifest
 
 
-def _validated_export_inventory(source: Path) -> set[str]:
+def _validated_export_inventory(
+    source: Path,
+    published_artifacts: tuple[PublishedArtifactDefinition, ...],
+) -> set[str]:
     exported_names, exported_directories, irregular = report_tree_inventory(source)
+    catalog = {item.path: item for item in published_artifacts}
+    declared_names = set(catalog)
+    declared_directories = _declared_report_directories(published_artifacts)
     unexpected = (
-        (exported_names - EXPORTED_REPORT_NAMES)
-        | (exported_directories - EXPORTED_REPORT_DIRECTORIES)
+        (exported_names - declared_names)
+        | (exported_directories - declared_directories)
         | irregular
     )
     if unexpected:
         names = ", ".join(sorted(unexpected))
         raise RuntimeError(f"Dagger exported unexpected report files or directories: {names}")
-    validate_result_artifact_references(source, exported_names)
+    oversized = sorted(
+        name for name in exported_names if (source / name).stat().st_size > catalog[name].maxBytes
+    )
+    if oversized:
+        raise RuntimeError(f"Dagger artifacts exceed their declared size limits: {oversized}")
     return exported_names
+
+
+def _require_pass_publications(
+    exported_names: set[str],
+    published_artifacts: tuple[PublishedArtifactDefinition, ...],
+) -> None:
+    """Require pass-only publications without erasing a typed failing terminal result."""
+
+    missing = sorted(
+        item.path
+        for item in published_artifacts
+        if item.required and item.path not in exported_names
+    )
+    if missing:
+        raise RuntimeError(f"Dagger omitted required profile artifacts: {missing}")
+
+
+def _declared_report_directories(
+    published_artifacts: tuple[PublishedArtifactDefinition, ...],
+) -> frozenset[str]:
+    return _report_directories(artifact.path for artifact in published_artifacts)
+
+
+def _report_directories(names: Iterable[str]) -> frozenset[str]:
+    return frozenset(
+        parent.as_posix() for name in names for parent in Path(name).parents if parent != Path(".")
+    )
 
 
 def _report_file_records(source: Path, exported_names: set[str]) -> dict[str, dict[str, object]]:
@@ -382,19 +554,29 @@ def _report_file_records(source: Path, exported_names: set[str]) -> dict[str, di
 def _generation_digest(
     candidate_tree: str,
     files: Mapping[str, object],
+    profile_identity: Mapping[str, object],
     dependencies: object,
 ) -> str:
-    return hashlib.sha256(
-        json.dumps(
-            {
-                "candidateTree": candidate_tree,
-                "files": files,
-                "dependencies": dependencies,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
+    return quality_generation_digest(
+        {
+            "candidateTree": candidate_tree,
+            **profile_identity,
+            "files": files,
+            "dependencies": dependencies,
+        }
+    )
+
+
+def _profile_identity(
+    profile_execution: AdmittedRepositoryProfileExecution,
+) -> dict[str, object]:
+    return {
+        "profileDigest": profile_execution.admitted.canonical.profileDigest,
+        "profilePlanDigest": profile_execution.plan.planDigest,
+        "profileSelectionId": profile_execution.selection.selectionId,
+        "executorAdapterId": profile_execution.executor.adapterId,
+        "resultDecoder": profile_execution.decoder.model_dump(mode="json"),
+    }
 
 
 def _ensure_generation(
@@ -427,13 +609,19 @@ def _ensure_generation(
         _validate_generation(generation_root, files)
 
 
-def _preflight_report_destination(destination: Path, generation_root: Path) -> None:
+def _preflight_report_destination(
+    destination: Path,
+    generation_root: Path,
+    *,
+    exported_files: frozenset[str],
+    exported_directories: frozenset[str],
+) -> None:
     preflight_report_destination(
         destination,
         generation_root,
         generations_directory=REPORT_GENERATIONS_DIRECTORY,
-        exported_files=EXPORTED_REPORT_NAMES,
-        exported_directories=EXPORTED_REPORT_DIRECTORIES,
+        exported_files=exported_files,
+        exported_directories=exported_directories,
     )
 
 
@@ -447,11 +635,16 @@ def _published_generation_or_none(destination: Path) -> str | None:
     return load_published_quality_manifest(destination).generation
 
 
-def _remove_legacy_report_projection(destination: Path) -> None:
+def _remove_legacy_report_projection(
+    destination: Path,
+    *,
+    exported_files: frozenset[str],
+    exported_directories: frozenset[str],
+) -> None:
     remove_legacy_report_projection(
         destination,
-        exported_files=EXPORTED_REPORT_NAMES,
-        exported_directories=EXPORTED_REPORT_DIRECTORIES,
+        exported_files=exported_files,
+        exported_directories=exported_directories,
     )
 
 
@@ -483,6 +676,13 @@ def published_report_path_from_manifest(
     ):
         raise RuntimeError(f"published Dagger report failed generation verification: {name}")
     return report
+
+
+def published_generation_root(
+    destination: Path,
+    manifest: PublishedQualityManifest,
+) -> Path:
+    return destination / REPORT_GENERATIONS_DIRECTORY / manifest.generation
 
 
 def published_quality_attestation(destination: Path) -> dict[str, str] | None:
@@ -520,14 +720,21 @@ def certifying_evidence_from_published_manifest(
             "published Dagger evidence targets another candidate tree: "
             f"expected {candidate_tree}, found {manifest.candidate_tree}"
         )
-    published_result = published_report_path_from_manifest(
+    published_report_path_from_manifest(
         destination,
         manifest,
-        "clean-quality-results.json",
+        manifest.result_decoder.artifactPath,
     )
-    if _exported_pipeline_exit(published_result.parent) != 0:
+    if (
+        _exported_pipeline_exit(
+            published_generation_root(destination, manifest),
+            manifest.result_decoder,
+            manifest.files,
+        )
+        != 0
+    ):
         raise RuntimeError("published Dagger result did not pass acceptance")
-    record = manifest.require_file("clean-quality-results.json")
+    record = manifest.require_file(manifest.result_decoder.artifactPath)
     return _certifying_evidence_from_verified_dagger(
         candidate_tree=manifest.candidate_tree,
         result_sha256=record.sha256,
@@ -552,12 +759,7 @@ def require_published_quality_evidence(
 def _validate_generation(root: Path, files: dict[str, dict[str, object]]) -> None:
     actual_files, actual_directories, irregular = report_tree_inventory(root)
     expected_files = set(files)
-    expected_directories = {
-        parent.as_posix()
-        for name in expected_files
-        for parent in (Path(name).parent,)
-        if parent != Path(".")
-    }
+    expected_directories = _report_directories(expected_files)
     if irregular or actual_files != expected_files or actual_directories != expected_directories:
         raise RuntimeError("Dagger report generation contains an undeclared path")
     for name, record in files.items():
@@ -712,5 +914,35 @@ def _utf8_tail_bytes(value: bytes, *, max_bytes: int) -> bytes:
     return value[-max_bytes:].decode("utf-8", errors="ignore").encode("utf-8")
 
 
-def _resolve_dagger(env: Mapping[str, str]) -> str:
-    return native_command(["dagger"], env)[0]
+def _resolve_executor(executable: str, env: Mapping[str, str]) -> str:
+    return native_command([executable], env)[0]
+
+
+def _executor_prerequisite_failure(
+    execution: AdmittedRepositoryProfileExecution,
+) -> CertificationExecutorPrerequisiteError:
+    """Bind an unavailable shared executor to its earliest affected gate and owners."""
+
+    affected = tuple(gate for gate in execution.plan.gates if gate.applicability == "applicable")
+    affected_gates = tuple(gate.gate for gate in affected)
+    earliest_gate = affected_gates[0] if affected_gates else 1
+    owners = tuple(sorted({rail.correctiveOwner for gate in affected for rail in gate.rails}))
+    adapter = execution.executor
+    return CertificationExecutorPrerequisiteError(
+        "admitted repository certification executor is unavailable at execution",
+        (
+            {
+                "code": "executor-prerequisite-unavailable",
+                "path": f"executorAdapters.{adapter.adapterId}.executable",
+                "detail": (
+                    f"declared executable {adapter.executable!r} cannot start the admitted "
+                    "repository adapter"
+                ),
+                "gate": earliest_gate,
+                "affectedGates": affected_gates,
+                "correctiveOwners": owners,
+                "adapterId": adapter.adapterId,
+                "runtimeDigest": adapter.runtimeDigest,
+            },
+        ),
+    )

@@ -63,7 +63,7 @@ def _quality_certification() -> IntegrationQualityCertification:
         "memoryCap": None,
         "memoryPolicy": {
             "mode": "container-host-managed",
-            "pytestProcesses": "auto",
+            "processPolicy": "profile-adapter-owned",
             "swap": "container-host-managed",
         },
     }

@@ -207,11 +207,7 @@ def test_ambient_role_runner_has_exact_pytest_consumers() -> None:
 
     assert impact.complete
     assert impact.fresh_rerun_reason is None
-    assert impact.tests == (
-        Path("mcp/tests/test_agents_remember_quality.py"),
-        Path("mcp/tests/test_code_quality_check.py"),
-        Path("mcp/tests/test_quality_scope_reporting.py"),
-    )
+    assert impact.tests == (Path("mcp/tests/test_agents_remember_quality.py"),)
     assert all(
         any(
             reason.kind.value == "declared-consumer"

@@ -46,7 +46,12 @@ from agents_remember.worktrees.worktree_contract import (
     write_contract,
 )
 from curator_coherence_test_support import write_curator_evidence
-from test_worktree_support import git, init_repo
+from test_worktree_support import (
+    TEST_CERTIFICATION_PROFILE_REFERENCE,
+    git,
+    init_repo,
+    install_fixture_profile,
+)
 
 REPO = "repo-a"
 SPRINT = TaskDocumentRef(repository=REPO, path="sprint/task.json")
@@ -195,7 +200,11 @@ class QueueFixture:
         self.memory_mode = memory_mode
         self.atomic_a = atomic_a
         self.atomic_b = atomic_b
-        code_base = init_repo(self.code, "main")
+        init_repo(self.code, "main")
+        install_fixture_profile(self.code, REPO)
+        git(self.code, "add", "-A")
+        git(self.code, "commit", "-m", "Add repository certification profile")
+        code_base = git(self.code, "rev-parse", "HEAD")
         memory_content = init_repo(self.memory, "main")
         (root / REPO).symlink_to(self.code, target_is_directory=True)
         if memory_mode == "internal":
@@ -208,7 +217,11 @@ class QueueFixture:
                     "coordinationRoot": self.coord.as_posix(),
                     "workspaceRoot": root.as_posix(),
                     "directExecutionEnabled": False,
-                    "repositories": {REPO: {}},
+                    "repositories": {
+                        REPO: {
+                            "certificationProfile": TEST_CERTIFICATION_PROFILE_REFERENCE.as_posix()
+                        }
+                    },
                 }
             ),
             encoding="utf-8",

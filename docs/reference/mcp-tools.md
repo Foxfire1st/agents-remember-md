@@ -104,20 +104,21 @@ external receipt, and only then may remove the enclosure root and its reports. A
 task/worktree scan, naming inference, caller-supplied root, or reports path is never
 operation-location authority.
 
-The strict quality wrapper has the same enclosure-owned lifetime for its test evidence. Every
+The repository-profile quality gate has the same enclosure-owned lifetime for its evidence. Every
 completed leaf-closeout or leaf/master-integration gate atomically replaces
 `<worktree enclosure>/reports/test-results.md` with the run status, command, timestamps, scope,
-exit code, memory-cap facts when applicable, and the complete wrapper output (including pytest).
+exit code, profile/plan/adapter identities, memory-cap facts when applicable, and the complete
+adapter output.
 A failed gate writes the report before refusing and names its path in the error. An interrupted
 run cannot replace the previous completed result, and cleanup/abandon removes the file with the
 same `reports/` directory. The gate payload returns that stable path as `reportPath`.
 
 Executed closeout and integration gates expose their typed result under `code_quality_gate` or
-`quality_gate`. A successful fresh gate always uses `reportPath` for the developer-facing
-`reports/test-results.md` wrapper and omits `publishedResultPath`. Crash recovery keeps that same
-wrapper meaning and additionally returns `publishedResultPath` for the manifest-verified immutable
-generation's `clean-quality-results.json`. The immutable path is machine-result evidence; it never
-replaces, renames, or falls back for the human wrapper.
+`quality_gate`. `reportPath` names the developer-facing `reports/test-results.md` summary.
+`publishedResultPath` names the manifest-verified immutable generation's profile-declared decoder
+artifact for both fresh success and recovery; `resultArtifact` carries its repository-relative
+identity. The immutable machine result never replaces or renames the human summary, and there is no
+universal result filename fallback.
 
 Citation ranges are not repaired by hand. MCP `citation_fix(repo_id=<id>,
 contract_path=<enclosure contract>, dry_run=true|false)` regenerates every range that can be

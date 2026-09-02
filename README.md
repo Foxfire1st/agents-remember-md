@@ -245,9 +245,12 @@ certified commit without a rerun. Full Dagger runs once when each master integra
 into super. PR validation, tagging, and publishing do not rerun acceptance. See
 CONTRIBUTING.md for the tier table and staged-content contract.
 
-Agents Remember acceptance runs only through that Dagger graph. Keep
-`orchestration.qualityGate.executor` set to `"dagger"`; a direct host invocation of
-pytest is refused, and no Python diagnostic wrapper or compatibility route exists. Direct targeted Vitest unit/component runs are supported
+Agents Remember declares that Dagger graph in its repository-owned
+`mcp/certification-profile-v1.json`, selected explicitly by
+`repositories.agents-remember.certificationProfile` in the MCP authority settings. The framework
+does not discover a wrapper or carry an Agents Remember command/report inventory. A direct host
+invocation of pytest is refused, and no Python diagnostic wrapper or compatibility route exists.
+Direct targeted Vitest unit/component runs are supported
 as fast diagnostic loops, but they do not create acceptance, coverage, or lifecycle evidence.
 Python has no supported host diagnostic route. The former Candidate-A command, manifest, static
 closure analyzer, and self-proof were removed after repeated exact-candidate measurement showed

@@ -964,7 +964,7 @@ class QualityGateSettingsTests(unittest.TestCase):
         settings = load_agentic_settings(self.coordination_root)
 
         self.assertIsNone(settings.quality_gate.memory_cap_bytes)
-        self.assertEqual(settings.quality_gate.executor, "dagger")
+        self.assertFalse(hasattr(settings.quality_gate, "executor"))
 
     def test_memory_cap_bytes_parses_and_overrides(self) -> None:
         write_settings(
@@ -985,27 +985,17 @@ class QualityGateSettingsTests(unittest.TestCase):
         settings = load_agentic_settings(self.coordination_root)
 
         self.assertIsNone(settings.quality_gate.memory_cap_bytes)
-        self.assertEqual(settings.quality_gate.executor, "dagger")
+        self.assertFalse(hasattr(settings.quality_gate, "executor"))
 
-    def test_container_executor_is_explicit(self) -> None:
-        write_settings(
+    def test_executor_authority_is_not_accepted_in_agentic_settings(self) -> None:
+        path = write_settings(
             self.coordination_root,
             {"orchestration": {"qualityGate": {"executor": "dagger"}}},
         )
 
-        settings = load_agentic_settings(self.coordination_root)
-
-        self.assertEqual(settings.quality_gate.executor, "dagger")
-
-    def test_non_dagger_executor_fails_loud(self) -> None:
-        for executor in ("local", "fallback"):
-            with self.subTest(executor=executor):
-                write_settings(
-                    self.coordination_root,
-                    {"orchestration": {"qualityGate": {"executor": executor}}},
-                )
-                with self.assertRaisesRegex(AgenticSettingsError, "must be 'dagger'"):
-                    load_agentic_settings(self.coordination_root)
+        with self.assertRaisesRegex(AgenticSettingsError, "executor") as caught:
+            load_agentic_settings(self.coordination_root)
+        self.assertIn(str(path), str(caught.exception))
 
     def test_unknown_quality_gate_key_fails_loud(self) -> None:
         path = write_settings(

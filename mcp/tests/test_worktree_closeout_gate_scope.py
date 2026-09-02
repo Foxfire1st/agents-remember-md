@@ -26,6 +26,7 @@ from agents_remember.worktrees.worktree_contract import (
     write_contract,
 )
 from agents_remember_test_support.code_quality import check as quality_check
+from repository_profile_test_support import install_fixture_profile
 from test_worktree_support import (
     closeout_args,
     git,
@@ -41,9 +42,7 @@ def gate_scope_contract_fixture(root: Path):
     """A leaf whose closeout isolates exactly what the quality gate receives."""
     code_repo = root / "repo-a"
     init_repo(code_repo, "main")
-    wrapper = code_repo / code_quality_gate.QUALITY_WRAPPER
-    wrapper.parent.mkdir(parents=True, exist_ok=True)
-    wrapper.write_text("# wrapper marker\n", encoding="utf-8")
+    install_fixture_profile(code_repo, "repo-a")
     (code_repo / "pyproject.toml").write_text(
         "[tool.pytest.ini_options]\n"
         'testpaths = ["tests"]\n'
@@ -56,7 +55,7 @@ def gate_scope_contract_fixture(root: Path):
     (code_repo / "pkg" / "__init__.py").write_text("", encoding="utf-8")
     (code_repo / "pkg" / "existing.py").write_text("VALUE = 1\n", encoding="utf-8")
     git(code_repo, "add", "-A")
-    git(code_repo, "commit", "-m", "Add package, quality wrapper and pytest config")
+    git(code_repo, "commit", "-m", "Add package, certification profile and pytest config")
     contract = default_contract(
         ContractTask(
             name="Gate Scope Thing",
@@ -104,7 +103,7 @@ def gate_scope_contract_fixture(root: Path):
 
 
 class ScopeRecordingGate:
-    """Run the wrapper's real scope derivation and first enforcing rail."""
+    """Run the repository profile's real scope derivation and first enforcing rail."""
 
     def __init__(self) -> None:
         self.lint_paths: list[str] = []

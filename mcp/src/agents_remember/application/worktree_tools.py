@@ -682,6 +682,10 @@ def worktree_integrate_tool(
         return _operation_acknowledgement("worktree_integrate", execution)
     args = git_worktree_manager.WorktreeArgs(
         contract_path=confined_contract,
+        certification_profile=require_repo(
+            config,
+            configured.contract.repo_name,
+        ).certification_profile,
         strategy=strategy,
         approved=not dry_run,
         ledger_commit_message=ledger_commit_message,
@@ -1070,6 +1074,7 @@ def _worktree_namespace(
 ) -> git_worktree_manager.WorktreeArgs:
     values: dict[str, Any] = {
         "code_repository_name": repo.repo_id,
+        "certification_profile": repo.certification_profile,
         "workspace_root": config.workspace_root,
         "coordination_root": config.coordination_root,
         "code_repository_root": repo.path,
@@ -1122,6 +1127,10 @@ def _worktree_closeout(
         return _closeout_input_refusal(operation, exc)
     args = git_worktree_manager.WorktreeArgs(
         contract_path=confined_contract,
+        certification_profile=require_repo(
+            config,
+            configured.contract.repo_name,
+        ).certification_profile,
         closeout_input=effective_input,
         approval_note=approval.intent_note,
         approved=not approval.dry_run,

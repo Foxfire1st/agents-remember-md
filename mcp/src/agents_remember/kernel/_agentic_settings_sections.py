@@ -3,8 +3,6 @@ agent-notifier, spawn, and the quality gate."""
 
 from __future__ import annotations
 
-from typing import cast
-
 from agents_remember.kernel._agentic_settings_core import (
     COMPLEXITY_SCALE,
     DEFAULT_AGENT_NOTIFIER_ESCALATION_BUDGET,
@@ -36,7 +34,6 @@ from agents_remember.kernel._agentic_settings_core import (
     LoopComplexity,
     LoopDefaults,
     LoopSettings,
-    QualityExecutor,
     QualityGateSettings,
     RoleKnobs,
     _refuse_unknown,
@@ -385,8 +382,9 @@ def _parse_spawn(
 def _parse_quality_gate(raw: object, *, source: str) -> QualityGateSettings:
     """``orchestration.qualityGate``: the full gate's memory cap in bytes.
 
-    Absent -> Dagger container runtime-managed RAM and swap. Unknown keys fail loud like every other
-    orchestration family; a null at the family key is refused by
+    Absent -> executor runtime-managed RAM and swap. Executor identity belongs to the
+    repository certification profile. Unknown keys fail loud like every other orchestration
+    family; a null at the family key is refused by
     :func:`_refuse_null_families` before this parser runs.
     """
     if raw is None:
@@ -400,15 +398,4 @@ def _parse_quality_gate(raw: object, *, source: str) -> QualityGateSettings:
             "orchestration.qualityGate.memoryCapBytes",
             source,
         )
-    executor: QualityExecutor = "dagger"
-    if "executor" in block:
-        raw_executor = _require_string(
-            block["executor"], "orchestration.qualityGate.executor", source
-        )
-        if raw_executor != "dagger":
-            raise AgenticSettingsError(
-                "orchestration.qualityGate.executor must be 'dagger'; host-local test "
-                "execution is forbidden: " + source
-            )
-        executor = cast(QualityExecutor, raw_executor)
-    return QualityGateSettings(memory_cap_bytes=memory_cap_bytes, executor=executor)
+    return QualityGateSettings(memory_cap_bytes=memory_cap_bytes)

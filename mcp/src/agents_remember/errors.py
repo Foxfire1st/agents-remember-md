@@ -31,6 +31,18 @@ class CertificationContractError(AgentsRememberError):
         return self._findings
 
 
+class CertificationProfileError(CertificationContractError):
+    """One repository profile authority failed before any certification command."""
+
+    status = "certification-profile-invalid"
+
+
+class CertificationExecutorPrerequisiteError(CertificationContractError):
+    """An admitted repository executor cannot start its affected gate population."""
+
+    status = "certification-executor-prerequisite-failed"
+
+
 def _freeze_contract_finding(finding: Mapping[str, object]) -> Mapping[str, object]:
     return MappingProxyType({key: _freeze_contract_value(value) for key, value in finding.items()})
 

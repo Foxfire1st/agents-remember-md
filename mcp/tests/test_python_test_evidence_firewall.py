@@ -20,6 +20,7 @@ from agents_remember_test_support.testing.dagger_admission import (
     DaggerAdmission,
     DaggerAdmissionError,
 )
+from repository_profile_test_support import agents_remember_profile_execution
 
 
 class PythonTestEvidenceFirewallTests(unittest.TestCase):
@@ -94,11 +95,12 @@ class PythonTestEvidenceFirewallTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        with self.assertRaisesRegex(RuntimeError, "no valid authoritative result"):
+        with self.assertRaisesRegex(RuntimeError, "invalid pipeline exit code"):
             clean_quality_executor._publish_reports(  # pyright: ignore[reportPrivateUsage]
                 exported,
                 reports,
                 candidate_tree="a" * 40,
+                profile_execution=agents_remember_profile_execution(candidate_tree="a" * 40),
             )
         self.assertFalse(reports.exists())
 
@@ -112,6 +114,7 @@ class PythonTestEvidenceFirewallTests(unittest.TestCase):
             exported,
             reports,
             candidate_tree="b" * 40,
+            profile_execution=agents_remember_profile_execution(candidate_tree="b" * 40),
         )
 
         for consumer in (
@@ -160,6 +163,7 @@ class PythonTestEvidenceFirewallTests(unittest.TestCase):
             exported,
             reports,
             candidate_tree="d" * 40,
+            profile_execution=agents_remember_profile_execution(candidate_tree="d" * 40),
         )
 
         with self.assertRaisesRegex(RuntimeError, "did not pass acceptance"):

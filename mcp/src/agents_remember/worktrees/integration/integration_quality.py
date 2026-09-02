@@ -6,7 +6,9 @@ import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
+from agents_remember.errors import CertificationContractError
 from agents_remember.kernel.agentic_settings import load_agentic_settings
 from agents_remember.models.lifecycles.operation import IntegrationQualityCertification
 from agents_remember.models.test_evidence import EvidenceConsumer
@@ -32,7 +34,6 @@ from agents_remember.worktrees.modules.quality.gate import (
     QualityGateTarget,
     code_quality_gate_preview,
     recover_strict_code_quality_gate,
-    requires_integrated_acceptance,
     requires_strict_code_quality,
     run_strict_code_quality_gate,
 )
@@ -101,7 +102,11 @@ def quality_gate_mode(contract: WorktreeContract) -> str:
     return GATE_FULL
 
 
-def quality_gate_preview(contract: WorktreeContract) -> dict[str, object]:
+def quality_gate_preview(
+    contract: WorktreeContract,
+    *,
+    profile_reference: Path | None,
+) -> dict[str, object]:
     completion = preview_organizational_completion(contract) if contract.kind == "leaf" else None
     if contract.kind == "leaf" and completion is None:
         return _leaf_closeout_certification()
@@ -109,15 +114,18 @@ def quality_gate_preview(contract: WorktreeContract) -> dict[str, object]:
     settings = quality_gate_settings(contract)
     with integration_quality_checkout(contract, commit=contract.code_commit) as checkout:
         preview = code_quality_gate_preview(
-            checkout,
+            QualityGateTarget(
+                code_worktree=checkout,
+                worktree_group=contract.worktree_group,
+                repository_id=contract.repo_name,
+                profile_reference=profile_reference,
+            ),
             code_would_commit=True,
             diff_base=contract.code_base_commit,
             plan=QualityGatePlan(
                 mode=mode,
                 memory_cap_bytes=settings.memory_cap_bytes,
-                executor=settings.executor,
             ),
-            required_when_missing=requires_integrated_acceptance(contract.repo_name),
         )
     if completion is not None:
         preview["scope"] = "organizational-master-completion"
@@ -132,7 +140,7 @@ def run_integration_quality_gate(
     completion: OrganizationalCompletionPlan | None = None,
     certification: IntegrationQualityCertification | None = None,
     certification_sink: Callable[[IntegrationQualityCertification], None] | None = None,
-    memory_cap_bytes: int | None = None,
+    profile_reference: Path | None,
 ) -> IntegrationQualityOutcome:
     """Run or reuse the one exact full integration gate.
 
@@ -146,11 +154,9 @@ def run_integration_quality_gate(
     if contract.kind == "leaf" and completion is None:
         return IntegrationQualityOutcome(_leaf_closeout_certification())
     settings = quality_gate_settings(contract)
-    cap = settings.memory_cap_bytes if memory_cap_bytes is None else memory_cap_bytes
     plan = QualityGatePlan(
         mode=GATE_FULL,
-        memory_cap_bytes=cap,
-        executor=settings.executor,
+        memory_cap_bytes=settings.memory_cap_bytes,
     )
     if completion is not None and certification is not None:
         try:
@@ -165,17 +171,14 @@ def run_integration_quality_gate(
             {**certification.result, "reusedCertification": True},
             certification,
         )
-    required_when_missing = completion is not None or requires_integrated_acceptance(
-        contract.repo_name
-    )
     try:
         execution = _execute_integration_gate(
             contract,
             completion=completion,
             plan=plan,
-            required_when_missing=required_when_missing,
+            profile_reference=profile_reference,
         )
-    except RuntimeError as error:
+    except (CertificationContractError, RuntimeError) as error:
         raise integration_quality_failure(
             error,
             stage="integration-quality-execution",
@@ -197,28 +200,28 @@ def _execute_integration_gate(
     *,
     completion: OrganizationalCompletionPlan | None,
     plan: QualityGatePlan,
-    required_when_missing: bool,
+    profile_reference: Path | None,
 ) -> _IntegrationGateExecution:
     """Run or recover the gate against one detached exact-candidate checkout."""
 
     with integration_quality_checkout(contract, commit=contract.code_commit) as checkout:
-        if not requires_strict_code_quality(
-            checkout,
-            code_would_commit=True,
-            required_when_missing=required_when_missing,
-        ):
-            preview = code_quality_gate_preview(
-                checkout,
-                code_would_commit=True,
-                diff_base=contract.code_base_commit,
-                plan=plan,
-                required_when_missing=required_when_missing,
-            )
-            return _IntegrationGateExecution(preview, False, None)
         target = QualityGateTarget(
             code_worktree=checkout,
             worktree_group=contract.worktree_group,
+            repository_id=contract.repo_name,
+            profile_reference=profile_reference,
         )
+        if not requires_strict_code_quality(
+            target,
+            code_would_commit=True,
+        ):
+            preview = code_quality_gate_preview(
+                target,
+                code_would_commit=True,
+                diff_base=contract.code_base_commit,
+                plan=plan,
+            )
+            return _IntegrationGateExecution(preview, False, None)
         attestation = (
             _quality_attestation(completion, contract, plan) if completion is not None else None
         )
@@ -357,7 +360,7 @@ def _quality_attestation(
         "candidateTree": completion.code_tree,
         "diffBase": contract.code_base_commit,
         "mode": plan.mode,
-        "executor": plan.executor,
+        "executor": "dagger",
         "memoryCapBytes": "" if plan.memory_cap_bytes is None else str(plan.memory_cap_bytes),
     }
 

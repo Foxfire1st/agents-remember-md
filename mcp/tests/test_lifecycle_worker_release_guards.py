@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from agents_remember.application.lifecycle import lifecycle_operation_worker
@@ -32,8 +33,13 @@ def test_failed_closeout_with_commit_proof_keeps_queue_ownership(tmp_path: Path)
     store.update(with_mutation_intent)
     record = store.update(with_commit_proven)
     runtime = lifecycle_operation_worker.OperationRuntime(store)
+    config = SimpleNamespace(
+        repositories={
+            contract.repo_name: SimpleNamespace(certification_profile=Path("profile.json"))
+        }
+    )
     with (
-        mock.patch.object(lifecycle_operation_worker, "load_config", return_value=object()),
+        mock.patch.object(lifecycle_operation_worker, "load_config", return_value=config),
         mock.patch.object(
             lifecycle_operation_worker,
             "closeout_result",
@@ -59,8 +65,13 @@ def test_failed_irreversible_integration_keeps_queue_ownership(tmp_path: Path) -
         lambda current: current.model_copy(update={"irreversibleBoundaryEntered": True})
     )
     runtime = lifecycle_operation_worker.OperationRuntime(store)
+    config = SimpleNamespace(
+        repositories={
+            contract.repo_name: SimpleNamespace(certification_profile=Path("profile.json"))
+        }
+    )
     with (
-        mock.patch.object(lifecycle_operation_worker, "load_config", return_value=object()),
+        mock.patch.object(lifecycle_operation_worker, "load_config", return_value=config),
         mock.patch.object(
             lifecycle_operation_worker,
             "integrate_result",

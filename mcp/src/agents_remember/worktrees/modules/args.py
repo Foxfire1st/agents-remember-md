@@ -35,6 +35,7 @@ class WorktreeArgs:
     # Coordination / repository resolution
     code_repository_name: str | None = None
     code_repository_root: Path | None = None
+    certification_profile: Path | None = None
     coordination_root: Path | None = None
     workspace_root: Path | None = None
     topology: Literal["internal", "external"] | None = None

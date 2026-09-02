@@ -1,8 +1,7 @@
-"""Strict source-quality enforcement for Agents Remember code commits."""
+"""Strict repository-profile quality enforcement for code commits."""
 
 from __future__ import annotations
 
-import json
 import shlex
 import time
 from collections.abc import Mapping
@@ -11,6 +10,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
 
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.repository_profiles import (
+    AdmittedRepositoryProfile,
+    DaggerModuleExecutorAdapter,
+    JsonExitStatusDecoder,
+    RepositoryExecutionRequest,
+    compile_repository_profile_plan,
+    load_repository_profile,
+    resolve_repository_profile_selection,
+)
+from agents_remember.certification.repository_profiles.models import (
+    ProfileMode,
+    RepositoryProfileSelection,
+)
 from agents_remember.kernel.atomic_write import atomic_write_text
 from agents_remember.models.quality import QualityGateResult
 from agents_remember.models.test_evidence import (
@@ -24,42 +37,41 @@ from agents_remember.worktrees.modules.quality.clean_executor import (
     CleanQualityOutcome,
     CleanQualityRequest,
     certifying_evidence_from_published_manifest,
+    published_generation_root,
     published_report_path_from_manifest,
     run_clean_quality,
 )
 from agents_remember.worktrees.modules.quality.published_manifest import (
+    PublishedQualityManifest,
     load_published_quality_manifest,
 )
 
-QUALITY_WRAPPER = Path("mcp/test_support/agents_remember_test_support/code_quality/check.py")
 FAILURE_OUTPUT_LINES = 40
 REPORT_DIRECTORY_NAME = "reports"
 TEST_RESULTS_REPORT_NAME = "test-results.md"
-CLEAN_QUALITY_RESULTS_NAME = "clean-quality-results.json"
 
 GATE_ENFORCED = "enforced"
 GATE_NO_CODE_COMMIT = "no-code-commit"
-GATE_WRAPPER_UNAVAILABLE = "wrapper-unavailable"
 GATE_TARGETED = "targeted"
 GATE_FULL = "full"
-SELF_ACCEPTANCE_REPOSITORY = "agents-remember"
 
 
 @dataclass(frozen=True)
 class QualityGatePlan:
-    """What one gate run is, plus an optional explicit full-run memory cap."""
+    """The requested repository-profile altitude plus an optional full-run cap."""
 
-    mode: str = GATE_TARGETED
+    mode: ProfileMode = GATE_TARGETED
     memory_cap_bytes: int | None = None
-    executor: str = "dagger"
 
 
 @dataclass(frozen=True)
 class QualityGateTarget:
-    """The checkout being certified and its owning enclosure."""
+    """The exact repository context and enclosure selected for certification."""
 
     code_worktree: Path
     worktree_group: Path
+    repository_id: str
+    profile_reference: Path | None
 
 
 @dataclass(frozen=True)
@@ -69,17 +81,15 @@ class _QualityGateReport:
     command: list[str]
     invocation: str
     mode: str
-    executor: str
+    executor_adapter_id: str
+    profile_digest: str
+    profile_plan_digest: str
+    profile_selection_id: str
     diff_base: str
     started_at: datetime
     finished_at: datetime
     elapsed_seconds: float
     requested_memory_cap_bytes: int | None
-
-
-def quality_wrapper_path(code_worktree: Path) -> Path:
-    """Where a checkout carries the project-owned quality wrapper."""
-    return code_worktree / QUALITY_WRAPPER
 
 
 def test_results_report_path(worktree_group: Path) -> Path:
@@ -88,64 +98,52 @@ def test_results_report_path(worktree_group: Path) -> Path:
 
 
 def _gate_command(
+    target: QualityGateTarget,
     diff_base: str,
     *,
-    mode: str = GATE_TARGETED,
+    mode: ProfileMode = GATE_TARGETED,
     memory_cap_bytes: int | None = None,
-    executor: str = "dagger",
 ) -> str:
     """The command as reported, so a payload reader can rerun exactly what ran."""
     if mode not in {GATE_TARGETED, GATE_FULL}:
         raise ValueError(f"unknown quality gate mode: {mode}")
-    if executor != "dagger":
-        raise ValueError("quality gate executor must be the pinned Dagger graph")
     return shlex.join(
-        _dagger_report_command(
+        _profile_report_command(
+            target,
             QualityGatePlan(
                 mode=mode,
                 memory_cap_bytes=memory_cap_bytes,
-                executor=executor,
             ),
             diff_base,
         )
     )
 
 
-def requires_integrated_acceptance(repo_name: str) -> bool:
-    """Whether repository policy makes the integrated wrapper mandatory."""
-    return repo_name == SELF_ACCEPTANCE_REPOSITORY
-
-
 def requires_strict_code_quality(
-    code_worktree: Path,
+    target: QualityGateTarget,
     *,
     code_would_commit: bool,
-    required_when_missing: bool = False,
 ) -> bool:
-    """Whether this boundary must run the integrated acceptance adapter.
+    """Require one valid configured profile whenever code would be committed."""
 
-    Consumer repositories opt in by carrying the adapter. A repository whose own
-    policy requires the adapter can additionally make its absence fail closed.
-    """
-    return code_would_commit and (
-        required_when_missing or quality_wrapper_path(code_worktree).is_file()
+    if not code_would_commit:
+        return False
+    load_repository_profile(
+        target.repository_id,
+        target.code_worktree,
+        target.profile_reference,
     )
+    return True
 
 
 def code_quality_gate_preview(
-    code_worktree: Path,
+    target: QualityGateTarget,
     *,
     code_would_commit: bool,
     diff_base: str = "",
     plan: QualityGatePlan | None = None,
-    required_when_missing: bool = False,
 ) -> dict[str, object]:
-    """Report which of the three gate states this closeout is in.
-
-    A consuming repository that carries no wrapper reaches ``wrapper-unavailable``,
-    which is a reported state rather than a silent skip: the closeout still runs,
-    and the payload says the code commit was not quality-checked and why.
-    """
+    """Preview the exact configured adapter, or fail profile admission before execution."""
     if not code_would_commit:
         return {
             "required": False,
@@ -153,52 +151,32 @@ def code_quality_gate_preview(
             "command": "",
             "reason": "no code commit would be created",
         }
-    if not quality_wrapper_path(code_worktree).is_file():
-        if required_when_missing:
-            raise RuntimeError(
-                "repository policy requires integrated acceptance, but the candidate is missing "
-                f"its self-owned wrapper at {QUALITY_WRAPPER.as_posix()}"
-            )
-        return {
-            "required": False,
-            "status": GATE_WRAPPER_UNAVAILABLE,
-            "command": "",
-            "reason": (
-                "code would commit but this checkout carries no quality wrapper at "
-                f"{QUALITY_WRAPPER.as_posix()}; the strict gate cannot run and this "
-                "code commit is not quality-checked"
-            ),
-        }
     plan = plan or QualityGatePlan()
-    if plan.executor != "dagger":
-        raise ValueError(
-            "lifecycle quality acceptance requires the pinned Dagger executor; "
-            f"received {plan.executor!r}"
-        )
+    admitted, selection = _admitted_selection(target, plan.mode)
     memory_cap_payload: dict[str, object] = {}
     if plan.mode == GATE_FULL:
         memory_cap_payload = _memory_policy_payload(
-            executor=plan.executor,
             requested_cap_bytes=plan.memory_cap_bytes,
         )
     return {
         "required": True,
         "status": GATE_ENFORCED,
         "command": _gate_command(
+            target,
             diff_base,
             mode=plan.mode,
             memory_cap_bytes=plan.memory_cap_bytes,
-            executor=plan.executor,
         ),
         "diffBase": diff_base,
         "mode": plan.mode,
-        "executor": plan.executor,
+        "executor": "dagger",
+        "executorAdapterId": selection.executorAdapterId,
+        "profileDigest": admitted.canonical.profileDigest,
+        "profileSelectionId": selection.selectionId,
         **memory_cap_payload,
         "reason": (
-            "closeout stages the whole task worktree so the gate's scope is the commit's "
-            "content, then runs the leaf change-set-scoped quality contract (--targeted) "
-            "over exactly that before the code commit. The full wrapper runs once per "
-            "master, at the master integration gate, not at leaf closeout."
+            "closeout stages the whole task worktree, admits its exact repository-owned "
+            "profile, and executes that profile's selected candidate-scoped adapter."
         ),
     }
 
@@ -207,11 +185,6 @@ def _validated_quality_gate_plan(plan: QualityGatePlan | None) -> QualityGatePla
     resolved = plan or QualityGatePlan()
     if resolved.mode not in {GATE_TARGETED, GATE_FULL}:
         raise ValueError(f"unknown quality gate mode: {resolved.mode}")
-    if resolved.executor != "dagger":
-        raise ValueError(
-            "lifecycle quality acceptance requires the pinned Dagger executor; "
-            f"received {resolved.executor!r}"
-        )
     return resolved
 
 
@@ -231,21 +204,17 @@ def run_strict_code_quality_gate(
     deliberately leaves its staging in place.
     """
     code_worktree = target.code_worktree
-    wrapper = quality_wrapper_path(code_worktree)
-    if not wrapper.is_file():
-        raise RuntimeError(
-            "strict code-quality gate cannot run before code commit: "
-            f"self-owned wrapper is missing at {wrapper}"
-        )
     plan = _validated_quality_gate_plan(plan)
+    command, invocation = _gate_command_parts(target, plan, diff_base, invocation)
     candidate_tree = require_git(code_worktree, ["write-tree"])
-    command, invocation = _gate_command_parts(plan, diff_base, invocation)
     started_at = datetime.now(UTC)
     started = time.monotonic()
     result = run_clean_quality(
         CleanQualityRequest(
             code_worktree=code_worktree,
             worktree_group=target.worktree_group,
+            repository_id=target.repository_id,
+            profile_reference=target.profile_reference,
             mode=plan.mode,
             diff_base=diff_base,
             memory_cap_bytes=plan.memory_cap_bytes,
@@ -253,6 +222,8 @@ def run_strict_code_quality_gate(
         )
     )
     finished_at = datetime.now(UTC)
+    if result.manifest is None and result.returncode == 0:
+        raise RuntimeError("repository certification passed without a published manifest")
     report_path = test_results_report_path(target.worktree_group)
     _write_test_results_report(
         _QualityGateReport(
@@ -261,7 +232,24 @@ def run_strict_code_quality_gate(
             command=command,
             invocation=invocation,
             mode=plan.mode,
-            executor=plan.executor,
+            executor_adapter_id=(
+                result.manifest.executor_adapter_id
+                if result.manifest is not None
+                else "unpublished"
+            ),
+            profile_digest=(
+                result.manifest.profile_digest if result.manifest is not None else "unpublished"
+            ),
+            profile_plan_digest=(
+                result.manifest.profile_plan_digest
+                if result.manifest is not None
+                else "unpublished"
+            ),
+            profile_selection_id=(
+                result.manifest.profile_selection_id
+                if result.manifest is not None
+                else "unpublished"
+            ),
             diff_base=diff_base,
             started_at=started_at,
             finished_at=finished_at,
@@ -277,6 +265,9 @@ def run_strict_code_quality_gate(
                 requested_memory_cap_bytes=plan.memory_cap_bytes,
             )
         )
+    manifest = result.manifest
+    if manifest is None:
+        raise RuntimeError("repository certification passed without a published manifest")
     evidence = require_certifying_evidence(
         result.evidence,
         consumer=EvidenceConsumer.LIFECYCLE,
@@ -291,6 +282,7 @@ def run_strict_code_quality_gate(
         diff_base=diff_base,
         plan=plan,
         evidence=evidence,
+        manifest=manifest,
     )
 
 
@@ -311,21 +303,43 @@ def recover_strict_code_quality_gate(
     published = None if manifest.attestation is None else dict(manifest.attestation)
     if published != dict(attestation):
         return None
-    published_result_path = published_report_path_from_manifest(
+    candidate_tree = require_git(target.code_worktree, ["write-tree"])
+    admitted, selection = _admitted_selection(target, plan.mode)
+    expected_plan = compile_repository_profile_plan(
+        admitted.canonical,
+        selection_id=selection.selectionId,
+        candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
+    )
+    expected_decoder = next(
+        decoder
+        for decoder in admitted.canonical.profile.resultDecoders
+        if decoder.decoderId == selection.resultDecoderId
+    )
+    if (
+        manifest.candidate_tree != candidate_tree
+        or manifest.profile_digest != admitted.canonical.profileDigest
+        or manifest.profile_plan_digest != expected_plan.planDigest
+        or manifest.profile_selection_id != selection.selectionId
+        or manifest.executor_adapter_id != selection.executorAdapterId
+        or manifest.result_decoder != expected_decoder
+    ):
+        return None
+    published_report_path_from_manifest(
         reports,
         manifest,
-        CLEAN_QUALITY_RESULTS_NAME,
+        manifest.result_decoder.artifactPath,
     )
-    try:
-        raw_result: object = json.loads(published_result_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError) as error:
-        raise RuntimeError("published Dagger result is unreadable") from error
-    if not isinstance(raw_result, dict):
-        raise RuntimeError("published Dagger result is unreadable")
-    result = raw_result
-    if result.get("status") != "passed" or result.get("exitCode") != 0:
+    if (
+        JsonExitStatusDecoder()
+        .decode(
+            manifest.result_decoder,
+            published_generation_root(reports, manifest),
+            manifest.files,
+        )
+        .exit_code
+        != 0
+    ):
         return None
-    candidate_tree = require_git(target.code_worktree, ["write-tree"])
     evidence = certifying_evidence_from_published_manifest(
         reports,
         manifest,
@@ -337,7 +351,7 @@ def recover_strict_code_quality_gate(
         diff_base=diff_base,
         plan=plan,
         evidence=evidence,
-        published_result_path=published_result_path,
+        manifest=manifest,
     )
 
 
@@ -347,31 +361,36 @@ def _strict_quality_success_payload(
     diff_base: str,
     plan: QualityGatePlan,
     evidence: CertifyingTestEvidence,
-    published_result_path: Path | None = None,
+    manifest: PublishedQualityManifest,
 ) -> dict[str, object]:
+    published_result_path = published_report_path_from_manifest(
+        target.worktree_group / REPORT_DIRECTORY_NAME,
+        manifest,
+        manifest.result_decoder.artifactPath,
+    )
     payload: dict[str, object] = {
         "required": True,
         "status": GATE_ENFORCED,
         "passed": True,
         "command": _gate_command(
+            target,
             diff_base,
             mode=plan.mode,
             memory_cap_bytes=plan.memory_cap_bytes,
-            executor=plan.executor,
         ),
         "diffBase": diff_base,
         "mode": plan.mode,
-        "executor": plan.executor,
+        "executor": "dagger",
+        "executorAdapterId": manifest.executor_adapter_id,
+        "profileDigest": manifest.profile_digest,
+        "profilePlanDigest": manifest.profile_plan_digest,
+        "profileSelectionId": manifest.profile_selection_id,
+        "resultArtifact": manifest.result_decoder.artifactPath,
         "certifyingTestEvidence": evidence_payload(evidence),
         "reportPath": test_results_report_path(target.worktree_group).as_posix(),
-        **(
-            {"publishedResultPath": published_result_path.as_posix()}
-            if published_result_path is not None
-            else {}
-        ),
+        "publishedResultPath": published_result_path.as_posix(),
         **(
             _memory_policy_payload(
-                executor=plan.executor,
                 requested_cap_bytes=plan.memory_cap_bytes,
             )
             if plan.mode == GATE_FULL
@@ -406,7 +425,10 @@ def _write_test_results_report(report: _QualityGateReport) -> None:
         f"- Status: **{'passed' if report.result.returncode == 0 else 'failed'}**",
         f"- Invocation: `{report.invocation}`",
         f"- Mode: `{report.mode}`",
-        f"- Executor: `{report.executor}`",
+        f"- Executor adapter: `{report.executor_adapter_id}`",
+        f"- Repository profile digest: `{report.profile_digest}`",
+        f"- Repository profile plan digest: `{report.profile_plan_digest}`",
+        f"- Repository profile selection: `{report.profile_selection_id}`",
         f"- Diff base: `{report.diff_base or '(none)'}`",
         f"- Exit code: `{report.result.returncode}`",
         f"- Started: `{report.started_at.replace(microsecond=0).isoformat()}`",
@@ -433,8 +455,8 @@ def _write_test_results_report(report: _QualityGateReport) -> None:
         [
             "",
             (
-                "This file contains the latest completed strict quality run, including its "
-                "pytest rail. The next completed run atomically replaces it; worktree cleanup "
+                "This file contains the latest completed repository-profile quality run. "
+                "The next completed run atomically replaces it; worktree cleanup "
                 "removes it with the enclosure."
             ),
             "",
@@ -450,45 +472,69 @@ def _write_test_results_report(report: _QualityGateReport) -> None:
 
 
 def _gate_command_parts(
+    target: QualityGateTarget,
     plan: QualityGatePlan,
     diff_base: str,
     invocation: str,
 ) -> tuple[list[str], str]:
-    """The symbolic Dagger command and its invocation label."""
-    if plan.executor != "dagger":
-        raise ValueError("quality gate executor must be the pinned Dagger graph")
+    """The profile-declared symbolic command and its invocation label."""
     return (
-        _dagger_report_command(plan, diff_base),
+        _profile_report_command(target, plan, diff_base),
         "master-integration" if plan.mode == GATE_FULL else invocation,
     )
 
 
-def _dagger_report_command(plan: QualityGatePlan, diff_base: str) -> list[str]:
-    command = [
-        "dagger",
-        "call",
-        "quality",
-        "--source=<exact-staged-candidate>",
-        "--repository-bundle=<exact-git-ancestry-bundle>",
-        f"--mode={plan.mode}",
-    ]
-    if diff_base:
-        command.append(f"--diff-base={diff_base}")
-    if plan.memory_cap_bytes is not None:
-        command.append(f"--memory-cap-bytes={plan.memory_cap_bytes}")
-    return command
+def _admitted_selection(
+    target: QualityGateTarget,
+    mode: ProfileMode,
+) -> tuple[AdmittedRepositoryProfile, RepositoryProfileSelection]:
+    admitted = load_repository_profile(
+        target.repository_id,
+        target.code_worktree,
+        target.profile_reference,
+    )
+    selection = resolve_repository_profile_selection(
+        admitted.canonical,
+        purpose="closeout",
+        mode=mode,
+    )
+    return admitted, selection
+
+
+def _profile_report_command(
+    target: QualityGateTarget,
+    plan: QualityGatePlan,
+    diff_base: str,
+) -> list[str]:
+    admitted, selection = _admitted_selection(target, plan.mode)
+    executor = next(
+        definition
+        for definition in admitted.canonical.profile.executorAdapters
+        if definition.adapterId == selection.executorAdapterId
+    )
+    return list(
+        DaggerModuleExecutorAdapter().command(
+            executor,
+            RepositoryExecutionRequest(
+                candidate_source=Path("<exact-staged-candidate>"),
+                repository_bundle=Path("<exact-git-ancestry-bundle>"),
+                execution_manifest=Path("<exact-admission-manifest>"),
+                mode=selection.mode,
+                diff_base=diff_base,
+                export_root=Path("<profile-report-export>"),
+                memory_cap_bytes=plan.memory_cap_bytes,
+            ),
+        )
+    )
 
 
 def _memory_policy_payload(
     *,
-    executor: str = "dagger",
     requested_cap_bytes: int | None = None,
 ) -> dict[str, object]:
-    if executor != "dagger":
-        raise ValueError("quality gate executor must be the pinned Dagger graph")
     policy: dict[str, object] = {
         "mode": "container-host-managed" if requested_cap_bytes is None else "explicit-cap",
-        "pytestProcesses": "auto",
+        "processPolicy": "profile-adapter-owned",
         "swap": "container-host-managed",
     }
     if requested_cap_bytes is None:

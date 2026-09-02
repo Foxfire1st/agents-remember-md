@@ -6,7 +6,7 @@ Agents Remember has FOUR settings families, each with exactly one home:
 | --- | --- | --- |
 | Boot infrastructure (repos, providers, transport, timeoutCaps, dashboard) | MCP authority settings file (outside the coordinator root) | boot |
 | Memory topology (`onboarding.storage`, `pathRules`, `crossRepo`) | memory-root `system/settings.json` (beside `settings.md`) | per resolution |
-| **Agentic settings** (`orchestration.*`: gate delegation, loops, roles + rolesPerLevel, concurrency, spawn preference, harness definitions, qualityGate executor/resource policy) | **coordinator `system/settings.json`** (global), `<code-repo>/system/settings.json` (local override) | per use (`gateDelegation`: boot snapshot) |
+| **Agentic settings** (`orchestration.*`: gate delegation, loops, roles + rolesPerLevel, concurrency, spawn preference, harness definitions, qualityGate resource policy) | **coordinator `system/settings.json`** (global), `<code-repo>/system/settings.json` (local override) | per use (`gateDelegation`: boot snapshot) |
 | Provider lifecycle settings | server-generated from the authority config (`--from-settings`) | per command |
 
 `system/settings.md` remains the human and agent prose guidance file beside a
@@ -117,7 +117,8 @@ watch settings internally.
   "transcriptRoot": "C:/absolute/path/to/ar-coordination/logs/mcp",
   "repositories": {
     "agents-remember": {
-      "contractPath": null
+      "contractPath": null,
+      "certificationProfile": "mcp/certification-profile-v1.json"
     }
   },
   "providers": {
@@ -199,6 +200,16 @@ file is tolerated and ignored.)
 
 `repositories.<repo-id>.contractPath` may point at a coordination-root-local
 contract file. It must not point outside the coordinator root.
+
+`repositories.<repo-id>.certificationProfile` selects exactly one
+repository-relative certification profile for code closeout and master integration. The path is
+resolved inside `workspaceRoot/<repo-id>` and must be canonical, traversal-free, symlink-free, and
+name one regular file. It is never discovered by filename, wrapper presence, repository name, or
+historical success. A repository may omit this field while it has no code certification to run;
+any operation that would certify or commit code then refuses with
+`certification-profile-invalid` before a repository rail starts. See
+[Repository Certification Profiles](repository-certification-profile.md) for the versioned
+contract and authoring procedure.
 
 `providers` is an allow-list keyed by supported provider id. Provider entries
 must be empty objects because runtime roots, data roots, logs, requirements,
@@ -438,29 +449,25 @@ passed smoke.
 
 ### orchestration.qualityGate
 
-`orchestration.qualityGate` selects the canonical executor and owns optional
-full-wrapper resource overrides. The full wrapper runs exactly once per master, at the master
-integration gate. The only accepted executor is the pinned Dagger clean-Ubuntu graph; GitHub PR
-checks do not run it. Dagger reconstructs the exact staged candidate,
-including the real read-only Codex protocol probe, and exports its current and
-final evidence into the owning enclosure's self-overwriting `reports/` files.
+`orchestration.qualityGate` owns only the optional full-gate memory override. Repository
+execution authority belongs to the explicit
+`repositories.<repo-id>.certificationProfile`, including the selected sandbox adapter and result
+decoder. A repository profile may declare Dagger as its certifying adapter; unavailable declared
+runtime prerequisites fail instead of falling back to host execution.
 
 | Field | Default | Notes |
 | --- | --- | --- |
-| `executor` | `"dagger"` | The only accepted value is `"dagger"`, which runs the canonical wrapper in the pinned clean Ubuntu graph. Host wrapper and test execution refuse; an unavailable Dagger engine is an error, not a fallback. |
 | `memoryCapBytes` | omitted (container runtime manages resources) | Optional positive hard cap applied by the Dagger container's inner wrapper. A capped kill fails and names this policy key; there is no host systemd/RLIMIT execution path. |
 
 ```jsonc
 "orchestration": {
   "qualityGate": {
-    "executor": "dagger",
     "memoryCapBytes": 8589934592
   }
 }
 ```
 
-The executor applies to lifecycle-owned leaf-closeout and master-integration acceptance. The
-memory cap remains a full-master resource policy; deterministic pre-push checks and leaf
+The memory cap remains a full-master resource policy; deterministic pre-push checks and leaf
 integration run no acceptance. An explicit cap is an opt-in restriction, not the default resource
 policy; the gate treats a capped kill as a failure, never a skip.
 

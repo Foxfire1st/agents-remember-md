@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import warnings
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from agents_remember.errors import AgentsRememberError
@@ -79,6 +79,7 @@ class RepositoryScope:
     path: Path
     memory_root: Path | None = None
     contract_path: Path | None = None
+    certification_profile: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -328,6 +329,7 @@ def _parse_repository_entry(
     )
     if contract_path is not None and not path_is_relative_to(contract_path, coordination_root):
         raise ConfigError(f"repository {repo_id} contractPath must be inside the coordinator root")
+    certification_profile = _optional_repository_profile_reference(repo_id, value)
     # memorySettingsIncludes was dead plumbing (parsed, never consumed); it was
     # removed with 260703-L13. A leftover key in an existing settings file is
     # tolerated-ignored like any other unknown repository field.
@@ -336,7 +338,35 @@ def _parse_repository_entry(
         path=repo_path,
         memory_root=memory_root,
         contract_path=contract_path,
+        certification_profile=certification_profile,
     )
+
+
+def _optional_repository_profile_reference(
+    repo_id: str,
+    value: dict[str, Any],
+) -> Path | None:
+    raw = value.get("certificationProfile")
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw:
+        raise ConfigError(
+            f"repository {repo_id} certificationProfile must be one non-empty relative path"
+        )
+    path = PurePosixPath(raw)
+    if (
+        path.is_absolute()
+        or not path.parts
+        or "\\" in raw
+        or (path.parts and len(path.parts[0]) >= 2 and path.parts[0][1] == ":")
+        or path.as_posix() != raw
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        raise ConfigError(
+            f"repository {repo_id} certificationProfile must be a canonical, "
+            "traversal-free repository-relative POSIX path"
+        )
+    return Path(*path.parts)
 
 
 def parse_repositories(

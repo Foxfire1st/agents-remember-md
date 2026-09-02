@@ -107,7 +107,9 @@ A minimal starter `agents-remember-settings.json`:
   "coordinationRoot": "/absolute/path/to/ar-coordination",
   "workspaceRoot": "/absolute/path/to/workspace",
   "repositories": {
-    "<your-repo-name>": {}
+    "<your-repo-name>": {
+      "certificationProfile": "config/repository-certification.json"
+    }
   },
   "providers": {
     "codegraphcontext-code": {},
@@ -115,6 +117,14 @@ A minimal starter `agents-remember-settings.json`:
   }
 }
 ```
+
+`certificationProfile` is an explicit path inside that repository, not a conventional filename.
+Create the repository-owned file for its actual commands, artifacts, runtimes, selectors, and
+clean-room scenarios; do not copy the Agents Remember rail inventory into another repository.
+The `c-13-install-and-onboard` flow checks and compiles it before declaring code closeout ready.
+See [Repository Certification Profiles](reference/repository-certification-profile.md). A
+repository without this field can still be configured and onboarded, but any later operation that
+would certify code fails closed before running tests.
 
 The settings file must be absolute and must live **outside** the
 `ar-coordination/` runtime folder. See the [settings.json reference](reference/settings-json.md)

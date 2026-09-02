@@ -16,6 +16,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--code-worktree", type=Path, default=Path.cwd())
     parser.add_argument("--worktree-group", type=Path, required=True)
+    parser.add_argument("--repository-id", required=True)
+    parser.add_argument("--certification-profile", type=Path, required=True)
     parser.add_argument("--mode", choices=("targeted", "full"), default="full")
     parser.add_argument("--diff-base", default="")
     parser.add_argument("--memory-cap-bytes", type=int, default=0)
@@ -29,6 +31,8 @@ def main(argv: list[str] | None = None) -> int:
             CleanQualityRequest(
                 code_worktree=args.code_worktree.resolve(),
                 worktree_group=args.worktree_group.resolve(),
+                repository_id=args.repository_id,
+                profile_reference=args.certification_profile,
                 mode=args.mode,
                 diff_base=args.diff_base,
                 memory_cap_bytes=args.memory_cap_bytes or None,

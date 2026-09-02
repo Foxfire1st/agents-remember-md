@@ -13,9 +13,57 @@ from agents_remember.models.worktree import WorktreeIntegrateResponse
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
 from agents_remember.worktrees.modules.quality import gate as code_quality_gate
 from pydantic import ValidationError
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    REPOSITORY_ROOT,
+    agents_remember_profile_execution,
+)
 
 
 class QualityGatePublicContractTests(unittest.TestCase):
+    def test_recovery_refuses_same_id_decoder_byte_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            candidate_tree = "c" * 40
+            export = root / "export"
+            reports = root / "reports"
+            export.mkdir()
+            (export / "clean-quality-results.json").write_text(
+                json.dumps({"status": "passed", "exitCode": 0}) + "\n",
+                encoding="utf-8",
+            )
+            clean_quality_executor._publish_reports(
+                export,
+                reports,
+                candidate_tree=candidate_tree,
+                profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
+                attestation={"id": "decoder-drift"},
+            )
+            pointer = reports / clean_quality_executor.REPORT_SET_MANIFEST
+            manifest = json.loads(pointer.read_text(encoding="utf-8"))
+            manifest["resultDecoder"]["passedValue"] = "accepted"
+            pointer.write_text(json.dumps(manifest), encoding="utf-8")
+            target = code_quality_gate.QualityGateTarget(
+                REPOSITORY_ROOT,
+                root,
+                "agents-remember",
+                AGENTS_REMEMBER_PROFILE_REFERENCE,
+            )
+
+            with mock.patch.object(
+                code_quality_gate,
+                "require_git",
+                return_value=candidate_tree,
+            ):
+                recovered = code_quality_gate.recover_strict_code_quality_gate(
+                    target,
+                    diff_base="a" * 40,
+                    plan=code_quality_gate.QualityGatePlan(mode="full"),
+                    attestation={"id": "decoder-drift"},
+                )
+
+            self.assertIsNone(recovered)
+
     def test_recovery_uses_one_manifest_generation_when_the_pointer_rotates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -32,6 +80,7 @@ class QualityGatePublicContractTests(unittest.TestCase):
                 export,
                 reports,
                 candidate_tree=candidate_tree,
+                profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
                 attestation={"id": "a"},
             )["generation"]
             real_loader = code_quality_gate.load_published_quality_manifest
@@ -46,12 +95,20 @@ class QualityGatePublicContractTests(unittest.TestCase):
                     export,
                     reports,
                     candidate_tree=candidate_tree,
+                    profile_execution=agents_remember_profile_execution(
+                        candidate_tree=candidate_tree
+                    ),
                     attestation={"id": "b"},
                 )
                 return snapshot
 
-            target = code_quality_gate.QualityGateTarget(root, root)
-            plan = code_quality_gate.QualityGatePlan(mode="full", executor="dagger")
+            target = code_quality_gate.QualityGateTarget(
+                REPOSITORY_ROOT,
+                root,
+                "agents-remember",
+                AGENTS_REMEMBER_PROFILE_REFERENCE,
+            )
+            plan = code_quality_gate.QualityGatePlan(mode="full")
             with (
                 mock.patch.object(
                     code_quality_gate,

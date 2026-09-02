@@ -50,6 +50,7 @@ from agents_remember.worktrees.worktree_contract import (
 )
 from test_worktree_support import (
     WorktreeSupportTests,
+    closeout_args,
     commit_file,
     dirty_open_external_contract_fixture,
     git,
@@ -1048,15 +1049,7 @@ class WorktreeSupport1(WorktreeSupportTests):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             contract = dirty_open_external_contract_fixture(root)
-            args = Namespace(
-                contract_path=contract.contract_path,
-                approved=False,
-                approval_note="",
-                code_commit_message="Add feature",
-                memory_commit_message="Document feature",
-                ledger_commit_message="Sync ledger",
-                dry_run=True,
-            )
+            args = closeout_args(contract, dry_run=True)
             output = io.StringIO()
             with redirect_stdout(output):
                 self.assertEqual(run_authorized_closeout_mechanics(args), 0)

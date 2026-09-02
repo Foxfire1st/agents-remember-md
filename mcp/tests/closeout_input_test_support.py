@@ -375,6 +375,7 @@ def closeout_worktree_args(
     ledger: str | None = "record code-to-memory mapping",
     **values,
 ) -> WorktreeArgs:
+    values.setdefault("certification_profile", Path("mcp/certification-profile-v1.json"))
     effective = normalize_closeout_input(
         contract,
         raw_closeout_messages(code=code, memory=memory, ledger=ledger),

@@ -39,7 +39,7 @@ FULL_GATE = {
     "executor": "dagger",
     "memoryPolicy": {
         "mode": "container-host-managed",
-        "pytestProcesses": "auto",
+        "processPolicy": "profile-adapter-owned",
         "swap": "container-host-managed",
     },
     "reason": "exact full organizational acceptance passed",
@@ -138,6 +138,7 @@ class OrganizationalCompletionFixture(unittest.TestCase):
     def _args(contract, runtime, record) -> WorktreeArgs:
         return WorktreeArgs(
             contract_path=contract.contract_path,
+            certification_profile=Path("mcp/certification-profile-v1.json"),
             approved=True,
             strategy="ff-only",
             operation_key=record.operationKey,

@@ -247,6 +247,9 @@ class CodeQualityCheckTests(unittest.TestCase):
         dagger_command = (
             REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/quality_command.py"
         ).read_text(encoding="utf-8")
+        profile = (REPOSITORY_ROOT / "mcp/certification-profile-v1.json").read_text(
+            encoding="utf-8"
+        )
 
         self.assertNotIn("agents_remember_test_support.code_quality.check", hook)
         self.assertIn("acceptance is Dagger-only", hook)
@@ -257,8 +260,9 @@ class CodeQualityCheckTests(unittest.TestCase):
         self.assertNotIn("pytest", workflow)
         self.assertNotIn("npm run test", workflow)
         self.assertNotIn("agents_remember_test_support.code_quality.check", workflow)
-        self.assertIn("quality_wrapper_command", dagger_main)
+        self.assertNotIn("quality_wrapper_command", dagger_main)
         self.assertIn("agents_remember_test_support.code_quality.check", dagger_command)
+        self.assertIn('"railId": "python-suite"', profile)
         for content in (hook, workflow, dagger_main, dagger_command):
             self.assertNotIn("fail-on-crap-threshold", content)
 

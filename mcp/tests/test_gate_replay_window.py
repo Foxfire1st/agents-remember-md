@@ -581,14 +581,18 @@ class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
         write_contract(contract.contract_path, contract)
         return contract
 
-    def _closeout(self, contract) -> int:
+    def _closeout(self, contract, *, publish_code_quality: bool = False) -> int:
         with redirect_stdout(io.StringIO()):
-            return run_authorized_closeout_mechanics(closeout_args(contract))
+            return run_authorized_closeout_mechanics(
+                closeout_args(contract),
+                publish_code_quality=publish_code_quality,
+            )
 
     def test_the_approval_is_already_consumed_when_the_first_commit_runs(self) -> None:
         """The ordering property, observed from inside the first irreversible act.
 
-        ``commit_if_dirty`` is the first thing a closeout does that a person would have to undo.
+        The accepted code commit is the first thing a closeout does that a person would have to
+        undo.
         Reading the gate's state at the moment it is entered is the strongest available statement
         of R3's fix: whatever happens after this instant -- a crash, a failed memory quality gate,
         an ENOSPC on the marker's own append -- the approval is already spent, so it cannot be
@@ -603,14 +607,14 @@ class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
             gate_id = _approved_closeout_gate_for(contract)
             store = GateStore(observer_logs_root(contract.coordination_root))
             seen: list[str] = []
-            real_commit = closeout_recovery.commit_if_dirty
+            real_commit = closeout_recovery.commit_verified_staged
 
             def spy(repo: Path, message: str) -> str:
                 seen.append(store.current(LIFECYCLE)[gate_id].state)
                 return real_commit(repo, message)
 
-            with mock.patch.object(closeout_recovery, "commit_if_dirty", side_effect=spy):
-                self.assertEqual(self._closeout(contract), 0)
+            with mock.patch.object(closeout_recovery, "commit_verified_staged", side_effect=spy):
+                self.assertEqual(self._closeout(contract, publish_code_quality=True), 0)
 
             self.assertTrue(seen, "closeout committed nothing; the ordering was never exercised")
             self.assertEqual(
