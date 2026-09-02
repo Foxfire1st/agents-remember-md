@@ -49,6 +49,7 @@ def door_generation(**updates: object) -> CloseoutDoorGeneration:
         "candidateTree": HEX40,
         "codeBaseCommit": "d" * 40,
         "taskTopologyFingerprint": "e" * 64,
+        "taskIntent": {"schema": "task-intent/v1", "digest": "9" * 64},
         "reviewProvenance": not_applicable,
         "memoryProvenance": not_applicable,
         "ledgerProvenance": not_applicable,

@@ -15,9 +15,11 @@ class DirectLandingError(ValueError):
         *,
         expected: Mapping[str, object] | None = None,
         observed: Mapping[str, object] | None = None,
+        next_action: str | None = None,
     ) -> None:
         self.status = status
         self.detail = detail
         self.expected = dict(expected or {})
         self.observed = dict(observed or {})
+        self.next_action = next_action
         super().__init__(f"{status}: {detail}")

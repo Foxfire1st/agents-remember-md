@@ -98,11 +98,18 @@ def _assert_closeout_commit_subjects(contract, commits: Mapping[str, str]) -> No
 class CloseoutCodeQualityGateTests(unittest.TestCase):
     def test_agents_remember_closeout_refuses_a_missing_self_owned_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            initial = dirty_open_external_contract_fixture(Path(tmp))
+            task_root = (
+                initial.coordination_root / "tasks" / "agents-remember" / initial.task_root.name
+            )
             contract = replace(
-                dirty_open_external_contract_fixture(Path(tmp)),
+                initial,
                 repo_name="agents-remember",
+                task_root=task_root,
+                task_artifact=task_root / "task.md",
             )
             write_contract(contract.contract_path, contract)
+            write_passing_route_review(contract)
 
             with (
                 mock.patch.object(

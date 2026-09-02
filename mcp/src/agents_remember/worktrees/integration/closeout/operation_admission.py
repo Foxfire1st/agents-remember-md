@@ -16,6 +16,11 @@ from agents_remember.models.lifecycles.operation import (
     GatePolicyRuleSnapshot,
     LifecycleOperationRecord,
 )
+from agents_remember.models.task_intent import (
+    TaskIntentIdentity,
+    task_intent_is_missing,
+)
+from agents_remember.tasks.task_intent import require_current_task_intent
 from agents_remember.worktrees.closeout_input import (
     CloseoutCandidateSnapshot,
     candidate_drift_error,
@@ -26,6 +31,9 @@ from agents_remember.worktrees.closeout_input import (
 )
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     closeout_generation_retained,
+)
+from agents_remember.worktrees.integration.closeout.task_intent_identity import (
+    current_door_task_intent,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_candidate import (
     LifecycleOperationCandidate,
@@ -89,6 +97,7 @@ def prevalidate_closeout_operation_admission(
     )
     _require_stable_snapshot(contract, snapshot, plan, admission.corrected_call)
     operation_input = _operation_input(contract, admission, effective)
+    intent = current_door_task_intent(contract)
     return ValidatedCloseoutAdmission(
         operation_input=operation_input,
         snapshot=snapshot,
@@ -98,6 +107,7 @@ def prevalidate_closeout_operation_admission(
                 candidate_state=snapshot.state,
                 closeout_candidate=snapshot.candidate,
                 closeout_door_generation_id=_current_door_generation_id(contract),
+                task_intent=intent,
             )
         ),
     )
@@ -115,6 +125,10 @@ def resolve_closeout_operation_admission(
     if (
         current is None
         or current.status == "cancelled"
+        or (
+            task_intent_is_missing(current.taskIntent)
+            and current.status in {"completed", "failed", "cancelled"}
+        )
         or _completed_generation_was_advanced(
             contract,
             current,
@@ -170,11 +184,13 @@ def _validate_existing_closeout_request(
         and contract.closeout_door == door_publication.generation
     )
     if retained or door_state_is_accepted:
+        intent = _current_operation_task_intent(current, validated.candidate.task_intent)
         _require_recovery_identity(contract, current)
         return operation_input, LifecycleOperationCandidate(
             current.candidateState,
             current.candidateTree,
             current.fingerprint,
+            intent,
         )
     return operation_input, lifecycle_operation_candidate(
         LifecycleOperationCandidateBinding(
@@ -182,6 +198,7 @@ def _validate_existing_closeout_request(
             candidate_state=validated.snapshot.state,
             closeout_candidate=validated.snapshot.candidate,
             closeout_door_generation_id=_current_door_generation_id(contract),
+            task_intent=validated.candidate.task_intent,
         )
     )
 
@@ -268,6 +285,9 @@ def _candidate_is_generation_output(
                 if current.doorPublication is not None
                 else None
             ),
+            task_intent=(
+                current.taskIntent if isinstance(current.taskIntent, TaskIntentIdentity) else None
+            ),
         )
     )
     if unchanged.fingerprint == current.fingerprint:
@@ -286,3 +306,17 @@ def _current_door_generation_id(contract: WorktreeContract) -> str:
     if door is None:
         raise RuntimeError("closeout admission requires one exact door generation")
     return door.generationId
+
+
+def _current_operation_task_intent(
+    current: LifecycleOperationRecord,
+    expected: TaskIntentIdentity | None,
+) -> TaskIntentIdentity:
+    if expected is None:
+        raise RuntimeError("commit operation candidate is missing canonical task intent")
+    return require_current_task_intent(
+        current.taskIntent,
+        expected,
+        owner="lifecycle-operation",
+        next_action="retire-and-republish",
+    )

@@ -23,6 +23,8 @@ from agents_remember.models.lifecycles.mutation_evidence import (
 )
 from agents_remember.models.lifecycles.operation import CloseoutOperationInput
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.tasks import SubTaskRef, TaskDocument, read_task_doc, write_task_doc
+from agents_remember.tasks.document_refs import TaskDocumentTopology
 from agents_remember.worktrees.closeout_input import (
     capture_closeout_candidate,
     normalize_closeout_input,
@@ -33,6 +35,9 @@ from agents_remember.worktrees.integration.closeout.operation_admission import (
 )
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     derive_closeout_recovery_commits,
+)
+from agents_remember.worktrees.integration.closeout.task_intent_identity import (
+    contract_task_intent,
 )
 from agents_remember.worktrees.integration.lifecycle import (
     lifecycle_operations as lifecycle_operations_module,
@@ -147,18 +152,7 @@ def _fixture_waiting_door(
     """Build one typed synthetic source generation for legacy lifecycle fixtures."""
 
     candidate = capture_closeout_candidate(contract)
-    task_ref = TaskDocumentRef(
-        repository=contract.repo_name,
-        path=(
-            f"{contract.task_name}/{contract.leaf_id.lower()}.json"
-            if contract.leaf_id
-            else f"{contract.task_name}/task.json"
-        ),
-    )
-    master_ref = TaskDocumentRef(
-        repository=contract.repo_name,
-        path=f"{contract.task_name}/task.json",
-    )
+    task_ref, master_ref = _publish_fixture_task_context(contract)
     sprint_ref = TaskDocumentRef(
         repository=contract.repo_name,
         path="lifecycle-fixture-sprint/task.json",
@@ -192,6 +186,7 @@ def _fixture_waiting_door(
         memoryBaseCommit=contract.memory_base_commit,
         ledgerMemoryCommit=contract.memory_base_commit,
         taskTopologyFingerprint=hashlib.sha256(b"test-fixture-topology").hexdigest(),
+        taskIntent=contract_task_intent(contract, candidate_ref=task_ref),
         reviewProvenance=not_applicable,
         memoryProvenance=not_applicable,
         ledgerProvenance=not_applicable,
@@ -207,6 +202,99 @@ def _fixture_waiting_door(
         declaredAt="2026-08-15T00:00:00+00:00",
     )
     return door
+
+
+def _publish_fixture_task_context(
+    contract,
+) -> tuple[TaskDocumentRef, TaskDocumentRef]:
+    """Publish or reuse one canonical leaf plus its task-root master reference."""
+
+    master_path = contract.task_root / "task.json"
+    master_ref = _confined_fixture_task_ref(contract, master_path)
+    if contract.kind == "series":
+        if master_path.is_file():
+            master = read_task_doc(master_path)
+            if master.kind != "master":
+                raise AssertionError(
+                    "series closeout fixture parent must be a master task document"
+                )
+            children = TaskDocumentTopology(contract.coordination_root).children(master_ref)
+            if children:
+                return children[0], master_ref
+        else:
+            master = TaskDocument.model_validate(
+                {
+                    "id": contract.task_id,
+                    "slug": contract.task_root.name,
+                    "title": contract.task_name,
+                    "kind": "master",
+                    "status": "inProgress",
+                    "repo": contract.repo_name,
+                    "createdAt": "2026-08-15T00:00:00+00:00",
+                    "executionNature": "atomic",
+                }
+            )
+        leaf_id = "TEST-FIXTURE-CLOSEOUT-LEAF"
+        leaf_slug = "test-fixture-closeout-leaf"
+        leaf = _fixture_leaf_document(contract, leaf_id=leaf_id, leaf_slug=leaf_slug)
+        write_task_doc(contract.task_root, leaf)
+        if not any(row.number == leaf_id for row in master.subTasks):
+            master = master.model_copy(
+                update={
+                    "subTasks": [
+                        *master.subTasks,
+                        SubTaskRef(
+                            number=leaf_id,
+                            name="Test fixture closeout leaf",
+                            file=f"{leaf_slug}.md",
+                            status="inProgress",
+                        ),
+                    ]
+                }
+            )
+        write_task_doc(contract.task_root, master)
+        return (
+            _confined_fixture_task_ref(contract, contract.task_root / f"{leaf_slug}.json"),
+            master_ref,
+        )
+
+    leaf_slug = contract.leaf_id.lower()
+    leaf_path = contract.task_root / f"{leaf_slug}.json"
+    if not leaf_path.is_file():
+        write_task_doc(
+            contract.task_root,
+            _fixture_leaf_document(contract, leaf_id=contract.leaf_id, leaf_slug=leaf_slug),
+        )
+    return _confined_fixture_task_ref(contract, leaf_path), master_ref
+
+
+def _fixture_leaf_document(contract, *, leaf_id: str, leaf_slug: str) -> TaskDocument:
+    return TaskDocument.model_validate(
+        {
+            "id": leaf_id,
+            "slug": leaf_slug,
+            "title": leaf_id,
+            "kind": "subTask",
+            "status": "inProgress",
+            "repo": contract.repo_name,
+            "createdAt": "2026-08-15T00:00:00+00:00",
+            "objective": "Exercise the exact fixture task intent.",
+            "requirements": ["The fixture publishes canonical task intent."],
+        }
+    )
+
+
+def _confined_fixture_task_ref(contract, path: Path) -> TaskDocumentRef:
+    repository_root = (contract.coordination_root / "tasks" / contract.repo_name).resolve(
+        strict=False
+    )
+    resolved = path.resolve(strict=False)
+    if not resolved.is_relative_to(repository_root):
+        raise AssertionError("fixture task document must stay under its configured repository root")
+    return TaskDocumentRef(
+        repository=contract.repo_name,
+        path=resolved.relative_to(repository_root).as_posix(),
+    )
 
 
 def publish_closeout_finalization(runtime, contract) -> None:

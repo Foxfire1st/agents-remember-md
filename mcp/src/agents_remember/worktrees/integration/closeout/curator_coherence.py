@@ -14,6 +14,7 @@ from agents_remember.errors import (
     CuratorCoherencePairError,
     FutureCodeCandidateError,
     MemoryCandidatePairError,
+    TaskIntentError,
 )
 from agents_remember.models.closeout.source import EvidenceFact
 from agents_remember.models.lifecycles.curator_coherence import (
@@ -23,12 +24,17 @@ from agents_remember.models.lifecycles.curator_coherence import (
     CuratorSourceCandidate,
 )
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks.document_refs import (
     ResolvedTaskDocument,
     TaskDocumentRefError,
     TaskDocumentTopology,
 )
 from agents_remember.tasks.leaf_doc import resolve_terminal_leaf_doc
+from agents_remember.tasks.task_intent import (
+    require_current_task_intent,
+    task_intent_identity,
+)
 from agents_remember.worktrees.integration.closeout.future_code_candidate import (
     capture_future_code_candidate,
 )
@@ -68,6 +74,7 @@ class CuratorCoherenceObservation:
     code_candidate_tree: str
     memory_candidate_tree: str
     task_topology_fingerprint: str
+    task_intent: TaskIntentIdentity
     attestation_path: Path
     attestation_sha256: str
     quality_report_path: Path
@@ -167,12 +174,21 @@ def observe_curator_coherence_source(
         candidate,
         graph=graph,
     )
+    try:
+        intent = task_intent_identity(contract.task_root, candidate)
+    except TaskIntentError as exc:
+        raise CuratorCoherenceError(
+            exc.status,
+            exc.detail,
+            next_action=exc.next_action or "task_doc",
+        ) from exc
     return CuratorCoherenceObservation(
         candidate=candidate,
         pair_identity=pair_identity,
         code_candidate_tree=code_tree,
         memory_candidate_tree=memory_tree,
         task_topology_fingerprint=topology_fingerprint,
+        task_intent=intent,
         attestation_path=attestation_path,
         attestation_sha256=attestation_digest,
         quality_report_path=report_path,
@@ -290,11 +306,25 @@ def require_current_curator_coherence(
     observation = observe_curator_coherence_source(contract)
     validated = load_curator_coherence_authority(contract)
     record = validated.record
+    try:
+        require_current_task_intent(
+            record.taskIntent,
+            observation.task_intent,
+            owner="curator-coherence",
+            next_action="publish",
+        )
+    except TaskIntentError as exc:
+        raise CuratorCoherenceError(
+            exc.status,
+            exc.detail,
+            next_action=exc.next_action or "publish",
+        ) from exc
     observed = {
         "pairIdentity": observation.pair_identity.model_dump(mode="json"),
         "codeCandidateTree": observation.code_candidate_tree,
         "memoryCandidateTree": observation.memory_candidate_tree,
         "taskTopologyFingerprint": observation.task_topology_fingerprint,
+        "taskIntent": observation.task_intent.model_dump(mode="json", by_alias=True),
         "attestationSha256": observation.attestation_sha256,
         "sourceCandidates": [
             candidate.model_dump(mode="json") for candidate in observation.source_candidates
@@ -305,6 +335,7 @@ def require_current_curator_coherence(
         "codeCandidateTree": record.codeCandidateTree,
         "memoryCandidateTree": record.memoryCandidateTree,
         "taskTopologyFingerprint": record.taskTopologyFingerprint,
+        "taskIntent": record.taskIntent.model_dump(mode="json", by_alias=True),
         "attestationSha256": record.attestationSha256,
         "sourceCandidates": [
             candidate.model_dump(mode="json") for candidate in record.sourceCandidates

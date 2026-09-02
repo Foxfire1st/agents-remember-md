@@ -20,12 +20,16 @@ from agents_remember.application.task_docs.task_doc_tools import (
     _record_route_review,
     task_doc_tool,
 )
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks import RouteReviewRecord, TaskDocument, read_task_doc, write_task_doc
+from agents_remember.tasks.document_refs import ResolvedTaskDocument
 from agents_remember.tasks.leaf_doc import TerminalLeafResolutionError
+from agents_remember.tasks.store import json_path_for
 from agents_remember.worktrees.route_review import (
     RouteReviewError,
     build_route_review,
     code_candidate_tree,
+    document_ref,
     require_current_route_review,
 )
 from agents_remember.worktrees.worktree_contract import (
@@ -37,6 +41,15 @@ from agents_remember.worktrees.worktree_contract import (
 )
 from pydantic import ValidationError
 from test_task_document import ApplicationTests, _doc
+
+
+def _review_candidate(contract, document: TaskDocument) -> ResolvedTaskDocument:
+    path = json_path_for(contract.task_root, document)
+    return ResolvedTaskDocument(
+        ref=document_ref(contract, path),
+        path=path,
+        document=document,
+    )
 
 
 def _route_review_contract(coord: Path):
@@ -387,13 +400,17 @@ class ApplicationTests2(ApplicationTests):
             ({**valid, "verdictRef": "../outside.md"}, "escapes the task root"),
         ):
             with self.subTest(message=message), self.assertRaisesRegex(RouteReviewError, message):
-                build_route_review(contract, contract.task_root, payload)
+                build_route_review(contract, _review_candidate(contract, bare), payload)
         with self.assertRaisesRegex(RouteReviewError, "belongs to a leaf"):
-            build_route_review(replace(contract, kind="series"), contract.task_root, valid)
+            build_route_review(
+                replace(contract, kind="series"),
+                _review_candidate(contract, bare),
+                valid,
+            )
 
         blocked_record = build_route_review(
             contract,
-            contract.task_root,
+            _review_candidate(contract, bare),
             {
                 **valid,
                 "verdict": "block",
@@ -440,16 +457,17 @@ class ApplicationTests2(ApplicationTests):
                 RouteReviewRecord.model_validate(mutation)
 
         bare = _doc(id="REVIEW-X", slug="REVIEW-X", kind="subTask")
+        bare_path = json_path_for(contract.task_root, bare)
         reviewed = bare.model_copy(update={"routeReview": RouteReviewRecord.model_validate(valid)})
         master = _doc(id="MASTER", slug="master", kind="master")
         with self.assertRaisesRegex(TaskDocError, "only for a leaf"):
-            _record_route_review(master, {}, contract, contract.task_root, contract.task_artifact)
+            _record_route_review(master, {}, contract, contract.task_root, bare_path)
         with self.assertRaisesRegex(TaskDocError, "requires the leaf worktree contract"):
-            _record_route_review(bare, {}, None, contract.task_root, contract.task_artifact)
+            _record_route_review(bare, {}, None, contract.task_root, bare_path)
         with self.assertRaisesRegex(TaskDocError, "requires a review object"):
-            _record_route_review(bare, None, contract, contract.task_root, contract.task_artifact)
+            _record_route_review(bare, None, contract, contract.task_root, bare_path)
         with self.assertRaises(TaskDocError):
-            _record_route_review(bare, {}, contract, contract.task_root, contract.task_artifact)
+            _record_route_review(bare, {}, contract, contract.task_root, bare_path)
         with (
             mock.patch(
                 "agents_remember.application.task_docs.task_doc_route_review.resolve_terminal_leaf_doc",
@@ -457,11 +475,11 @@ class ApplicationTests2(ApplicationTests):
             ),
             self.assertRaisesRegex(TaskDocError, "exact task document"),
         ):
-            _record_route_review(bare, valid, contract, contract.task_root, contract.task_artifact)
+            _record_route_review(bare, valid, contract, contract.task_root, bare_path)
         with (
             mock.patch(
                 "agents_remember.application.task_docs.task_doc_route_review.resolve_terminal_leaf_doc",
-                return_value=(contract.task_artifact, bare),
+                return_value=(bare_path, bare),
             ),
             mock.patch(
                 "agents_remember.application.task_docs.task_doc_route_review.build_route_review",
@@ -469,7 +487,7 @@ class ApplicationTests2(ApplicationTests):
             ),
             self.assertRaisesRegex(TaskDocError, "invalid review"),
         ):
-            _record_route_review(bare, valid, contract, contract.task_root, contract.task_artifact)
+            _record_route_review(bare, valid, contract, contract.task_root, bare_path)
         with self.assertRaisesRegex(TaskDocError, "create cannot author"):
             _enforce_route_review_authority("create", None, reviewed)
         with self.assertRaisesRegex(TaskDocError, "replace cannot add"):
@@ -978,8 +996,9 @@ class RouteReviewBindingSurfaceTests(ApplicationTests):
     def test_bound_form_refuses_master_payload_none_and_build_error(self) -> None:
         contract = self._contract()
         leaf = self._leaf(contract)
+        leaf_path = json_path_for(contract.task_root, leaf)
         binding = _RouteReviewBinding(
-            contract=contract, task_root=contract.task_root, selected_path=contract.task_artifact
+            contract=contract, task_root=contract.task_root, selected_path=leaf_path
         )
         master = leaf.model_copy(update={"kind": "master"})
         with self.assertRaisesRegex(TaskDocError, "only for a leaf"):
@@ -989,7 +1008,7 @@ class RouteReviewBindingSurfaceTests(ApplicationTests):
         with (
             mock.patch(
                 "agents_remember.application.task_docs.task_doc_route_review.resolve_terminal_leaf_doc",
-                return_value=(contract.task_artifact, leaf),
+                return_value=(leaf_path, leaf),
             ),
             mock.patch(
                 "agents_remember.application.task_docs.task_doc_route_review.build_route_review",
@@ -1047,14 +1066,17 @@ class RouteReviewBindingSurfaceTests(ApplicationTests):
                 _RouteReviewBinding(contract=contract, task_root=root, selected_path=leaf_path)
             )
 
-    def test_legacy_success_records_route_review(self) -> None:
+    def test_json_primary_success_records_current_route_review(self) -> None:
         contract = self._contract()
         leaf = self._leaf(contract)
+        leaf_path = json_path_for(contract.task_root, leaf)
+        reports = contract.task_root / "notes/reports"
+        reports.mkdir(parents=True, exist_ok=True)
+        (reports / "verdict.md").write_text("# Verdict\n", encoding="utf-8")
+        (reports / "route-evidence.md").write_text("# Route evidence\n", encoding="utf-8")
         valid = {
-            "candidateTree": "a" * 40,
             "verdict": "pass",
             "verdictRef": "notes/reports/verdict.md",
-            "reviewedAt": "2026-08-13T00:00:00+00:00",
             "routes": [
                 {
                     "route": "worktrees",
@@ -1066,11 +1088,7 @@ class RouteReviewBindingSurfaceTests(ApplicationTests):
         with (
             mock.patch(
                 "agents_remember.application.task_docs.task_doc_route_review.resolve_terminal_leaf_doc",
-                return_value=(contract.task_artifact, leaf),
-            ),
-            mock.patch(
-                "agents_remember.application.task_docs.task_doc_route_review.build_route_review",
-                return_value=RouteReviewRecord.model_validate(valid),
+                return_value=(leaf_path, leaf),
             ),
         ):
             recorded = _record_route_review(
@@ -1078,9 +1096,11 @@ class RouteReviewBindingSurfaceTests(ApplicationTests):
                 valid,
                 contract,
                 contract.task_root,
-                contract.task_artifact,
+                leaf_path,
             )
         review = recorded.routeReview
         self.assertIsNotNone(review)
         assert review is not None
         self.assertEqual(review.verdict, "pass")
+        assert isinstance(review.taskIntent, TaskIntentIdentity)
+        self.assertEqual(review.taskIntent.schema_, "task-intent/v1")

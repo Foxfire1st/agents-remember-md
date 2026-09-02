@@ -35,6 +35,7 @@ from pathlib import Path
 
 from agents_remember.controlplane.integration_authority_lock import integration_authority_lock
 from agents_remember.controlplane.task_publication_lock import task_publication_lock
+from agents_remember.errors import TaskIntentError
 from agents_remember.kernel.memory_ledger import LedgerError, load_ledger
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
 from agents_remember.models.closeout.input import CloseoutCorrectedCall, EffectiveCloseoutInput
@@ -45,6 +46,7 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationRecord,
 )
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.closeout_input import (
     corrected_closeout_arguments,
     normalize_closeout_input,
@@ -55,6 +57,9 @@ from agents_remember.worktrees.integration.closeout.door import (
     door_generation_for_operation,
     prepare_door_publication,
     publish_door_intent,
+)
+from agents_remember.worktrees.integration.closeout.task_intent_identity import (
+    current_door_task_intent,
 )
 from agents_remember.worktrees.integration.configured_contract_authority import (
     reread_configured_contract,
@@ -572,12 +577,21 @@ def _prepare_direct_landing_candidate(
         ledgerBeforeText=ledger_text,
         ledgerBeforeSha256=_text_sha256(ledger_text),
     )
+    try:
+        intent = current_door_task_intent(contract)
+    except TaskIntentError as exc:
+        raise DirectLandingError(
+            exc.status,
+            exc.detail,
+            next_action=exc.next_action,
+        ) from exc
     candidate = lifecycle_operation_candidate(
         LifecycleOperationCandidateBinding(
             operation_input=operation_input,
             candidate_state=operation_state_fingerprint(contract),
             candidate_tree=candidate_tree,
             closeout_door_generation_id=door_generation_id,
+            task_intent=intent,
         )
     )
     return operation_input, candidate
@@ -620,6 +634,26 @@ def _resume_direct_claim(
     door: CloseoutDoorGeneration,
 ) -> tuple[LifecycleOperationRecord, WorktreeContract, bool, TaskDocumentRef]:
     current = store.read()
+    try:
+        current_intent = current_door_task_intent(contract)
+    except TaskIntentError as exc:
+        raise DirectLandingError(
+            exc.status,
+            exc.detail,
+            next_action=exc.next_action,
+        ) from exc
+    if current is not None and not isinstance(current.taskIntent, TaskIntentIdentity):
+        raise DirectLandingError(
+            "lifecycle-operation-task-intent-unavailable",
+            "the claimed legacy direct-landing journal cannot be reused",
+            next_action="retire-and-republish",
+        )
+    if current is not None and current.taskIntent != current_intent:
+        raise DirectLandingError(
+            "lifecycle-operation-task-intent-stale",
+            "the claimed direct-landing journal binds a different canonical task intent",
+            next_action="retire-and-republish",
+        )
     if current is None or not _same_direct_request(current, identity):
         raise DirectLandingError(
             "direct-landing-claim-owner-conflict",
@@ -689,6 +723,26 @@ def _require_waiting_direct_candidate(
             "the admitted direct candidate no longer equals the waiting door candidate",
             expected={"candidateTree": door.candidateTree},
             observed={"candidateTree": candidate.tree or ""},
+        )
+    if not isinstance(door.taskIntent, TaskIntentIdentity):
+        raise DirectLandingError(
+            "closeout-door-task-intent-unavailable",
+            "the waiting direct-landing door predates canonical task intent",
+            next_action="closeout_door.update-provenance",
+        )
+    if candidate.task_intent != door.taskIntent:
+        raise DirectLandingError(
+            "closeout-door-task-intent-stale",
+            "the admitted direct-landing task intent no longer equals the waiting door",
+            expected={"taskIntent": door.taskIntent.model_dump(mode="json", by_alias=True)},
+            observed={
+                "taskIntent": (
+                    candidate.task_intent.model_dump(mode="json", by_alias=True)
+                    if candidate.task_intent is not None
+                    else None
+                )
+            },
+            next_action="closeout_door.update-provenance",
         )
 
 

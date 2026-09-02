@@ -7,7 +7,11 @@ from typing import Any
 
 from agents_remember.application.completion_cleanup import auto_complete_seats
 from agents_remember.application.task_docs.task_ref import TaskRef
-from agents_remember.errors import CuratorCoherenceError, MemoryCandidatePairError
+from agents_remember.errors import (
+    CuratorCoherenceError,
+    MemoryCandidatePairError,
+    TaskIntentError,
+)
 from agents_remember.kernel.authority import require_repo, require_within_coordination
 from agents_remember.kernel.primitives.runtime_config import (
     DEFAULT_PROVIDER_SETUP_SECONDS,
@@ -581,7 +585,7 @@ def _start_closeout_operation(
         # candidate authority or another lifecycle can influence the result.
         # The lease-owned start repeats this check against current state.
         prevalidate_closeout_operation_admission(configured.contract, admission)
-    except CloseoutInputError as error:
+    except (CloseoutInputError, TaskIntentError) as error:
         return _start_operation_refusal(config, confined, address, error)
     try:
         pair_identity = resolve_closeout_memory_pair(configured.contract)
@@ -599,6 +603,7 @@ def _start_closeout_operation(
         CloseoutInputError,
         LifecycleControlError,
         LifecycleOperationReadError,
+        TaskIntentError,
     ) as error:
         return _start_operation_refusal(
             config,
@@ -912,6 +917,15 @@ def _start_operation_refusal(
 
     if isinstance(error, CloseoutInputError):
         return _closeout_input_refusal(address.operation, error)
+    if isinstance(error, TaskIntentError):
+        return {
+            "ok": False,
+            "operation": address.operation,
+            "state": "refused",
+            "status": error.status,
+            "detail": error.detail,
+            "nextAction": error.next_action,
+        }
     if isinstance(error, LifecycleControlError):
         return {
             "ok": False,

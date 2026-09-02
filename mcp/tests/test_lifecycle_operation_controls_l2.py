@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -30,6 +31,7 @@ from agents_remember.models.lifecycles.operation import (
 )
 from agents_remember.models.lifecycles.operation_kinds import LifecycleControlAction
 from agents_remember.models.lifecycles.termination import WorkerTerminationEvidence
+from agents_remember.models.task_intent import MissingTaskIntent
 from agents_remember.worktrees.integration.lifecycle import (
     lifecycle_operation_controls as controls_module,
 )
@@ -162,6 +164,45 @@ def test_retry_preserves_generation_input_candidate_and_approval(tmp_path: Path)
     assert current.candidateState == accepted.candidateState
     assert current.candidateTree == accepted.candidateTree
     launch.assert_called_once()
+
+
+def test_public_control_refuses_stale_recover_for_legacy_missing_intent(
+    tmp_path: Path,
+) -> None:
+    contract, _operation_input, store, record = _dirty_closeout(tmp_path)
+    recover = next(
+        row for row in legal_operation_controls(contract, record) if row["action"] == "recover"
+    )
+    publication = record.doorPublication
+    assert publication is not None
+    legacy_record = record.model_copy(
+        update={
+            "taskIntent": MissingTaskIntent(),
+            "doorPublication": publication.model_copy(
+                update={
+                    "generation": publication.generation.model_copy(
+                        update={"taskIntent": MissingTaskIntent()}
+                    )
+                }
+            ),
+        }
+    )
+    store.path.write_text(
+        json.dumps(legacy_record.model_dump(mode="json"), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    legacy = store.read()
+    assert legacy is not None
+    config = load_config(Path(record.input.configPath))
+
+    with mock.patch.object(controls_module, "launch_detached_worker") as launch:
+        refused = _public_control(config, recover)
+
+    assert refused["ok"] is False
+    assert refused["status"] == "lifecycle-control-not-legal"
+    assert refused["nextAction"] != "recover"
+    assert store.read() == legacy
+    launch.assert_not_called()
 
 
 @pytest.mark.parametrize("after_contract_write", [False, True])

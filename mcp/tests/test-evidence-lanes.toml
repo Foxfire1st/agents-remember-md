@@ -161,6 +161,7 @@ unit-regression = [
   "mcp/tests/test_task_document_structural_identity.py",
   "mcp/tests/test_task_documents_graph_projection.py",
   "mcp/tests/test_task_execution_topology_segments.py",
+  "mcp/tests/test_task_intent_identity.py",
   "mcp/tests/test_terminal_catalog.py",
   "mcp/tests/test_terminal_evidence_projection.py",
   "mcp/tests/test_terminal_paste.py",
@@ -532,6 +533,8 @@ stress-durability = [
 ]
 
 migration = [
+  "mcp/tests/test_task_intent_consumers_and_legacy.py",
+  "mcp/tests/test_task_intent_coverage_edges.py",
 ]
 
 [[override]]

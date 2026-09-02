@@ -1322,7 +1322,11 @@
           "reason": "fixture failure"
         },
         "startedAt": "2026-08-12T12:00:00+00:00",
-        "status": "failed"
+        "status": "failed",
+        "taskIntent": {
+          "digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "schema": "task-intent/v1"
+        }
       },
       "memoryWorktreeExists": true,
       "repoName": "agents-remember",

@@ -20,6 +20,7 @@ from agents_remember.models.lifecycles.curator_coherence import (
 )
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.integration.closeout import (
     curator_coherence as coherence,
 )
@@ -89,6 +90,7 @@ def _request(**updates: object) -> CuratorCoherenceRequest:
         "expected_code_candidate_tree": "a" * 40,
         "expected_memory_candidate_tree": "b" * 40,
         "expected_task_topology_fingerprint": "c" * 64,
+        "expected_task_intent": {"schema": "task-intent/v1", "digest": "9" * 64},
         "expected_attestation_sha256": "d" * 64,
         "freeze_snapshot": True,
         "caller": DeclaredCaller(
@@ -106,6 +108,7 @@ def _observation(candidates: list[CuratorSourceCandidate]) -> Any:
         code_candidate_tree="a" * 40,
         memory_candidate_tree="b" * 40,
         task_topology_fingerprint="c" * 64,
+        task_intent=TaskIntentIdentity(digest="9" * 64),
         attestation_sha256="d" * 64,
         source_candidates=candidates,
     )
@@ -174,6 +177,7 @@ def test_expected_source_identity_rejects_any_stale_dimension() -> None:
         ("code_candidate_tree", "9" * 40),
         ("memory_candidate_tree", "8" * 40),
         ("task_topology_fingerprint", "7" * 64),
+        ("task_intent", TaskIntentIdentity(digest="8" * 64)),
         ("attestation_sha256", "6" * 64),
     ):
         observation = _observation([])
@@ -273,6 +277,7 @@ def test_public_tool_publishes_one_live_authority_and_ignores_historical_markdow
         expected_code_candidate_tree=str(prepared["codeCandidateTree"]),
         expected_memory_candidate_tree=str(prepared["memoryCandidateTree"]),
         expected_task_topology_fingerprint=str(prepared["taskTopologyFingerprint"]),
+        expected_task_intent=TaskIntentIdentity.model_validate(prepared["taskIntent"]),
         expected_attestation_sha256=str(prepared["attestationSha256"]),
         freeze_snapshot=True,
         caller=DeclaredCaller(role="architect", task_document_ref=SPRINT),
@@ -349,6 +354,7 @@ def test_prepare_and_publish_can_replace_a_malformed_authority_by_exact_cas(
         expected_code_candidate_tree=str(prepared["codeCandidateTree"]),
         expected_memory_candidate_tree=str(prepared["memoryCandidateTree"]),
         expected_task_topology_fingerprint=str(prepared["taskTopologyFingerprint"]),
+        expected_task_intent=TaskIntentIdentity.model_validate(prepared["taskIntent"]),
         expected_attestation_sha256=str(prepared["attestationSha256"]),
         caller=DeclaredCaller(role="architect", task_document_ref=SPRINT),
     )

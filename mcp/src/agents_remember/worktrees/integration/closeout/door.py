@@ -13,6 +13,7 @@ from agents_remember.models.lifecycles.door import (
     DoorPublicationEvidence,
 )
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_candidate import (
     fingerprint_payload,
 )
@@ -98,6 +99,11 @@ def door_generation_for_operation(
         )
     if waiting.contractPath != record.contractPath or waiting.taskId != record.taskId:
         raise RuntimeError("waiting door does not identify the accepted closeout operation task")
+    if (
+        not isinstance(waiting.taskIntent, TaskIntentIdentity)
+        or record.taskIntent != waiting.taskIntent
+    ):
+        raise RuntimeError("waiting door and operation must bind the same canonical task intent")
     return waiting.model_copy(
         update={
             "disposition": "claimed",
@@ -132,6 +138,7 @@ def successor_waiting_door(
         "memoryBaseCommit": claimed.memoryBaseCommit,
         "ledgerMemoryCommit": claimed.ledgerMemoryCommit,
         "taskTopologyFingerprint": claimed.taskTopologyFingerprint,
+        "taskIntent": claimed.taskIntent.model_dump(mode="json", by_alias=True),
         "reviewProvenance": claimed.reviewProvenance.model_dump(mode="json"),
         "memoryProvenance": claimed.memoryProvenance.model_dump(mode="json"),
         "ledgerProvenance": claimed.ledgerProvenance.model_dump(mode="json"),
@@ -332,6 +339,7 @@ def _require_door_transition(
             "candidateTree",
             "memoryCandidateTree",
             "taskTopologyFingerprint",
+            "taskIntent",
             "reviewProvenance",
             "memoryProvenance",
             "ledgerProvenance",

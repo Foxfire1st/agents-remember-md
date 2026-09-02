@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from agents_remember.controlplane.closeout_queue_store import ProjectionSourceIdentity
+from agents_remember.errors import TaskIntentError
 from agents_remember.models.closeout.projection import (
     MAX_CLOSEOUT_CANDIDATES,
     MAX_CLOSEOUT_SOURCE_PROBLEMS,
@@ -27,6 +28,7 @@ from agents_remember.tasks.document_refs import (
     TaskDocumentRefError,
     TaskDocumentTopology,
 )
+from agents_remember.tasks.task_intent import task_intent_identity
 from agents_remember.worktrees.integration.closeout.door_evidence import (
     capture_door_candidate_evidence,
     door_candidate_evidence_blockers,
@@ -521,6 +523,19 @@ def _projection_members(
                 )
             ) from exc
         source_fact["semanticTopology"] = topology_fact
+        try:
+            intent = task_intent_identity(contract.task_root, leaf)
+        except TaskIntentError as exc:
+            raise _ProjectionSourceRefusal(
+                ProjectionSourceProblem(
+                    kind="task",
+                    address=leaf.ref.key,
+                    state="invalid",
+                    errorType=exc.status,
+                    repairAction=exc.detail,
+                )
+            ) from exc
+        source_fact["taskIntent"] = intent.model_dump(mode="json", by_alias=True)
         member_source_facts.append(source_fact)
         members.append(
             projection_member(
@@ -533,6 +548,7 @@ def _projection_members(
                     sprint=topology_sprint,
                     graph=graph,
                     task_topology_fingerprint=topology_fingerprint,
+                    task_intent=intent,
                     activation_waiting=doors.activation_waiting.get(master.ref, ()),
                     source_blockers=tuple(source_blockers),
                 )

@@ -8,6 +8,7 @@ from typing import Any
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.direct_landing import DirectLandingOperationInput
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.integration.closeout.door import (
     DoorPublicationClassification,
     classify_door_publication,
@@ -79,7 +80,10 @@ def legal_operation_controls(
             base,
             allow_completed_disposition=context.allow_completed_disposition,
         )
-        return [pending] if pending is not None else []
+        return _without_legacy_generation_reuse(
+            record,
+            [pending] if pending is not None else [],
+        )
     integration_observation, evidence_controls = _evidence_controls(
         contract,
         record,
@@ -87,7 +91,7 @@ def legal_operation_controls(
         context.integration,
     )
     if evidence_controls is not None:
-        return evidence_controls
+        return _without_legacy_generation_reuse(record, evidence_controls)
     migration = classify_migrated_lifecycle(record)
     if migration.state == "terminal" and record.status == "failed":
         return []
@@ -113,7 +117,18 @@ def legal_operation_controls(
             base,
             integration_observation=integration_observation,
         )
-    return controls
+    return _without_legacy_generation_reuse(record, controls)
+
+
+def _without_legacy_generation_reuse(
+    record: LifecycleOperationRecord,
+    controls: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if record.operationKind not in {"closeout", "direct-landing"} or isinstance(
+        record.taskIntent, TaskIntentIdentity
+    ):
+        return controls
+    return [control for control in controls if control["action"] not in {"recover", "retry"}]
 
 
 def _evidence_controls(

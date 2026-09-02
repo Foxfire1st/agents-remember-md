@@ -14,6 +14,12 @@ normalization that would corrupt blank lines inside code fences).
 
 from __future__ import annotations
 
+from agents_remember.models.task_intent import (
+    AcceptanceObligationQuestion,
+    ApprovedRequirementPacketRef,
+    TaskIntentIdentity,
+)
+
 from .document import (
     CodeExample,
     Decision,
@@ -44,7 +50,7 @@ def render_markdown(doc: TaskDocument, *, graph_titles: SprintGraphTitles | None
         title = f"{title} (Sub-task {doc.id})"
     parts: list[str] = [title, "", *_header_lines(doc)]
     parts += _section("Objective", [doc.objective or "_To be defined._"])
-    parts += _section("Requirements", _bullets(doc.requirements))
+    parts += _section("Requirements", _requirement_lines(doc.requirements))
     parts += _section("Design", [doc.design or "No design reasoning needed."])
     parts += _section("Implementation Steps", _step_lines(doc.steps))
     parts += _section("Route Review", _route_review_lines(doc.routeReview))
@@ -58,7 +64,7 @@ def render_markdown(doc: TaskDocument, *, graph_titles: SprintGraphTitles | None
         _code_example_lines(doc.codeExamples, doc.codeExamplesNote),
     )
     parts += _section("Decision Log", _decision_lines(doc.decisions))
-    parts += _section("Open Questions", _bullets(doc.openQuestions, empty="- None."))
+    parts += _section("Open Questions", _question_lines(doc.openQuestions))
     parts += _section("References", _bullets(doc.references))
     for section in doc.sections:  # R4: freeform extra sections appended after the standard template
         parts += _section(section.heading, section.body.split("\n"))
@@ -390,6 +396,26 @@ def _bullets(items: list[str], *, empty: str = "- _None._") -> list[str]:
     return [f"- {item}" for item in items] if items else [empty]
 
 
+def _requirement_lines(items: list[str | ApprovedRequirementPacketRef]) -> list[str]:
+    lines = [
+        f"- {item}"
+        if isinstance(item, str)
+        else f"- `{item.stableId}@{item.version}` — `{item.path}`"
+        for item in items
+    ]
+    return lines or ["- _None._"]
+
+
+def _question_lines(items: list[str | AcceptanceObligationQuestion]) -> list[str]:
+    lines = [
+        f"- {item}"
+        if isinstance(item, str)
+        else f"- **Acceptance obligation `{item.id}`:** {item.question}"
+        for item in items
+    ]
+    return lines or ["- None."]
+
+
 def _checkbox(status: str) -> str:
     return "x" if status == "done" else " "
 
@@ -470,8 +496,14 @@ def _route_review_lines(review: RouteReviewRecord | None) -> list[str]:
         f"| {_cell(route.route)} | {route.verdict} | `{_cell(route.evidenceRef)}` |"
         for route in review.routes
     ]
+    intent = (
+        [f"**Task intent:** `{review.taskIntent.schema_}:{review.taskIntent.digest}`"]
+        if isinstance(review.taskIntent, TaskIntentIdentity)
+        else []
+    )
     return [
         f"**Candidate tree:** `{review.candidateTree}`",
+        *intent,
         f"**Overall verdict:** {review.verdict}",
         f"**Verdict artifact:** `{review.verdictRef}`",
         f"**Reviewed:** {review.reviewedAt}",

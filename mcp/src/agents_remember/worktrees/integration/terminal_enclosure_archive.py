@@ -49,6 +49,10 @@ _OPERATION_RECORD = re.compile(
     r"^(?:closeout|integrate|direct-landing)-operation"
     r"(?:\.generation-[1-9][0-9]*)?\.json$"
 )
+_LEGACY_MISSING_INTENT_RECORD = re.compile(
+    r"^(?:closeout|direct-landing)-operation"
+    r"\.legacy-missing-intent-generation-[1-9][0-9]*\.json$"
+)
 _MAX_CANONICAL_FILES = 1024
 _MAX_CANONICAL_BYTES = 64 * 1024 * 1024
 
@@ -489,8 +493,10 @@ def _canonical_entries(
     for path in paths:
         if path.name.endswith(".lock") or path.name.endswith(".log"):
             continue
-        if path.name not in {"enclosure-manifest.json", ADOPTION_RECEIPT} and (
-            _OPERATION_RECORD.fullmatch(path.name) is None
+        operation_record = _OPERATION_RECORD.fullmatch(path.name) is not None
+        missing_intent_record = _LEGACY_MISSING_INTENT_RECORD.fullmatch(path.name) is not None
+        if path.name not in {"enclosure-manifest.json", ADOPTION_RECEIPT} and not (
+            operation_record or missing_intent_record
         ):
             raise RuntimeError(f"unowned artifact exists in canonical lifecycle root: {path.name}")
         payload = _read_regular_file(path, owner=f"canonical lifecycle artifact {path.name}")
@@ -498,12 +504,12 @@ def _canonical_entries(
         if len(entries) >= _MAX_CANONICAL_FILES or total_bytes > _MAX_CANONICAL_BYTES:
             raise RuntimeError("canonical terminal archive exceeds its fixed file or byte bound")
         text = payload.decode("utf-8")
-        if _OPERATION_RECORD.fullmatch(path.name) is not None:
+        if operation_record or missing_intent_record:
             record = LifecycleOperationRecord.model_validate_json(text)
             _require_archivable_operation(
                 record,
                 operation=operation,
-                current=".generation-" not in path.name,
+                current=operation_record and ".generation-" not in path.name,
                 name=path.name,
             )
         elif path.name == ADOPTION_RECEIPT:

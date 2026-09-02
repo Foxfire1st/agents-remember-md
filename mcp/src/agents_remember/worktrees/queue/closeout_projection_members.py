@@ -12,6 +12,7 @@ from agents_remember.models.closeout.projection import (
     CloseoutProjectionMember,
 )
 from agents_remember.models.lifecycles.door import CloseoutDoorGeneration
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks import completion_blockers
 from agents_remember.tasks.document_refs import ResolvedTaskDocument
 from agents_remember.tasks.semantic_topology import (
@@ -41,6 +42,7 @@ class ProjectionMemberContext:
     sprint: ResolvedTaskDocument
     graph: QueueGraphContext | None
     task_topology_fingerprint: str
+    task_intent: TaskIntentIdentity
     activation_waiting: tuple[str, ...] = ()
     source_blockers: tuple[str, ...] = ()
 
@@ -83,12 +85,16 @@ def _projection_blockers(context: ProjectionMemberContext) -> list[str]:
         context.source_address.as_posix(),
     )
     stale = door.taskTopologyFingerprint != context.task_topology_fingerprint
+    intent_unavailable = not isinstance(door.taskIntent, TaskIntentIdentity)
+    intent_stale = not intent_unavailable and door.taskIntent != context.task_intent
     incomplete = bool(completion_blockers(context.candidate.document))
     derived = [
         reason
         for reason, applies in (
             ("door-canonical-identity-mismatch", identity),
             ("door-task-topology-stale", stale),
+            ("door-task-intent-unavailable", intent_unavailable),
+            ("door-task-intent-stale", intent_stale),
             ("leaf-task-incomplete", incomplete),
         )
         if applies

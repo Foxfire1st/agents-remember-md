@@ -36,6 +36,7 @@ from agents_remember.models.lifecycles.curator_coherence import (
 )
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks.document_refs import TaskDocumentRefError
 from agents_remember.worktrees.integration.closeout import curator_coherence as coherence
 from agents_remember.worktrees.integration.closeout import (
@@ -101,6 +102,7 @@ def _record_fields() -> dict[str, object]:
         "codeCandidateTree": "a" * 40,
         "memoryCandidateTree": "b" * 40,
         "taskTopologyFingerprint": "c" * 64,
+        "taskIntent": {"schema": "task-intent/v1", "digest": "9" * 64},
         "attestationPath": "/worktree/reports/curator-memory-quality.json",
         "attestationSha256": "d" * 64,
         "attestationReportSha256": "e" * 64,
@@ -143,6 +145,7 @@ def _observation(tmp_path: Path, *, candidate_ref: TaskDocumentRef | None = None
         code_candidate_tree="a" * 40,
         memory_candidate_tree="b" * 40,
         task_topology_fingerprint="c" * 64,
+        task_intent=TaskIntentIdentity(digest="9" * 64),
         attestation_path=tmp_path / "curator-memory-quality.json",
         attestation_sha256="d" * 64,
         quality_report_path=tmp_path / "curator-memory-quality.md",
@@ -176,6 +179,7 @@ def _request_for(
         expected_code_candidate_tree=str(prepared["codeCandidateTree"]),
         expected_memory_candidate_tree=str(prepared["memoryCandidateTree"]),
         expected_task_topology_fingerprint=str(prepared["taskTopologyFingerprint"]),
+        expected_task_intent=TaskIntentIdentity.model_validate(prepared["taskIntent"]),
         expected_attestation_sha256=str(prepared["attestationSha256"]),
         caller=caller or DeclaredCaller(role="architect", task_document_ref=SPRINT),
     )

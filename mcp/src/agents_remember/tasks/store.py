@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agents_remember.kernel.atomic_write import atomic_write_bytes, atomic_write_text
+from agents_remember.models.task_intent import require_task_intent_identity
 
 from .document import TaskDocument
 from .execution_graph_titles import SprintGraphTitles
@@ -183,6 +184,7 @@ def write_task_doc_batch(
     paths: list[tuple[Path, Path]] = []
     seen: set[Path] = set()
     for task_root, doc in documents:
+        _require_publishable_task_document(doc)
         task_root.mkdir(parents=True, exist_ok=True)
         json_path = json_path_for(task_root, doc)
         markdown_path = markdown_path_for(task_root, doc)
@@ -214,6 +216,17 @@ def write_task_doc_batch(
             ) from publish_error
         raise
     return paths
+
+
+def _require_publishable_task_document(doc: TaskDocument) -> None:
+    review = doc.routeReview
+    if review is None:
+        return
+    require_task_intent_identity(
+        review.taskIntent,
+        owner="route-review",
+        next_action="record_route_review",
+    )
 
 
 def _restore_task_doc_batch(originals: dict[Path, bytes | None]) -> None:

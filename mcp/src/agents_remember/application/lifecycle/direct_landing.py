@@ -126,6 +126,9 @@ def _direct_error_payload(
         for key, value in recovery.items()
         if key not in {"ok", "operation", "state", "status", "detail"}
     }
+    task_intent_recovery = (
+        {"nextAction": error.next_action} if error.next_action is not None else {}
+    )
     return {
         "ok": False,
         "operation": "direct_landing",
@@ -135,6 +138,7 @@ def _direct_error_payload(
         "expected": error.expected,
         "observed": error.observed,
         **recovery_fields,
+        **task_intent_recovery,
     }
 
 

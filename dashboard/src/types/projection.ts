@@ -346,6 +346,7 @@ export interface LifecycleOperationProjection {
   result?: Record<string, unknown>;
   startedAt?: string;
   status: "queued" | "running" | "input-required" | "termination-required" | "completed" | "failed" | "cancelled" | "unreadable";
+  taskIntent?: TaskIntentIdentity;
 }
 
 export interface LifecycleProjection {
@@ -681,6 +682,12 @@ export interface TaskExecutionPredecessorNode {
   predecessorRef: TaskDocumentRef;
   predecessorTitle: string;
   reason: string;
+}
+
+export interface TaskIntentIdentity {
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  digest: string;
+  schema: "task-intent/v1";
 }
 
 export interface TaskSeatNode {

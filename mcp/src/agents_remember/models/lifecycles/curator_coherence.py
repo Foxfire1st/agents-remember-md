@@ -10,6 +10,7 @@ from agents_remember.models.base import ToolResponse
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentIdentity, TaskIntentState
 
 Digest = str
 CuratorCoherenceAction = Literal["status", "prepare", "publish", "validate"]
@@ -118,6 +119,7 @@ class CuratorCoherenceRecord(_StrictModel):
     codeCandidateTree: str = Field(pattern=r"^[0-9a-f]{40,64}$")
     memoryCandidateTree: str = Field(pattern=r"^[0-9a-f]{40,64}$")
     taskTopologyFingerprint: Digest = Field(pattern=r"^[0-9a-f]{64}$")
+    taskIntent: TaskIntentState
     attestationPath: str = Field(min_length=1, max_length=8192)
     attestationSha256: Digest = Field(pattern=r"^[0-9a-f]{64}$")
     attestationReportSha256: Digest = Field(pattern=r"^[0-9a-f]{64}$")
@@ -129,6 +131,13 @@ class CuratorCoherenceRecord(_StrictModel):
     publicationFingerprint: Digest = Field(pattern=r"^[0-9a-f]{64}$")
     publishedBy: str = Field(min_length=1, max_length=8192)
     reportSha256: Digest = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _decode_legacy_missing_intent(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "taskIntent" not in value:
+            return {**value, "taskIntent": {"state": "missing-intent"}}
+        return value
 
     @model_validator(mode="after")
     def _judgments_cover_candidates_exactly(self) -> Self:
@@ -178,6 +187,7 @@ class CuratorCoherenceRequest(_StrictModel):
     expected_code_candidate_tree: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
     expected_memory_candidate_tree: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
     expected_task_topology_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    expected_task_intent: TaskIntentIdentity | None = None
     expected_attestation_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     freeze_snapshot: bool = False
     caller: DeclaredCaller | None = None
@@ -209,6 +219,7 @@ class CuratorCoherenceRequest(_StrictModel):
             self.expected_code_candidate_tree,
             self.expected_memory_candidate_tree,
             self.expected_task_topology_fingerprint,
+            self.expected_task_intent,
             self.expected_attestation_sha256,
             self.caller,
         )
@@ -245,6 +256,8 @@ class CuratorCoherenceResponse(ToolResponse):
     codeCandidateTree: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
     memoryCandidateTree: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
     taskTopologyFingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    taskIntent: TaskIntentIdentity | None = None
+    currentnessStatus: str | None = Field(default=None, max_length=256)
     attestationPath: str | None = Field(default=None, max_length=8192)
     attestationSha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     attestationReportSha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

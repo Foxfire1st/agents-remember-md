@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from agents_remember.models.lifecycles.curator_coherence import CuratorCoherenceRecord
+from agents_remember.models.task_intent import TaskIntentIdentity
 
 
 def render_curator_coherence(record: CuratorCoherenceRecord) -> str:
@@ -49,6 +50,11 @@ def render_curator_coherence(record: CuratorCoherenceRecord) -> str:
         "| Source file | Onboarding file | Classification | Disposition | Rationale | Evidence reference |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
+    if isinstance(record.taskIntent, TaskIntentIdentity):
+        lines.insert(
+            lines.index(f"- Task topology fingerprint: `{record.taskTopologyFingerprint}`") + 1,
+            f"- Task intent: `{record.taskIntent.schema_}` @ `{record.taskIntent.digest}`",
+        )
     judgments = {judgment.identity: judgment for judgment in record.judgments}
     for candidate in record.sourceCandidates:
         judgment = judgments[candidate.identity]

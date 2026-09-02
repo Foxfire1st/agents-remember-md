@@ -353,6 +353,7 @@ const VOCABULARIES: Record<
     "cancelled",
     "unreadable",
   ],
+  "projection.enclosures[].lifecycleOperation.taskIntent.schema": ["task-intent/v1"],
   "projection.enclosures[].lifecycleOperation.phase": [
     "queued",
     "preflight",

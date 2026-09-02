@@ -5,6 +5,10 @@ import unittest
 from pathlib import Path
 
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import (
+    AcceptanceObligationQuestion,
+    ApprovedRequirementPacketRef,
+)
 from agents_remember.observer.projection import SeriesNode, TaskDocNode
 from agents_remember.observer.reducer import AnalyticalInputs, build_analytics
 from agents_remember.serving.projections.snapshots import (
@@ -14,6 +18,9 @@ from agents_remember.serving.projections.snapshots import (
 )
 from agents_remember.serving.projections.snapshots_impl._common import (
     TASK_DOCUMENT_SUMMARY_LIMIT,
+)
+from agents_remember.serving.projections.snapshots_impl._task_documents import (
+    _task_doc_body_revision,
 )
 from agents_remember.tasks import TaskDocument, write_task_doc
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
@@ -235,6 +242,47 @@ class TaskDocumentsReaderTests(unittest.TestCase):
         third = read_task_documents(self.coord, enclosures=[], now=FRESH)[0].bodyRevision
         self.assertNotEqual(first, second)
         self.assertNotEqual(second, third)
+
+    def test_body_revision_canonicalizes_typed_intent_slots(self) -> None:
+        requirement = ApprovedRequirementPacketRef(
+            path="requirements/R1-v1.md",
+            stableId="R1",
+            version="v1",
+        )
+        question = AcceptanceObligationQuestion(id="Q1", question="Is the proof exact?")
+        document = self._doc(
+            requirements=["plain requirement", requirement],
+            openQuestions=["plain question", question],
+        )
+
+        revision = _task_doc_body_revision(document)
+        self.assertEqual(revision, _task_doc_body_revision(document))
+        self.assertNotEqual(
+            revision,
+            _task_doc_body_revision(
+                document.model_copy(
+                    update={
+                        "requirements": [
+                            "plain requirement",
+                            requirement.model_copy(update={"version": "v2"}),
+                        ]
+                    }
+                )
+            ),
+        )
+        self.assertNotEqual(
+            revision,
+            _task_doc_body_revision(
+                document.model_copy(
+                    update={
+                        "openQuestions": [
+                            "plain question",
+                            question.model_copy(update={"question": "Is the proof current?"}),
+                        ]
+                    }
+                )
+            ),
+        )
 
     def test_summary_limit_never_evicts_task_root_grouping_authorities(self) -> None:
         sprint_root = self.coord / "tasks" / "repo-a" / "sprint"

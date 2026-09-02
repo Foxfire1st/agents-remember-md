@@ -30,6 +30,9 @@ from agents_remember.tasks import (
     read_task_doc,
     write_task_doc,
 )
+from agents_remember.worktrees.integration.closeout.task_intent_identity import (
+    contract_task_intent,
+)
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
     publish_new_lifecycle_operation_location,
 )
@@ -473,10 +476,6 @@ def _record_additional_atomic_leaf_landing(
         integrated_memory_content_commit=memory_content_commit,
         integrated_ledger_commit=ledger_commit,
     )
-    landed = replace(
-        landed,
-        closeout_door=_claimed_atomic_leaf_door(fixture, landed),
-    )
     first_doc_path = fixture.coordination / "tasks" / "repo" / fixture.leaf_ref.path
     first_doc = read_task_doc(first_doc_path)
     write_task_doc(
@@ -500,6 +499,10 @@ def _record_additional_atomic_leaf_landing(
     write_task_doc(
         landed.task_root,
         master.model_copy(update={"subTasks": [*master.subTasks, row]}),
+    )
+    landed = replace(
+        landed,
+        closeout_door=_claimed_atomic_leaf_door(fixture, landed),
     )
     write_contract(landed.contract_path, landed)
     return landed
@@ -554,6 +557,7 @@ def _claimed_atomic_leaf_door(fixture, leaf: WorktreeContract) -> CloseoutDoorGe
         memoryBaseCommit=leaf.memory_base_commit,
         ledgerMemoryCommit=leaf.memory_base_commit,
         taskTopologyFingerprint=hashlib.sha256(b"atomic-landed-topology").hexdigest(),
+        taskIntent=contract_task_intent(leaf, candidate_ref=leaf_ref),
         reviewProvenance=not_applicable,
         memoryProvenance=not_applicable,
         ledgerProvenance=not_applicable,

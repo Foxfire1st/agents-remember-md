@@ -1990,6 +1990,17 @@
             }
           ],
           "title": "Status"
+        },
+        "taskIntent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TaskIntentIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -3760,6 +3771,28 @@
         "reason"
       ],
       "title": "TaskExecutionPredecessorNode",
+      "type": "object"
+    },
+    "TaskIntentIdentity": {
+      "additionalProperties": false,
+      "description": "Canonical task-intent schema plus its exact projection digest.",
+      "properties": {
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "schema": {
+          "const": "task-intent/v1",
+          "default": "task-intent/v1",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest"
+      ],
+      "title": "TaskIntentIdentity",
       "type": "object"
     },
     "TaskSeatNode": {

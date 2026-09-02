@@ -13,6 +13,7 @@ from typing import Literal
 
 from pydantic import ValidationError
 
+from agents_remember.errors import TaskIntentError
 from agents_remember.kernel.atomic_write import atomic_write_text
 from agents_remember.models.closeout.input import (
     EffectiveCloseoutInput,
@@ -27,6 +28,9 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationRecoveryCommits,
 )
 from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
+from agents_remember.worktrees.integration.closeout.task_intent_identity import (
+    contract_task_intent,
+)
 from agents_remember.worktrees.integration.legacy.legacy_operation_archive import (
     finish_archive_unlink as _finish_archive_unlink,
 )
@@ -666,6 +670,14 @@ def _migrated_closeout_record(
         codeTree=code_tree,
         provenAt=_stamp(),
     )
+    try:
+        intent = contract_task_intent(contract)
+    except TaskIntentError as exc:
+        raise LegacyBridgeError(
+            exc.status,
+            exc.detail,
+            next_action=exc.next_action or "task_doc",
+        ) from exc
     return LifecycleOperationRecord(
         taskId=legacy.taskId,
         taskName=legacy.taskName,
@@ -673,6 +685,7 @@ def _migrated_closeout_record(
         operationKind="closeout",
         candidateState=legacy.candidateState,
         candidateTree=legacy.candidateTree,
+        taskIntent=intent,
         fingerprint=legacy.fingerprint,
         operationKey=legacy.operationKey,
         input=operation_input,

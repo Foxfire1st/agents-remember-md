@@ -17,6 +17,7 @@ from agents_remember.models.lifecycles.curator_coherence import (
 )
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.integration.closeout import curator_coherence
 from agents_remember.worktrees.integration.closeout.curator_coherence_render import (
     render_curator_coherence,
@@ -77,6 +78,7 @@ def _record() -> CuratorCoherenceRecord:
         codeCandidateTree="a" * 40,
         memoryCandidateTree="b" * 40,
         taskTopologyFingerprint="c" * 64,
+        taskIntent=TaskIntentIdentity(digest="9" * 64),
         attestationPath="/group/reports/curator-memory-quality.json",
         attestationSha256="d" * 64,
         attestationReportSha256="e" * 64,

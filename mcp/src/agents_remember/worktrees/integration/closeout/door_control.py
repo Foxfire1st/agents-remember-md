@@ -9,6 +9,7 @@ from agents_remember.controlplane.task_publication_lock import task_publication_
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.door import CloseoutDoorGeneration, CloseoutDoorRequest
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.integration.closeout.door import (
     DoorPublicationError,
     prepare_door_publication,
@@ -91,19 +92,31 @@ def _response(
     effects: list[dict[str, Any]],
 ) -> dict[str, Any]:
     generation = contract.closeout_door
+    unavailable = generation is not None and not isinstance(
+        generation.taskIntent, TaskIntentIdentity
+    )
     return {
         "ok": True,
         "operation": "closeout_door",
         "action": request.action,
-        "state": generation.disposition if generation is not None else "absent",
+        "state": (
+            "closeout-door-task-intent-unavailable"
+            if unavailable
+            else generation.disposition
+            if generation is not None
+            else "absent"
+        ),
         "summary": (
-            f"Closeout door {generation.generationId[:12]} is {generation.disposition}."
+            "The legacy closeout door predates canonical task intent."
+            if unavailable
+            else f"Closeout door {generation.generationId[:12]} is {generation.disposition}."
             if generation is not None
             else "No closeout door generation is published."
         ),
         "contractPath": contract.contract_path.as_posix(),
         "generation": generation.model_dump(mode="json") if generation is not None else None,
         "projectionEffects": effects,
+        **({"nextAction": "closeout_door.update-provenance"} if unavailable else {}),
     }
 
 

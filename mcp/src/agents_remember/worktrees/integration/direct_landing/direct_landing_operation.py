@@ -181,6 +181,7 @@ def direct_landing_record(
         operationKind="direct-landing",
         candidateState=candidate.state,
         candidateTree=candidate.tree,
+        taskIntent=candidate.task_intent,
         fingerprint=candidate.fingerprint,
         operationKey=operation_key(
             contract.contract_path,

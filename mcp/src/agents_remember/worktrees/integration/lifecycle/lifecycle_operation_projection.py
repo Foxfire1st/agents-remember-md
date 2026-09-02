@@ -11,6 +11,7 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationProjection,
     LifecycleOperationRecord,
 )
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.integration.closeout.door import (
     DoorPublicationClassification,
     classify_door_publication,
@@ -36,6 +37,7 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_public_evidence i
     public_lifecycle_evidence,
 )
 from agents_remember.worktrees.integration.lifecycle.worker.termination import (
+    worker_exit_unproven,
     worker_termination_required_result,
 )
 from agents_remember.worktrees.worktree_contract import WorktreeContract
@@ -62,22 +64,19 @@ def operation_projection(
     start = parse_operation_stamp(record.startedAt or record.queuedAt)
     finish = parse_operation_stamp(record.finishedAt) if record.finishedAt else current
     legal_controls: list[dict[str, object]] = []
+    intent_unavailable = record.operationKind in {"closeout", "direct-landing"} and not isinstance(
+        record.taskIntent, TaskIntentIdentity
+    )
+    legacy_intent_blocks_recovery = intent_unavailable and not (
+        worker_exit_unproven(record) or _exit_proven_cancellation_pending(record)
+    )
     integration_observation = (
         classify_integration_operation(contract, record)
         if contract is not None and record.operationKind == "integrate"
         else None
     )
-    publication = record.doorPublication
-    if (
-        context.door is None
-        and contract is not None
-        and publication is not None
-        and publication.state == "intent"
-    ):
-        door_observation = classify_door_publication(publication, contract)
-    else:
-        door_observation = context.door
-    if contract is not None:
+    door_observation = _door_observation(record, contract, context)
+    if contract is not None and not legacy_intent_blocks_recovery:
         from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_control_projection import (  # noqa: PLC0415
             LifecycleControlProjectionContext,
             legal_operation_controls,
@@ -99,6 +98,12 @@ def operation_projection(
         integration_observation,
         door_observation,
     )
+    projected_result, projected_failure, projected_guidance = _legacy_intent_override(
+        legacy_intent_blocks_recovery,
+        projected_result,
+        projected_failure,
+        projected_guidance,
+    )
     public_result = public_lifecycle_evidence(projected_result)
     if public_result is not None and not isinstance(public_result, dict):
         raise RuntimeError("lifecycle operation result must remain a public mapping")
@@ -112,24 +117,87 @@ def operation_projection(
         elapsedSeconds=max(0.0, (finish - start).total_seconds()),
         currentCommand=f"lifecycle stage: {record.phase}",
         reportPath="" if record.legacyMigration is not None else record.reportPath,
+        taskIntent=(
+            record.taskIntent if isinstance(record.taskIntent, TaskIntentIdentity) else None
+        ),
         result=public_result,
         failure=projected_failure,
         guidance=projected_guidance,
-        cancellable=(
-            any(item.get("action") == "cancel" for item in legal_controls)
-            if contract is not None
-            else (
-                record.status in {"queued", "running", "input-required"}
-                and (
-                    not closeout_generation_retained(record)
-                    if record.operationKind in {"closeout", "direct-landing"}
-                    else not record.irreversibleBoundaryEntered
-                )
-            )
+        cancellable=_operation_cancellable(
+            record,
+            contract=contract,
+            intent_unavailable=legacy_intent_blocks_recovery,
+            legal_controls=legal_controls,
         ),
         generation=record.generation,
         legalControls=legal_controls,
     )
+
+
+def _door_observation(
+    record: LifecycleOperationRecord,
+    contract: WorktreeContract | None,
+    context: OperationProjectionContext,
+) -> DoorPublicationClassification | None:
+    publication = record.doorPublication
+    if (
+        context.door is None
+        and contract is not None
+        and publication is not None
+        and publication.state == "intent"
+    ):
+        return classify_door_publication(publication, contract)
+    return context.door
+
+
+def _exit_proven_cancellation_pending(record: LifecycleOperationRecord) -> bool:
+    termination = record.workerTermination
+    return bool(
+        record.status == "termination-required"
+        and record.cancelRequested
+        and termination is not None
+        and termination.state == "exited"
+    )
+
+
+def _legacy_intent_override(
+    intent_unavailable: bool,
+    projected_result: dict[str, Any] | None,
+    projected_failure: str | None,
+    projected_guidance: str | None,
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if not intent_unavailable:
+        return projected_result, projected_failure, projected_guidance
+    return (
+        {
+            "state": "lifecycle-operation-task-intent-unavailable",
+            "summary": "The legacy operation predates canonical task intent.",
+            "nextAction": "retire-and-republish",
+        },
+        "lifecycle-operation-task-intent-unavailable",
+        (
+            "A terminal generation may be retired and replaced by start/observe; "
+            "an active generation requires a developer decision."
+        ),
+    )
+
+
+def _operation_cancellable(
+    record: LifecycleOperationRecord,
+    *,
+    contract: WorktreeContract | None,
+    intent_unavailable: bool,
+    legal_controls: list[dict[str, object]],
+) -> bool:
+    if intent_unavailable:
+        return False
+    if contract is not None:
+        return any(item.get("action") == "cancel" for item in legal_controls)
+    if record.status not in {"queued", "running", "input-required"}:
+        return False
+    if record.operationKind in {"closeout", "direct-landing"}:
+        return not closeout_generation_retained(record)
+    return not record.irreversibleBoundaryEntered
 
 
 def _projected_operation_result(
@@ -152,7 +220,22 @@ def _general_projected_result(
 ) -> tuple[dict[str, Any] | None, str | None, str | None] | None:
     termination = worker_termination_required_result(record)
     if termination is not None:
-        surface = str(termination["summary"])
+        if record.cancelRequested and not worker_exit_unproven(record):
+            surface = (
+                "Exact worker exit is proven; complete the pending same-generation "
+                "cancellation with the advertised task-addressed cancel action."
+            )
+            termination = {
+                **termination,
+                "reason": surface,
+                "summary": surface,
+                "expected": {
+                    "state": "cancelled",
+                    "workerAuthority": "released-after-exit-proof",
+                },
+            }
+        else:
+            surface = str(termination["summary"])
         return termination, surface, surface
     migrated = classify_migrated_lifecycle(record).recovery_result(record)
     if migrated is not None:

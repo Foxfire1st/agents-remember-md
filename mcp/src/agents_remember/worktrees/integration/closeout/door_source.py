@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from agents_remember.errors import TaskIntentError
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
 from agents_remember.models.closeout.source import (
     CandidateAdmissionFacts,
@@ -21,6 +22,7 @@ from agents_remember.models.lifecycles.door import (
     DoorEvidenceFact,
     DoorSchedulingProvenance,
 )
+from agents_remember.models.task_intent import TaskIntentIdentity, task_intent_is_missing
 from agents_remember.tasks import completion_blockers
 from agents_remember.tasks.document_refs import (
     ResolvedTaskDocument,
@@ -28,6 +30,7 @@ from agents_remember.tasks.document_refs import (
     TaskDocumentTopology,
 )
 from agents_remember.tasks.leaf_doc import resolve_terminal_leaf_doc
+from agents_remember.tasks.task_intent import task_intent_identity
 from agents_remember.worktrees.integration.closeout.door_evidence import (
     capture_door_candidate_evidence,
 )
@@ -309,6 +312,11 @@ def _transitioned_generation(
         raise CloseoutQueueError(
             "closeout-door-missing", "door source transition has no generation"
         )
+    if task_intent_is_missing(current.taskIntent):
+        raise CloseoutQueueError(
+            "closeout-door-task-intent-unavailable",
+            "legacy door source cannot transition until update-provenance republishes task intent",
+        )
     target = {"defer": "deferred", "resume": "waiting", "withdraw": "withdrawn"}[request.action]
     allowed = {
         "defer": {"waiting", "deferred"},
@@ -369,12 +377,10 @@ def _declare_generation(
     predecessor: str,
     disposition: CloseoutDoorDisposition,
 ) -> CloseoutDoorGeneration:
-    contract, candidate, master, sprint = (
-        context.contract,
-        context.candidate,
-        context.master,
-        context.sprint,
-    )
+    contract = context.contract
+    candidate = context.candidate
+    master = context.master
+    sprint = context.sprint
     if candidate is None:
         raise CloseoutQueueError(
             "closeout-door-candidate-required",
@@ -416,6 +422,7 @@ def _declare_generation(
         candidate,
         graph=context.graph,
     )
+    intent = _door_task_intent(contract, candidate)
     identity = {
         "schema": "ar-closeout-door/v1",
         "predecessor": predecessor,
@@ -429,6 +436,7 @@ def _declare_generation(
         "memoryBaseCommit": contract.memory_base_commit,
         "ledgerMemoryCommit": ledger_commit,
         "taskTopologyFingerprint": task_fingerprint,
+        "taskIntent": intent.model_dump(mode="json", by_alias=True),
         "review": current_evidence.review.model_dump(mode="json"),
         "memory": current_evidence.memory.model_dump(mode="json"),
         "ledger": current_evidence.ledger.model_dump(mode="json"),
@@ -451,6 +459,7 @@ def _declare_generation(
         memoryBaseCommit=contract.memory_base_commit,
         ledgerMemoryCommit=ledger_commit,
         taskTopologyFingerprint=task_fingerprint,
+        taskIntent=intent,
         reviewProvenance=current_evidence.review,
         memoryProvenance=current_evidence.memory,
         ledgerProvenance=current_evidence.ledger,
@@ -459,6 +468,16 @@ def _declare_generation(
         declaredBy=f"{actor.role}@{actor.task_document_ref.key}",
         declaredAt=now_iso(),
     )
+
+
+def _door_task_intent(
+    contract: WorktreeContract,
+    candidate: ResolvedTaskDocument,
+) -> TaskIntentIdentity:
+    try:
+        return task_intent_identity(contract.task_root, candidate)
+    except TaskIntentError as exc:
+        raise CloseoutQueueError(exc.status, exc.detail) from exc
 
 
 def _require_expected(

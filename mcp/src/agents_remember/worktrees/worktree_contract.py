@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import cast, get_args
 
 from agents_remember.controlplane.durable_store import SCHEMA_VERSION, schema_version_supported
-from agents_remember.errors import AgentsRememberError
+from agents_remember.errors import AgentsRememberError, TaskIntentError
 from agents_remember.kernel.atomic_write import atomic_write_text
 from agents_remember.models.lifecycles.door import CloseoutDoorGeneration
+from agents_remember.models.task_intent import require_task_intent_identity
 from agents_remember.models.worktree import (
     CleanupStatus,
     CloseoutStatus,
@@ -482,6 +483,7 @@ def contract_publication_text(path: Path, contract: WorktreeContract) -> str:
 
     normalized = normalize_contract_leaf_id(contract)
     validate_contract(normalized, path=path)
+    _require_publishable_closeout_door(normalized, path)
     return contract_to_text(normalized)
 
 
@@ -846,6 +848,19 @@ def validate_contract(contract: WorktreeContract, *, path: Path) -> None:
         }.items():
             if value is None:
                 raise ContractError(f"external-memory contract missing {name} (in {path})")
+
+
+def _require_publishable_closeout_door(contract: WorktreeContract, path: Path) -> None:
+    if contract.closeout_door is None:
+        return
+    try:
+        require_task_intent_identity(
+            contract.closeout_door.taskIntent,
+            owner="closeout-door",
+            next_action="closeout_door.update-provenance",
+        )
+    except TaskIntentError as exc:
+        raise ContractError(f"{exc.status}: {exc.detail} (in {path})") from exc
 
 
 def _extract_front_matter(text: str, path: Path) -> str:

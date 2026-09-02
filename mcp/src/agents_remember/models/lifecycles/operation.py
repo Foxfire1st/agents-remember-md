@@ -27,6 +27,7 @@ from agents_remember.models.lifecycles.termination import (
     LifecycleCancellationEvidence,
     WorkerTerminationEvidence,
 )
+from agents_remember.models.task_intent import TaskIntentIdentity, TaskIntentState
 
 IntegrateStrategy = Literal["ff-only", "replay"]
 LifecycleOperationStatus = Literal[
@@ -338,6 +339,7 @@ class LifecycleOperationRecord(BaseModel):
     operationKind: LifecycleOperationKind
     candidateState: str = Field(pattern=r"^[0-9a-f]{64}$")
     candidateTree: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
+    taskIntent: TaskIntentState | None = None
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     operationKey: str = Field(pattern=r"^[0-9a-f]{64}$")
     generation: int = Field(default=1, ge=1)
@@ -395,6 +397,17 @@ class LifecycleOperationRecord(BaseModel):
     cancellationEvidence: LifecycleCancellationEvidence | None = None
     legacyMigration: LegacyCloseoutMigrationProof | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _decode_legacy_missing_intent(cls, value: Any) -> Any:
+        if (
+            isinstance(value, dict)
+            and value.get("operationKind") in {"closeout", "direct-landing"}
+            and "taskIntent" not in value
+        ):
+            return {**value, "taskIntent": {"state": "missing-intent"}}
+        return value
+
     @model_validator(mode="after")
     def _require_altitude_authority(self) -> LifecycleOperationRecord:
         _require_altitude_authority(self)
@@ -414,6 +427,7 @@ def _require_altitude_authority(record: LifecycleOperationRecord) -> None:
         raise ValueError("integrate operation requires exact integrationAuthority")
     if record.operationKind != "integrate" and record.integrationAuthority is not None:
         raise ValueError("only integrate operations may carry integrationAuthority")
+    _require_task_intent_state(record)
     if record.operationKind != "closeout" and record.closeoutFinalizedContractSha256 is not None:
         raise ValueError("closeout finalized contract SHA-256 belongs to closeout operations only")
     if (
@@ -431,6 +445,23 @@ def _require_altitude_authority(record: LifecycleOperationRecord) -> None:
     _require_worker_authority(record)
     _require_cancellation_evidence(record)
     _require_legacy_migration(record)
+
+
+def _require_task_intent_state(record: LifecycleOperationRecord) -> None:
+    if record.operationKind == "integrate" and record.taskIntent is not None:
+        raise ValueError("integrate operations do not carry leaf task intent")
+    if record.operationKind in {"closeout", "direct-landing"} and record.taskIntent is None:
+        raise ValueError("commit operations require a task-intent state")
+    if record.operationKind in {"closeout", "direct-landing"}:
+        publications = [
+            publication
+            for publication in [record.doorPublication, *record.doorPublicationHistory]
+            if publication is not None
+        ]
+        if any(
+            publication.generation.taskIntent != record.taskIntent for publication in publications
+        ):
+            raise ValueError("operation and door publication must bind the same task intent")
 
 
 def _require_closeout_mutation_evidence(record: LifecycleOperationRecord) -> None:
@@ -810,6 +841,7 @@ class LifecycleOperationProjection(StrictResponseModel):
     elapsedSeconds: float
     currentCommand: str = ""
     reportPath: str
+    taskIntent: TaskIntentIdentity | None = None
     result: dict[str, Any] | None = None
     failure: str | None = None
     guidance: str | None = None

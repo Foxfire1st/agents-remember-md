@@ -33,6 +33,12 @@ from pydantic import (
 
 from agents_remember.models.task_document import DocStatus, MasterExecutionNature, StepStatus
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import (
+    AcceptanceObligationQuestion,
+    ApprovedRequirementPacketRef,
+    TaskIntentState,
+    missing_task_intent,
+)
 
 from .execution_graph_validation import (
     ExecutionGraphAnalysis,
@@ -144,6 +150,7 @@ class RouteReviewRecord(_Doc):
     verdictRef: str
     reviewedAt: str
     routes: list[RouteReviewUnit] = Field(min_length=1)
+    taskIntent: TaskIntentState = Field(default_factory=missing_task_intent)
 
     @field_validator("verdictRef", "reviewedAt")
     @classmethod
@@ -706,7 +713,7 @@ class TaskDocument(_Doc):
     executionRegistrations: list[TaskExecutionRegistration] = Field(default_factory=list)
     lifecycleId: str | None = None
     objective: str = ""
-    requirements: list[str] = Field(default_factory=list)
+    requirements: list[str | ApprovedRequirementPacketRef] = Field(default_factory=list)
     design: str | None = None
     steps: list[Step] = Field(default_factory=list)
     codeExamples: list[CodeExample] = Field(default_factory=list)
@@ -715,7 +722,7 @@ class TaskDocument(_Doc):
     codeExamplesNote: str | None = None
     decisions: list[Decision] = Field(default_factory=list)
     routeReview: RouteReviewRecord | None = None
-    openQuestions: list[str] = Field(default_factory=list)
+    openQuestions: list[str | AcceptanceObligationQuestion] = Field(default_factory=list)
     references: list[str] = Field(default_factory=list)
     # subTasks is the master series index (master-only). sections is the master's ordered
     # render plan AND, since R4, freeform extra sections on a leaf doc (appended after the template).

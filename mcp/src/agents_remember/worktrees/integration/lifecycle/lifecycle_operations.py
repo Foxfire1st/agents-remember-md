@@ -31,6 +31,10 @@ from agents_remember.models.lifecycles.operation import (
 )
 from agents_remember.models.lifecycles.termination import WorkerTerminationEvidence
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import (
+    TaskIntentIdentity,
+    task_intent_is_missing,
+)
 from agents_remember.worktrees.closeout_input import require_effective_closeout_plan
 from agents_remember.worktrees.integration.closeout.door import (
     DoorPublicationError,
@@ -475,6 +479,26 @@ def _require_waiting_closeout_candidate(
             next_tool="worktree_closeout_preview",
             next_args=closeout_preview_args(operation_input),
         )
+    if not isinstance(door.taskIntent, TaskIntentIdentity):
+        raise LifecycleControlError(
+            "closeout-door-task-intent-unavailable",
+            "the waiting door predates canonical task intent",
+            next_action="closeout_door.update-provenance",
+        )
+    if candidate.task_intent != door.taskIntent:
+        raise LifecycleControlError(
+            "closeout-door-task-intent-stale",
+            "the admitted task intent no longer equals the waiting door generation",
+            expected={"taskIntent": door.taskIntent.model_dump(mode="json", by_alias=True)},
+            observed={
+                "taskIntent": (
+                    candidate.task_intent.model_dump(mode="json", by_alias=True)
+                    if candidate.task_intent is not None
+                    else None
+                )
+            },
+            next_action="retry-closeout-preview",
+        )
 
 
 def _require_retained_closeout_owner(
@@ -489,6 +513,8 @@ def _require_retained_closeout_owner(
         and existing.fingerprint == door.operationFingerprint
         and existing.operationKey == door.claimedOperationKey
         and existing.fingerprint == candidate.fingerprint
+        and isinstance(existing.taskIntent, TaskIntentIdentity)
+        and existing.taskIntent == candidate.task_intent
     ):
         return
     raise LifecycleControlError(
@@ -575,6 +601,17 @@ def _create_or_replace_generation(
     """Create one generation or replace only a terminal, advanced generation."""
 
     current, created = store.create(queued)
+    if task_intent_is_missing(current.taskIntent) and current.operationKind in {
+        "closeout",
+        "direct-landing",
+    }:
+        if current.status not in {"completed", "failed", "cancelled"}:
+            raise LifecycleControlError(
+                "lifecycle-operation-task-intent-unavailable",
+                "the active legacy operation predates canonical task intent and cannot be reused",
+                next_action="developer-decision",
+            )
+        return store.replace_terminal(queued), True
     if current.fingerprint == candidate.fingerprint:
         return current, created
     _require_terminal_generation(current, operation_input, contract)
@@ -772,6 +809,8 @@ def _exact_duplicate_closeout_requires_resume(
         and record.input == operation_input
         and record.candidateState == candidate.state
         and record.candidateTree == candidate.tree
+        and isinstance(record.taskIntent, TaskIntentIdentity)
+        and record.taskIntent == candidate.task_intent
         and record.fingerprint == candidate.fingerprint
     )
     worker_authority_released = (
@@ -993,6 +1032,7 @@ def queued_operation_record(
         operationKind=operation_input.kind,
         candidateState=candidate.state,
         candidateTree=candidate.tree,
+        taskIntent=candidate.task_intent,
         fingerprint=candidate.fingerprint,
         operationKey=operation_key(
             contract.contract_path, operation_input.kind, candidate.fingerprint

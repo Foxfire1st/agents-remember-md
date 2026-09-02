@@ -8,6 +8,12 @@ the observer projects them (keyed by lifecycle).
 
 from __future__ import annotations
 
+from agents_remember.models.task_intent import (
+    AcceptanceObligationQuestion,
+    ApprovedRequirementPacketRef,
+    TaskIntentIdentity,
+)
+
 from .document import (
     TASK_DOCUMENT_SCHEMA,
     CodeExample,
@@ -74,6 +80,8 @@ from .store import (
 
 __all__ = [
     "TASK_DOCUMENT_SCHEMA",
+    "AcceptanceObligationQuestion",
+    "ApprovedRequirementPacketRef",
     "CodeExample",
     "CompletionBlocker",
     "Decision",
@@ -106,6 +114,7 @@ __all__ = [
     "TaskDocument",
     "TaskEnclosureRef",
     "TaskExecutionRegistration",
+    "TaskIntentIdentity",
     "build_graph_titles",
     "capture_task_doc_source",
     "completion_blockers",

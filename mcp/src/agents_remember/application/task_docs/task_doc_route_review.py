@@ -21,11 +21,16 @@ from pydantic import ValidationError
 from agents_remember.errors import AgentsRememberError
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
 from agents_remember.tasks import TaskDocument
+from agents_remember.tasks.document_refs import ResolvedTaskDocument
 from agents_remember.tasks.leaf_doc import (
     TerminalLeafResolutionError,
     resolve_terminal_leaf_doc,
 )
-from agents_remember.worktrees.route_review import RouteReviewError, build_route_review
+from agents_remember.worktrees.route_review import (
+    RouteReviewError,
+    build_route_review,
+    document_ref,
+)
 from agents_remember.worktrees.worktree_contract import WorktreeContract
 
 
@@ -115,7 +120,15 @@ def _record_route_review(
             "record_route_review target is not the exact task document bound to the leaf contract"
         )
     try:
-        review = build_route_review(contract, task_root, payload)
+        review = build_route_review(
+            contract,
+            ResolvedTaskDocument(
+                ref=document_ref(contract, selected_path),
+                path=selected_path,
+                document=doc,
+            ),
+            payload,
+        )
     except (RouteReviewError, ValidationError) as exc:
         raise TaskDocError(str(exc)) from exc
     data = doc.model_dump(by_alias=True)
@@ -143,7 +156,11 @@ def _record_route_review_bound(
     try:
         review = build_route_review(
             contract,
-            binding.task_root,
+            ResolvedTaskDocument(
+                ref=document_ref(contract, binding.selected_path),
+                path=binding.selected_path,
+                document=doc,
+            ),
             payload,
             branch_addressed=binding.branch_addressed,
         )

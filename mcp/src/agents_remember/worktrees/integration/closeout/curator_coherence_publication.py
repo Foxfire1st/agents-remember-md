@@ -51,6 +51,8 @@ class _ObservationView:
     state: str
     summary: str
     predecessor: str
+    currentness_status: str | None = None
+    next_action: str | None = None
 
 
 def curator_coherence_action(
@@ -77,6 +79,8 @@ def _status(contract: WorktreeContract, request: CuratorCoherenceRequest) -> dic
             state="source-not-ready",
             summary=str(exc),
             canonicalPath=paths.canonical.as_posix(),
+            currentnessStatus=exc.status,
+            nextAction=exc.next_action,
         )
     if not paths.canonical.exists():
         return _observation_payload(
@@ -97,7 +101,13 @@ def _status(contract: WorktreeContract, request: CuratorCoherenceRequest) -> dic
             request,
             contract,
             observation,
-            _ObservationView(state="stale", summary=str(exc), predecessor=predecessor),
+            _ObservationView(
+                state="stale",
+                summary=str(exc),
+                predecessor=predecessor,
+                currentness_status=exc.status,
+                next_action=exc.next_action,
+            ),
         )
     return _validated_payload(request, contract, validated, state="current")
 
@@ -227,6 +237,7 @@ def _record(
         codeCandidateTree=observation.code_candidate_tree,
         memoryCandidateTree=observation.memory_candidate_tree,
         taskTopologyFingerprint=observation.task_topology_fingerprint,
+        taskIntent=observation.task_intent,
         attestationPath=observation.attestation_path.resolve().as_posix(),
         attestationSha256=observation.attestation_sha256,
         attestationReportSha256=observation.attestation.reportSha256,
@@ -280,12 +291,18 @@ def _require_expected_observation(
         "codeCandidateTree": request.expected_code_candidate_tree,
         "memoryCandidateTree": request.expected_memory_candidate_tree,
         "taskTopologyFingerprint": request.expected_task_topology_fingerprint,
+        "taskIntent": (
+            request.expected_task_intent.model_dump(mode="json", by_alias=True)
+            if request.expected_task_intent is not None
+            else None
+        ),
         "attestationSha256": request.expected_attestation_sha256,
     }
     observed = {
         "codeCandidateTree": observation.code_candidate_tree,
         "memoryCandidateTree": observation.memory_candidate_tree,
         "taskTopologyFingerprint": observation.task_topology_fingerprint,
+        "taskIntent": observation.task_intent.model_dump(mode="json", by_alias=True),
         "attestationSha256": observation.attestation_sha256,
     }
     if expected != observed:
@@ -320,6 +337,7 @@ def _observation_identity(observation: CuratorCoherenceObservation) -> dict[str,
         "codeCandidateTree": observation.code_candidate_tree,
         "memoryCandidateTree": observation.memory_candidate_tree,
         "taskTopologyFingerprint": observation.task_topology_fingerprint,
+        "taskIntent": observation.task_intent.model_dump(mode="json", by_alias=True),
         "attestationSha256": observation.attestation_sha256,
         "sourceCandidates": [candidate.identity for candidate in observation.source_candidates],
     }
@@ -464,6 +482,13 @@ def _observation_payload(
         codeCandidateTree=observation.code_candidate_tree,
         memoryCandidateTree=observation.memory_candidate_tree,
         taskTopologyFingerprint=observation.task_topology_fingerprint,
+        taskIntent=observation.task_intent.model_dump(mode="json", by_alias=True),
+        **(
+            {"currentnessStatus": view.currentness_status}
+            if view.currentness_status is not None
+            else {}
+        ),
+        **({"nextAction": view.next_action} if view.next_action is not None else {}),
         attestationPath=observation.attestation_path.resolve().as_posix(),
         attestationSha256=observation.attestation_sha256,
         attestationReportSha256=observation.attestation.reportSha256,
@@ -491,6 +516,7 @@ def _validated_payload(request, contract, validated, *, state: str) -> dict[str,
         codeCandidateTree=record.codeCandidateTree,
         memoryCandidateTree=record.memoryCandidateTree,
         taskTopologyFingerprint=record.taskTopologyFingerprint,
+        taskIntent=record.taskIntent.model_dump(mode="json", by_alias=True),
         attestationPath=record.attestationPath,
         attestationSha256=record.attestationSha256,
         attestationReportSha256=record.attestationReportSha256,
@@ -507,6 +533,7 @@ def _validated_payload(request, contract, validated, *, state: str) -> dict[str,
                 "memory-candidate",
                 "code-memory-pair",
                 "task-topology",
+                "task-intent",
                 "attestation",
                 "candidate-judgments",
                 "authority-record",

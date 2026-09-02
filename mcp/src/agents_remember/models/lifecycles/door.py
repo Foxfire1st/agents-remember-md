@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -13,6 +13,7 @@ from agents_remember.models.closeout.source import (
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentState
 
 CloseoutDoorDisposition = Literal["waiting", "deferred", "withdrawn", "claimed"]
 DoorPublicationState = Literal["intent", "proven"]
@@ -94,6 +95,7 @@ class CloseoutDoorGeneration(_StrictModel):
     memoryBaseCommit: str = Field(default="", pattern=r"^$|^[0-9a-f]{40,64}$")
     ledgerMemoryCommit: str = Field(default="", pattern=r"^$|^[0-9a-f]{40,64}$")
     taskTopologyFingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    taskIntent: TaskIntentState
     reviewProvenance: DoorProvenance
     memoryProvenance: DoorProvenance
     ledgerProvenance: DoorProvenance
@@ -104,6 +106,13 @@ class CloseoutDoorGeneration(_StrictModel):
     operationKind: LifecycleOperationKind | None = None
     operationFingerprint: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
     claimedOperationKey: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _decode_legacy_missing_intent(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "taskIntent" not in value:
+            return {**value, "taskIntent": {"state": "missing-intent"}}
+        return value
 
     @model_validator(mode="after")
     def _identity_is_coherent(self) -> CloseoutDoorGeneration:

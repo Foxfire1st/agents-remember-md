@@ -19,6 +19,8 @@ from agents_remember.kernel.primitives.runtime_config import load_config
 from agents_remember.models.lifecycles.door import CloseoutDoorAction, CloseoutDoorRequest
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.tasks import TaskDocument, read_task_doc, write_task_doc
+from agents_remember.tasks.document_refs import ResolvedTaskDocument
+from agents_remember.tasks.task_intent import task_intent_identity
 from agents_remember.worktrees.integration.closeout.door_control import (
     DoorActor,
     closeout_door_tool,
@@ -102,37 +104,50 @@ def _leaf(contract: WorktreeContract, slug: str) -> TaskDocument:
     report = contract.task_root / "notes" / "reports" / f"{slug}-review.md"
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("# Review\n\nPass.\n", encoding="utf-8")
-    return TaskDocument.model_validate(
-        {
-            "id": contract.leaf_id,
-            "slug": slug,
-            "title": slug,
-            "kind": "subTask",
-            "status": "inProgress",
-            "repo": REPO,
-            "createdAt": NOW,
-            "enclosures": [
-                {
-                    "leafId": contract.leaf_id,
-                    "enclosurePath": contract.contract_path.as_posix(),
-                }
-            ],
-            "steps": [{"id": "S1", "title": "Ready", "status": "done"}],
-            "routeReview": {
-                "candidateTree": code_candidate_tree(contract),
-                "verdict": "pass",
-                "verdictRef": f"notes/reports/{slug}-review.md",
-                "reviewedAt": NOW,
-                "routes": [
-                    {
-                        "route": slug,
-                        "verdict": "pass",
-                        "evidenceRef": f"notes/reports/{slug}-review.md",
-                    }
-                ],
-            },
-        }
+    payload: dict[str, object] = {
+        "id": contract.leaf_id,
+        "slug": slug,
+        "title": slug,
+        "kind": "subTask",
+        "status": "inProgress",
+        "repo": REPO,
+        "createdAt": NOW,
+        "enclosures": [
+            {
+                "leafId": contract.leaf_id,
+                "enclosurePath": contract.contract_path.as_posix(),
+            }
+        ],
+        "steps": [{"id": "S1", "title": "Ready", "status": "done"}],
+    }
+    document = TaskDocument.model_validate(payload)
+    ref = TaskDocumentRef(
+        repository=REPO,
+        path=f"{contract.task_name}/{slug}.json",
     )
+    intent = task_intent_identity(
+        contract.task_root,
+        ResolvedTaskDocument(
+            ref=ref,
+            path=contract.task_root / f"{slug}.json",
+            document=document,
+        ),
+    )
+    payload["routeReview"] = {
+        "candidateTree": code_candidate_tree(contract),
+        "taskIntent": intent.model_dump(mode="json", by_alias=True),
+        "verdict": "pass",
+        "verdictRef": f"notes/reports/{slug}-review.md",
+        "reviewedAt": NOW,
+        "routes": [
+            {
+                "route": slug,
+                "verdict": "pass",
+                "evidenceRef": f"notes/reports/{slug}-review.md",
+            }
+        ],
+    }
+    return TaskDocument.model_validate(payload)
 
 
 def _judgment_row(ref: TaskDocumentRef, priority: str) -> str:

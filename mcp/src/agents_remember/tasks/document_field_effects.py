@@ -10,6 +10,12 @@ from pydantic import BaseModel
 
 from agents_remember.errors import AgentsRememberError
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import (
+    AcceptanceObligationQuestion,
+    ApprovedRequirementPacketRef,
+    MissingTaskIntent,
+    TaskIntentIdentity,
+)
 
 from .document import (
     CodeExample,
@@ -125,10 +131,10 @@ TASK_DOCUMENT_FIELD_EFFECTS: dict[type[BaseModel], dict[str, FieldEffects]] = {
         "routeReview": EVIDENCE,
         "openQuestions": NORMATIVE,
         "references": EVIDENCE,
-        "subTasks": STRUCTURAL | INTENT_AND_PROGRESS | READINESS,
+        "subTasks": STRUCTURAL | PROGRESS_AND_READINESS,
         "discardedSubTasks": AUDIT,
-        "sections": NORMATIVE,
-        "orchestrates": NORMATIVE,
+        "sections": AUDIT,
+        "orchestrates": STRUCTURAL,
         "seats": LIFECYCLE,
     },
     StepDisposition: {
@@ -161,6 +167,7 @@ TASK_DOCUMENT_FIELD_EFFECTS: dict[type[BaseModel], dict[str, FieldEffects]] = {
         "verdictRef": EVIDENCE,
         "reviewedAt": EVIDENCE,
         "routes": EVIDENCE,
+        "taskIntent": EVIDENCE,
     },
     CodeExample: {
         "id": NORMATIVE,
@@ -222,8 +229,20 @@ TASK_DOCUMENT_FIELD_EFFECTS: dict[type[BaseModel], dict[str, FieldEffects]] = {
         "proof": AUDIT,
     },
     SprintSeat: {"role": LIFECYCLE, "label": LIFECYCLE, "identity": LIFECYCLE, "state": LIFECYCLE},
-    Section: {"kind": NORMATIVE, "heading": NORMATIVE, "body": NORMATIVE},
-    TaskDocumentRef: {"repository": STRUCTURAL, "path": STRUCTURAL},
+    Section: {"kind": AUDIT, "heading": AUDIT, "body": AUDIT},
+    ApprovedRequirementPacketRef: {
+        "kind": NORMATIVE,
+        "path": NORMATIVE,
+        "stableId": NORMATIVE,
+        "version": NORMATIVE,
+    },
+    AcceptanceObligationQuestion: {"kind": NORMATIVE, "id": NORMATIVE, "question": NORMATIVE},
+    TaskIntentIdentity: {"schema_": EVIDENCE, "digest": EVIDENCE},
+    MissingTaskIntent: {"state": EVIDENCE},
+    TaskDocumentRef: {
+        "repository": NORMATIVE | STRUCTURAL,
+        "path": NORMATIVE | STRUCTURAL,
+    },
 }
 
 

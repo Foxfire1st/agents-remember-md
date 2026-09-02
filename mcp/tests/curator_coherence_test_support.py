@@ -18,6 +18,7 @@ from agents_remember.models.lifecycles.curator_coherence import (
     CuratorSourceCandidate,
 )
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks import TaskDocument, write_task_doc
 from agents_remember.worktrees.integration.closeout.curator_coherence_publication import (
     curator_coherence_action,
@@ -173,6 +174,7 @@ def write_curator_evidence(
             expected_code_candidate_tree=str(prepared["codeCandidateTree"]),
             expected_memory_candidate_tree=str(prepared["memoryCandidateTree"]),
             expected_task_topology_fingerprint=str(prepared["taskTopologyFingerprint"]),
+            expected_task_intent=TaskIntentIdentity.model_validate(prepared["taskIntent"]),
             expected_attestation_sha256=str(prepared["attestationSha256"]),
             caller=DeclaredCaller(role="architect", task_document_ref=caller_ref),
         ),

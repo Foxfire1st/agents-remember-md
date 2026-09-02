@@ -21,7 +21,12 @@ from agents_remember.worktrees.queue.closeout_queue_errors import (
     bounded_queue_failure_detail,
 )
 from agents_remember.worktrees.queue.closeout_queue_evidence import curator_evidence
-from agents_remember.worktrees.route_review import code_candidate_tree, code_change_present
+from agents_remember.worktrees.route_review import (
+    RouteReviewError,
+    code_candidate_tree,
+    code_change_present,
+    require_current_route_review_task_intent,
+)
 from agents_remember.worktrees.source_lineage import require_current_source_lineage
 from agents_remember.worktrees.worktree_contract import WorktreeContract
 
@@ -226,6 +231,10 @@ def _review_provenance(
             "closeout-door-route-review-stale",
             "the canonical route-review record does not match the current candidate tree",
         )
+    try:
+        require_current_route_review_task_intent(contract, candidate)
+    except RouteReviewError as exc:
+        raise CloseoutQueueError(exc.status, str(exc)) from exc
     refs = {review.verdictRef, *(route.evidenceRef for route in review.routes)}
     if len(refs) > 256:
         raise CloseoutQueueError(

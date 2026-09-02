@@ -11,6 +11,7 @@ from contextlib import (
     redirect_stdout,
 )
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -35,6 +36,8 @@ from agents_remember.tasks import (
     read_task_doc,
     write_task_doc,
 )
+from agents_remember.tasks.document_refs import ResolvedTaskDocument
+from agents_remember.tasks.store import json_path_for
 from agents_remember.worktrees import git_worktree_manager as worktree_manager
 from agents_remember.worktrees.closeout_input import (
     normalize_closeout_input,
@@ -43,7 +46,10 @@ from agents_remember.worktrees.closeout_input import (
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
     publish_new_lifecycle_operation_location,
 )
-from agents_remember.worktrees.route_review import code_candidate_tree
+from agents_remember.worktrees.route_review import (
+    build_route_review,
+    document_ref,
+)
 from agents_remember.worktrees.worktree_contract import (
     ContractTask,
     LeafIdentity,
@@ -486,38 +492,47 @@ def write_passing_route_review(contract: WorktreeContract) -> None:
     report = contract.task_root / "notes/reports/test-reviewer-verdict.md"
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("# Test reviewer verdict\n\nPass.\n", encoding="utf-8")
+    document = TaskDocument.model_validate(
+        {
+            "id": contract.leaf_id,
+            "slug": contract.leaf_id,
+            "title": contract.task_name,
+            "kind": "subTask",
+            "repo": contract.repo_name,
+            "createdAt": "2026-08-13T00:00:00+00:00",
+            "lifecycleId": contract.lifecycle_id or None,
+            "enclosures": [
+                {
+                    "leafId": contract.leaf_id,
+                    "enclosurePath": contract.contract_path.as_posix(),
+                }
+            ],
+        }
+    )
+    document_path = json_path_for(contract.task_root, document)
+    review = build_route_review(
+        contract,
+        ResolvedTaskDocument(
+            ref=document_ref(contract, document_path),
+            path=document_path,
+            document=document,
+        ),
+        {
+            "verdict": "pass",
+            "verdictRef": "notes/reports/test-reviewer-verdict.md",
+            "routes": [
+                {
+                    "route": "test-fixture",
+                    "verdict": "pass",
+                    "evidenceRef": "notes/reports/test-reviewer-verdict.md",
+                }
+            ],
+        },
+        now=datetime(2026, 8, 13, tzinfo=UTC),
+    )
     write_task_doc(
         contract.task_root,
-        TaskDocument.model_validate(
-            {
-                "id": contract.leaf_id,
-                "slug": contract.leaf_id,
-                "title": contract.task_name,
-                "kind": "subTask",
-                "repo": contract.repo_name,
-                "createdAt": "2026-08-13T00:00:00+00:00",
-                "lifecycleId": contract.lifecycle_id or None,
-                "enclosures": [
-                    {
-                        "leafId": contract.leaf_id,
-                        "enclosurePath": contract.contract_path.as_posix(),
-                    }
-                ],
-                "routeReview": {
-                    "candidateTree": code_candidate_tree(contract),
-                    "verdict": "pass",
-                    "verdictRef": "notes/reports/test-reviewer-verdict.md",
-                    "reviewedAt": "2026-08-13T00:00:00+00:00",
-                    "routes": [
-                        {
-                            "route": "test-fixture",
-                            "verdict": "pass",
-                            "evidenceRef": "notes/reports/test-reviewer-verdict.md",
-                        }
-                    ],
-                },
-            }
-        ),
+        document.model_copy(update={"routeReview": review}),
     )
     if contract.memory_mode == "external" and contract.kind == "leaf":
         caller_ref = write_curator_task_topology(contract)

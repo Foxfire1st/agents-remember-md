@@ -7,7 +7,8 @@ import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from agents_remember.application.lifecycle.legacy_operation_tool import (
@@ -26,17 +27,20 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identit
     operation_state_fingerprint,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
+    LifecycleOperationLocation,
     lifecycle_operation_locator_path,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     LifecycleOperationStore,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import operation_key
+from agents_remember.worktrees.integration.terminal_enclosure_archive import _canonical_entries
 from agents_remember.worktrees.modules.git import head_commit, require_git
 from agents_remember.worktrees.worktree_contract import WorktreeContract
 from closeout_fixture_test_support import selected_fixture
 from lifecycle_enclosure_test_support import byte_tree
 from test_closeout_queue import MASTER_A
+from test_task_intent_consumers_and_legacy import _closeout_record_payload
 from test_worktree_support import git
 
 
@@ -154,6 +158,50 @@ def test_adoption_and_schema_migration_execute_in_either_order(
     assert current.schemaVersion == "3.0"
     assert current.legacyMigration is not None
     assert current.legacyMigration.originalSha256 == hashlib.sha256(original).hexdigest()
+
+
+def test_adoption_preserves_exact_missing_intent_generation_archive(
+    tmp_path: Path,
+) -> None:
+    config, contract, source, _original, request = _legacy_enclosure(tmp_path)
+    archive = source.with_name("closeout-operation.legacy-missing-intent-generation-1.json")
+    archive_bytes = (
+        json.dumps(
+            {"schemaVersion": "3.0", **_closeout_record_payload()},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+    archive.write_bytes(archive_bytes)
+    near_match = source.with_name("closeout-operation.legacy-missing-intent-generation-1.log")
+    near_match.write_bytes(b"not an owned missing-intent generation\n")
+
+    preview = worktree_enclosure_adopt_tool(config, request)
+
+    assert archive.name in {item["name"] for item in preview["artifacts"]}
+    assert near_match.name not in {item["name"] for item in preview["artifacts"]}
+    applied = worktree_enclosure_adopt_tool(
+        config,
+        EnclosureAdoptionRequest(**preview["nextArgs"]),
+    )
+    assert applied["state"] == "enclosure-adopted"
+    target = contract.worktree_group / ".lifecycle" / archive.name
+    assert target.read_bytes() == archive_bytes
+    assert not archive.exists()
+    assert near_match.read_bytes() == b"not an owned missing-intent generation\n"
+
+    (target.parent / source.name).unlink()
+    entries = _canonical_entries(
+        cast(
+            LifecycleOperationLocation,
+            SimpleNamespace(lifecycle_directory=target.parent),
+        ),
+        operation="worktree_cleanup",
+    )
+    terminal = next(item for item in entries if item.relativePath == archive.name)
+    assert terminal.content.encode() == archive_bytes
+    assert terminal.sha256 == hashlib.sha256(archive_bytes).hexdigest()
 
 
 def _migrate_then_adopt(order: _MigrationOrder):

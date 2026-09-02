@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from agents_remember.controlplane.durable_store import StoreOwnership, exclusive_access
+from agents_remember.errors import TaskIntentError
 from agents_remember.kernel.atomic_write import atomic_write_text
 from agents_remember.models.lifecycles.mutation_evidence import GitMutationEvidence
 from agents_remember.models.lifecycles.operation import (
@@ -19,6 +20,10 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationStatus,
 )
 from agents_remember.models.lifecycles.termination import WorkerTerminationEvidence
+from agents_remember.models.task_intent import (
+    require_task_intent_identity,
+    task_intent_is_missing,
+)
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     closeout_generation_retained,
     require_closeout_finalization_evidence,
@@ -318,6 +323,7 @@ def _validate_identity_and_evidence_transition(
         "predecessorFingerprint",
         "candidateState",
         "candidateTree",
+        "taskIntent",
         "fingerprint",
         "integrationAuthority",
         "reportPath",
@@ -616,6 +622,10 @@ class LifecycleOperationStore:
                     }
                 ).model_dump(mode="json")
             )
+            if current.operationKind in {"closeout", "direct-landing"} and task_intent_is_missing(
+                current.taskIntent
+            ):
+                return self._retire_missing_intent_generation(current, validated)
             predecessor = LifecycleOperationRecord.model_validate(
                 current.model_copy(
                     update={"successorFingerprint": validated.fingerprint}
@@ -624,6 +634,35 @@ class LifecycleOperationStore:
             self._archive_generation(predecessor)
             self._write(validated)
             return validated
+
+    def _retire_missing_intent_generation(
+        self,
+        current: LifecycleOperationRecord,
+        validated: LifecycleOperationRecord,
+    ) -> LifecycleOperationRecord:
+        """Preserve exact legacy bytes, then publish one canonical intent-bound successor."""
+
+        try:
+            raw = self.path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise RuntimeError("legacy missing-intent lifecycle bytes are unreadable") from exc
+        archive = self.path.with_name(
+            f"{self.path.stem}.legacy-missing-intent-generation-{current.generation}.json"
+        )
+        created_archive = False
+        if archive.exists():
+            if archive.read_text(encoding="utf-8") != raw:
+                raise RuntimeError("legacy missing-intent archive contradicts durable history")
+        else:
+            atomic_write_text(archive, raw)
+            created_archive = True
+        try:
+            self._write(validated)
+        except BaseException:
+            if created_archive:
+                archive.unlink(missing_ok=True)
+            raise
+        return validated
 
     def _archive_generation(self, record: LifecycleOperationRecord) -> None:
         archive = self.path.with_name(f"{self.path.stem}.generation-{record.generation}.json")
@@ -637,6 +676,15 @@ class LifecycleOperationStore:
     def _write(self, record: LifecycleOperationRecord) -> None:
         _OWNERSHIP.check_declared_writer()
         validated = LifecycleOperationRecord.model_validate(record.model_dump(mode="json"))
+        if validated.operationKind in {"closeout", "direct-landing"}:
+            try:
+                require_task_intent_identity(
+                    validated.taskIntent,
+                    owner="lifecycle-operation",
+                    next_action="retire-and-republish",
+                )
+            except TaskIntentError as exc:
+                raise RuntimeError(f"{exc.status}: {exc.detail}") from exc
         _require_record_matches_canonical_path(self.path, validated)
         require_closeout_recovery_projection(validated)
         require_closeout_finalization_evidence(validated)

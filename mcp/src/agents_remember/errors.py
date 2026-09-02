@@ -49,6 +49,16 @@ def _freeze_contract_value(value: object) -> object:
     raise TypeError("certification finding values must be immutable JSON-like data")
 
 
+class TaskIntentError(AgentsRememberError):
+    """Normative task intent is unavailable, invalid, stale, or unsupported."""
+
+    def __init__(self, status: str, detail: str, *, next_action: str = "task_doc") -> None:
+        self.status = status
+        self.detail = detail
+        self.next_action = next_action
+        super().__init__(detail)
+
+
 class SeatOccupancyError(AgentsRememberError):
     """A canonical document-and-role seat has multiple claimants in one generation."""
 

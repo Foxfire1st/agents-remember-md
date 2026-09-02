@@ -10,6 +10,7 @@ from agents_remember.models.lifecycles.operation import (
     IntegrationOperationAuthority,
     LifecycleOperationInput,
 )
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.closeout_input import CloseoutCandidateSnapshot
 
 
@@ -18,6 +19,7 @@ class LifecycleOperationCandidate:
     state: str
     tree: str | None
     fingerprint: str
+    task_intent: TaskIntentIdentity | None = None
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class LifecycleOperationCandidateBinding:
     closeout_candidate: CloseoutCandidateSnapshot | None = None
     closeout_door_generation_id: str | None = None
     integration_authority: IntegrationOperationAuthority | None = None
+    task_intent: TaskIntentIdentity | None = None
 
 
 def fingerprint_payload(value: object) -> str:
@@ -58,6 +61,8 @@ def lifecycle_operation_candidate(
             else None
         ),
     }
+    if binding.task_intent is not None:
+        payload["taskIntent"] = binding.task_intent.model_dump(mode="json", by_alias=True)
     if closeout_candidate is not None:
         payload.update(
             {
@@ -68,7 +73,8 @@ def lifecycle_operation_candidate(
     if binding.closeout_door_generation_id is not None:
         payload["closeoutDoorGenerationId"] = binding.closeout_door_generation_id
     return LifecycleOperationCandidate(
-        binding.candidate_state,
-        resolved_tree,
-        fingerprint_payload(payload),
+        state=binding.candidate_state,
+        tree=resolved_tree,
+        fingerprint=fingerprint_payload(payload),
+        task_intent=binding.task_intent,
     )

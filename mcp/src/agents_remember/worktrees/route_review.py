@@ -8,8 +8,16 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from agents_remember.errors import TaskIntentError
+from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks import RouteReviewRecord
+from agents_remember.tasks.document_refs import ResolvedTaskDocument
 from agents_remember.tasks.leaf_doc import resolve_terminal_leaf_doc
+from agents_remember.tasks.task_intent import (
+    require_current_task_intent,
+    task_intent_identity,
+)
 from agents_remember.worktrees.modules.git import require_git, worktree_candidate_tree
 from agents_remember.worktrees.worktree_contract import WorktreeContract
 
@@ -47,7 +55,7 @@ def code_change_present(contract: WorktreeContract) -> bool:
 
 def build_route_review(
     contract: WorktreeContract,
-    task_root: Path,
+    candidate: ResolvedTaskDocument,
     payload: dict[str, Any],
     *,
     branch_addressed: bool = False,
@@ -65,16 +73,20 @@ def build_route_review(
     if contract.kind != "leaf" and not (branch_addressed and contract.kind == "series"):
         raise RouteReviewError("route-review-invalid-altitude", "route review belongs to a leaf")
     try:
+        intent = task_intent_identity(contract.task_root, candidate)
         record = RouteReviewRecord.model_validate(
             {
                 **payload,
                 "candidateTree": code_candidate_tree(contract),
                 "reviewedAt": (now or datetime.now(UTC)).replace(microsecond=0).isoformat(),
+                "taskIntent": intent.model_dump(mode="json", by_alias=True),
             }
         )
-    except ValidationError as exc:
+    except (TaskIntentError, ValidationError) as exc:
+        if isinstance(exc, TaskIntentError):
+            raise RouteReviewError(exc.status, exc.detail) from exc
         raise RouteReviewError("route-review-invalid", str(exc)) from exc
-    _require_evidence_files(task_root, record)
+    _require_evidence_files(contract.task_root, record)
     return record
 
 
@@ -91,6 +103,11 @@ def require_current_route_review(contract: WorktreeContract) -> dict[str, object
             f"leaf {contract.leaf_id!r} has no task document for route-review evidence",
         )
     _path, document = found
+    candidate = ResolvedTaskDocument(
+        ref=document_ref(contract, _path),
+        path=_path,
+        document=document,
+    )
     review = document.routeReview
     if review is None:
         raise RouteReviewError(
@@ -109,15 +126,57 @@ def require_current_route_review(contract: WorktreeContract) -> dict[str, object
             "the code candidate changed after independent route review; rerun route review "
             f"(reviewed {review.candidateTree}, current {current})",
         )
+    current_intent = require_current_route_review_task_intent(contract, candidate)
     _require_evidence_files(contract.task_root, review)
     return {
         "required": True,
         "status": "current",
         "candidateTree": current,
+        "taskIntent": current_intent.model_dump(mode="json", by_alias=True),
         "verdict": review.verdict,
         "verdictRef": review.verdictRef,
         "routeCount": len(review.routes),
     }
+
+
+def require_current_route_review_task_intent(
+    contract: WorktreeContract,
+    candidate: ResolvedTaskDocument,
+) -> TaskIntentIdentity:
+    """Require the candidate's review to bind its current canonical task intent."""
+
+    review = candidate.document.routeReview
+    if review is None:
+        raise RouteReviewError(
+            "route-review-required",
+            "the current code change has no independent route-review record",
+        )
+    try:
+        current_intent = task_intent_identity(contract.task_root, candidate)
+        return require_current_task_intent(
+            review.taskIntent,
+            current_intent,
+            owner="route-review",
+            next_action="record_route_review",
+        )
+    except TaskIntentError as exc:
+        raise RouteReviewError(exc.status, exc.detail) from exc
+
+
+def document_ref(contract: WorktreeContract, path: Path) -> TaskDocumentRef:
+    """Return one confined task reference without selecting identity from prose."""
+
+    root = contract.coordination_root / "tasks" / contract.repo_name
+    resolved = path.resolve(strict=False)
+    if not resolved.is_relative_to(root.resolve()):
+        raise RouteReviewError(
+            "route-review-task-document-outside-root",
+            "route-review task document is outside configured repository tasks",
+        )
+    return TaskDocumentRef(
+        repository=contract.repo_name,
+        path=resolved.relative_to(root.resolve()).as_posix(),
+    )
 
 
 def _require_evidence_files(task_root: Path, review: RouteReviewRecord) -> None:

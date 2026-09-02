@@ -27,6 +27,10 @@ _LEGACY_ARTIFACT = re.compile(
     r"^(?:closeout|integrate|direct-landing)-operation"
     r"(?:\.generation-[1-9][0-9]*)?\.(?:json|log)$"
 )
+_LEGACY_MISSING_INTENT_ARTIFACT = re.compile(
+    r"^(?:closeout|direct-landing)-operation"
+    r"\.legacy-missing-intent-generation-[1-9][0-9]*\.json$"
+)
 
 
 class AdoptedLifecycleArtifact(StrictResponseModel):
@@ -221,7 +225,7 @@ def _legacy_artifact_paths(reports: Path, contract_path: Path) -> tuple[Path, ..
                 (
                     path
                     for path in reports.iterdir()
-                    if path.is_file() and _LEGACY_ARTIFACT.fullmatch(path.name)
+                    if path.is_file() and _is_legacy_artifact(path.name)
                 ),
                 key=lambda path: path.name,
             )
@@ -244,7 +248,7 @@ def _root_artifact_paths(lifecycle: Path, contract_path: Path) -> tuple[Path, ..
                 (
                     path
                     for path in lifecycle.iterdir()
-                    if path.is_file() and _LEGACY_ARTIFACT.fullmatch(path.name)
+                    if path.is_file() and _is_legacy_artifact(path.name)
                 ),
                 key=lambda path: path.name,
             )
@@ -256,6 +260,13 @@ def _root_artifact_paths(lifecycle: Path, contract_path: Path) -> tuple[Path, ..
             expected={"contractPath": contract_path.as_posix()},
             observed={"lifecyclePath": lifecycle.as_posix(), "errorType": type(exc).__name__},
         ) from exc
+
+
+def _is_legacy_artifact(name: str) -> bool:
+    return (
+        _LEGACY_ARTIFACT.fullmatch(name) is not None
+        or _LEGACY_MISSING_INTENT_ARTIFACT.fullmatch(name) is not None
+    )
 
 
 def _require_preview_target_compatibility(

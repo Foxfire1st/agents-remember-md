@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from agents_remember.models.task_intent import (
+    AcceptanceObligationQuestion,
+    ApprovedRequirementPacketRef,
+)
 from agents_remember.observer.projection import (
     DiscardedSubTaskNode,
     EnclosureNode,
@@ -461,7 +465,7 @@ def _reader_fields(doc: TaskDocument, *, include_body: bool) -> _TaskDocReaderFi
         )
     return _TaskDocReaderFields(
         objective=doc.objective,
-        requirements=list(doc.requirements),
+        requirements=[_requirement_reader_text(item) for item in doc.requirements],
         design=doc.design,
         codeExamples=[
             TaskCodeExampleNode(
@@ -478,13 +482,25 @@ def _reader_fields(doc: TaskDocument, *, include_body: bool) -> _TaskDocReaderFi
             TaskDecisionNode(at=item.at, decision=item.decision, rationale=item.rationale)
             for item in doc.decisions
         ],
-        openQuestions=list(doc.openQuestions),
+        openQuestions=[_question_reader_text(item) for item in doc.openQuestions],
         references=list(doc.references),
         sections=[
             TaskSectionNode(kind=section.kind, heading=section.heading, body=section.body)
             for section in doc.sections
         ],
     )
+
+
+def _requirement_reader_text(value: str | ApprovedRequirementPacketRef) -> str:
+    if isinstance(value, str):
+        return value
+    return f"{value.stableId}@{value.version} — {value.path}"
+
+
+def _question_reader_text(value: str | AcceptanceObligationQuestion) -> str:
+    if isinstance(value, str):
+        return value
+    return f"Acceptance obligation {value.id}: {value.question}"
 
 
 def _execution_graph_fields(
@@ -590,11 +606,11 @@ def _task_doc_node(
 def _task_doc_body_revision(doc: TaskDocument) -> str:
     payload = {
         "objective": doc.objective,
-        "requirements": list(doc.requirements),
+        "requirements": [_task_intent_body_value(value) for value in doc.requirements],
         "design": doc.design,
         "codeExamples": [example.model_dump(mode="json") for example in doc.codeExamples],
         "decisions": [item.model_dump(mode="json") for item in doc.decisions],
-        "openQuestions": list(doc.openQuestions),
+        "openQuestions": [_task_intent_body_value(value) for value in doc.openQuestions],
         "references": list(doc.references),
         "sections": [section.model_dump(mode="json") for section in doc.sections],
         # Sprint structure (L14): the sub-task index rows (typed masterRef links included) and the
@@ -610,3 +626,11 @@ def _task_doc_body_revision(doc: TaskDocument) -> str:
     }
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _task_intent_body_value(
+    value: str | ApprovedRequirementPacketRef | AcceptanceObligationQuestion,
+) -> str | dict[str, object]:
+    if isinstance(value, str):
+        return value
+    return value.model_dump(mode="json", by_alias=True)
