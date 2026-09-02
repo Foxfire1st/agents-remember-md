@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.tasks import TaskDocument
+from agents_remember.tasks.document_field_effects import (
+    TaskDocumentMutationClassification,
+    classify_task_document_mutation,
+)
 from agents_remember.tasks.document_refs import TaskDocumentRefError, TaskDocumentTopology
 
 
@@ -21,6 +25,14 @@ class TaskDocScopeChange:
     ref: TaskDocumentRef
     original: TaskDocument | None
     candidate: TaskDocument
+    classification: TaskDocumentMutationClassification = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "classification",
+            classify_task_document_mutation(self.original, self.candidate),
+        )
 
 
 def resolve_projection_scope_union(
@@ -45,6 +57,8 @@ def resolve_projection_scope_union(
     overrides = {ref: change.candidate for ref, change in by_ref.items()}
     scopes: set[TaskDocumentRef] = set()
     for change in by_ref.values():
+        if not change.classification.invalidates_projection:
+            continue
         versions = tuple(
             document for document in (change.original, change.candidate) if document is not None
         )

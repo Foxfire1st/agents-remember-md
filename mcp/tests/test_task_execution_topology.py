@@ -358,7 +358,7 @@ class ExecutionTopologyTests(unittest.TestCase):
 
         self.assertEqual(scopes, tuple(sorted((SPRINT, new_sprint_ref), key=lambda ref: ref.key)))
 
-    def test_unrelated_malformed_task_isolated_and_duplicate_scopes_collapse(self) -> None:
+    def test_unchanged_documents_have_no_scope_despite_unrelated_malformed_task(self) -> None:
         sprint = _master(identity="SPRINT", orchestrates=["master-a"])
         master = _master(identity="MASTER-A")
         write_task_doc(self.tasks / "sprint", sprint)
@@ -376,7 +376,7 @@ class ExecutionTopologyTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(scopes, (SPRINT,))
+        self.assertEqual(scopes, ())
 
     def test_master_publication_refreshes_related_sprint_despite_unrelated_malformed_task(
         self,

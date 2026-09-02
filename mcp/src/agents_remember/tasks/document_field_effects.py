@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, get_args
 
@@ -60,6 +61,38 @@ class TaskDocumentFieldEffect(StrEnum):
 
 class TaskDocumentFieldEffectTaxonomyError(AgentsRememberError):
     """The persisted schema changed without an explicit effect classification."""
+
+
+class TaskDocumentMutationClass(StrEnum):
+    """Semantic class carried by one exact accepted/candidate task delta."""
+
+    TOPOLOGY = "topology"
+    INTENT = "intent"
+    COMPLETION_READINESS = "completion-readiness"
+    ACCEPTANCE_EVIDENCE = "acceptance-evidence"
+    OPERATIONAL_AUDIT = "operational-audit"
+
+
+class TaskDocumentMutationClassificationError(AgentsRememberError):
+    """A task mutation cannot be classified exhaustively before publication."""
+
+
+@dataclass(frozen=True)
+class TaskDocumentMutationClassification:
+    """The complete semantic classes for one exact task-document mutation."""
+
+    classes: frozenset[TaskDocumentMutationClass]
+
+    @property
+    def invalidates_projection(self) -> bool:
+        return bool(
+            self.classes
+            & {
+                TaskDocumentMutationClass.TOPOLOGY,
+                TaskDocumentMutationClass.INTENT,
+                TaskDocumentMutationClass.COMPLETION_READINESS,
+            }
+        )
 
 
 FieldEffects = frozenset[TaskDocumentFieldEffect]
@@ -270,6 +303,142 @@ TASK_DOCUMENT_FIELD_EFFECTS: dict[type[BaseModel], dict[str, FieldEffects]] = {
 }
 
 
+FIELD_EFFECT_MUTATION_CLASSES: dict[TaskDocumentFieldEffect, TaskDocumentMutationClass] = {
+    TaskDocumentFieldEffect.STRUCTURAL_TOPOLOGY: TaskDocumentMutationClass.TOPOLOGY,
+    TaskDocumentFieldEffect.NORMATIVE_INTENT: TaskDocumentMutationClass.INTENT,
+    TaskDocumentFieldEffect.COMPLETION_READINESS: (TaskDocumentMutationClass.COMPLETION_READINESS),
+    TaskDocumentFieldEffect.PROGRESS: TaskDocumentMutationClass.COMPLETION_READINESS,
+    TaskDocumentFieldEffect.EVIDENCE: TaskDocumentMutationClass.ACCEPTANCE_EVIDENCE,
+    TaskDocumentFieldEffect.LIFECYCLE: TaskDocumentMutationClass.OPERATIONAL_AUDIT,
+    TaskDocumentFieldEffect.PROSE_AUDIT: TaskDocumentMutationClass.OPERATIONAL_AUDIT,
+}
+
+
+def classify_task_document_mutation(
+    original: TaskDocument | None,
+    candidate: TaskDocument,
+) -> TaskDocumentMutationClassification:
+    """Classify the exact accepted/candidate field delta through the canonical taxonomy."""
+
+    validate_task_document_field_effects(root_model=type(candidate))
+    if original is not None:
+        validate_task_document_field_effects(root_model=type(original))
+    validate_task_document_mutation_classes()
+    effects = _changed_value_effects(original, candidate, frozenset())
+    return TaskDocumentMutationClassification(
+        frozenset(FIELD_EFFECT_MUTATION_CLASSES[effect] for effect in effects)
+    )
+
+
+def validate_task_document_mutation_classes() -> None:
+    """Refuse an effect vocabulary change without a corresponding mutation class."""
+
+    missing = set(TaskDocumentFieldEffect).difference(FIELD_EFFECT_MUTATION_CLASSES)
+    stale = set(FIELD_EFFECT_MUTATION_CLASSES).difference(TaskDocumentFieldEffect)
+    if missing or stale:
+        raise TaskDocumentMutationClassificationError(
+            "invalid task-document mutation-class mapping: "
+            f"missing={sorted(effect.value for effect in missing)}, "
+            f"stale={sorted(str(effect) for effect in stale)}"
+        )
+
+
+def _changed_model_effects(original: BaseModel, candidate: BaseModel) -> FieldEffects:
+    if type(original) is not type(candidate):
+        raise TaskDocumentMutationClassificationError(
+            "task-document mutation changed persisted model type: "
+            f"{_model_name(type(original))} -> {_model_name(type(candidate))}"
+        )
+    classifications = _classifications_for(type(candidate))
+    if classifications is None:
+        raise TaskDocumentMutationClassificationError(
+            f"unclassified task-document schema model: {_model_name(type(candidate))}"
+        )
+    effects: set[TaskDocumentFieldEffect] = set()
+    for name in type(candidate).model_fields:
+        effects.update(
+            _changed_value_effects(
+                getattr(original, name),
+                getattr(candidate, name),
+                classifications[name],
+            )
+        )
+    return frozenset(effects)
+
+
+def _changed_value_effects(
+    original: object,
+    candidate: object,
+    owner_effects: FieldEffects,
+) -> FieldEffects:
+    if original == candidate:
+        return frozenset()
+    if isinstance(original, BaseModel) and isinstance(candidate, BaseModel):
+        return _changed_model_value_effects(original, candidate, owner_effects)
+    if isinstance(original, Mapping) and isinstance(candidate, Mapping):
+        return _changed_mapping_effects(original, candidate, owner_effects)
+    if isinstance(original, (list, tuple)) and isinstance(candidate, (list, tuple)):
+        effects = {
+            effect
+            for before, after in zip(original, candidate, strict=False)
+            for effect in _changed_value_effects(before, after, owner_effects)
+        }
+        if len(original) != len(candidate):
+            effects.update(owner_effects)
+            effects.update(_present_value_effects(original[len(candidate) :]))
+            effects.update(_present_value_effects(candidate[len(original) :]))
+        return frozenset(effects)
+    if original is None or candidate is None:
+        present = candidate if original is None else original
+        return owner_effects | _present_value_effects(present)
+    return owner_effects
+
+
+def _changed_model_value_effects(
+    original: BaseModel,
+    candidate: BaseModel,
+    owner_effects: FieldEffects,
+) -> FieldEffects:
+    if type(original) is type(candidate):
+        return _changed_model_effects(original, candidate)
+    return owner_effects | _present_value_effects(original) | _present_value_effects(candidate)
+
+
+def _changed_mapping_effects(
+    original: Mapping[object, object],
+    candidate: Mapping[object, object],
+    owner_effects: FieldEffects,
+) -> FieldEffects:
+    if set(original) != set(candidate):
+        return owner_effects | _present_value_effects(original) | _present_value_effects(candidate)
+    return frozenset(
+        effect
+        for key in original
+        for effect in _changed_value_effects(original[key], candidate[key], owner_effects)
+    )
+
+
+def _present_value_effects(value: object) -> FieldEffects:
+    if isinstance(value, BaseModel):
+        classifications = _classifications_for(type(value))
+        if classifications is None:
+            raise TaskDocumentMutationClassificationError(
+                f"unclassified task-document schema model: {_model_name(type(value))}"
+            )
+        return frozenset(
+            effect
+            for name, field_effects in classifications.items()
+            for effect in field_effects | _present_value_effects(getattr(value, name))
+        )
+    if isinstance(value, Mapping):
+        return frozenset(
+            effect for item in value.values() for effect in _present_value_effects(item)
+        )
+    if isinstance(value, (list, tuple)):
+        return frozenset(effect for item in value for effect in _present_value_effects(item))
+    return frozenset()
+
+
 def task_document_schema_models(
     root_model: type[BaseModel] = TaskDocument,
 ) -> frozenset[type[BaseModel]]:
@@ -398,12 +567,18 @@ def _model_name(model: type[BaseModel]) -> str:
 
 
 __all__ = [
+    "FIELD_EFFECT_MUTATION_CLASSES",
     "TASK_DOCUMENT_FIELD_EFFECTS",
     "TaskDocumentFieldEffect",
     "TaskDocumentFieldEffectProjector",
     "TaskDocumentFieldEffectTaxonomyError",
+    "TaskDocumentMutationClass",
+    "TaskDocumentMutationClassification",
+    "TaskDocumentMutationClassificationError",
+    "classify_task_document_mutation",
     "fields_with_effect",
     "project_model_field_effect",
     "task_document_schema_models",
     "validate_task_document_field_effects",
+    "validate_task_document_mutation_classes",
 ]

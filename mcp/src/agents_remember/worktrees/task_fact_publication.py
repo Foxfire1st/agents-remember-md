@@ -16,6 +16,7 @@ from agents_remember.models.closeout.projection import (
 )
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.tasks.document import TaskDocument
+from agents_remember.tasks.document_field_effects import classify_task_document_mutation
 from agents_remember.tasks.document_refs import TaskDocumentRefError, TaskDocumentTopology
 from agents_remember.tasks.store import json_path_for
 from agents_remember.worktrees.queue.closeout_projection import (
@@ -49,8 +50,8 @@ def publish_task_fact_mutation[T](
     timestamp = now_iso()
     with task_publication_lock(coordination_root, repo_id):
         validate()
-        result = publication()
         scopes = tuple(sorted(set(projection_scopes()), key=lambda ref: ref.key))
+        result = publication()
         receipts = tuple(
             _invalidate_scope(coordination_root, sprint_ref, timestamp) for sprint_ref in scopes
         )
@@ -88,6 +89,14 @@ def contract_projection_scopes(
 
     topology = TaskDocumentTopology(contract.coordination_root)
     overrides = _contract_task_overrides(contract, documents, topology)
+    if not any(
+        classify_task_document_mutation(
+            topology.resolve(ref).document,
+            candidate,
+        ).invalidates_projection
+        for ref, candidate in overrides.items()
+    ):
+        return ()
     try:
         master_ref = topology.canonical_ref(contract.repo_name, contract.task_root / "task.json")
         master = topology.resolve(master_ref)

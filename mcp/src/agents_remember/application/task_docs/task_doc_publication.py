@@ -250,10 +250,18 @@ def task_doc_scope_changes(
 def validate_task_doc_transaction(transaction: TaskDocPublicationTransaction) -> None:
     """Read-only dry-run preflight through the same exact source-pair transaction."""
 
+    def validate() -> None:
+        require_task_doc_sources_current(transaction.source_snapshots)
+        resolve_projection_scope_union(
+            transaction.coordination_root,
+            transaction.target_repo_id,
+            transaction.scope_changes,
+        )
+
     validate_task_fact_mutation(
         transaction.coordination_root,
         transaction.target_repo_id,
-        lambda: require_task_doc_sources_current(transaction.source_snapshots),
+        validate,
     )
 
 

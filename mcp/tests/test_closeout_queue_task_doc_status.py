@@ -5,9 +5,14 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from typing import ClassVar
+from types import SimpleNamespace
+from typing import ClassVar, cast
 from unittest import mock
 
+from agents_remember.application.task_docs.task_doc_queue_scope import (
+    TaskDocScopeChange,
+    resolve_projection_scope_union,
+)
 from agents_remember.models.closeout.projection import (
     CloseoutQueueState,
     ProjectionInvalidationResult,
@@ -15,14 +20,50 @@ from agents_remember.models.closeout.projection import (
     TaskDocProjectionEffect,
 )
 from agents_remember.models.task_document_ref import TaskDocumentRef
+from agents_remember.tasks.document import TaskDocument
 from agents_remember.worktrees import task_fact_publication as publication
 from agents_remember.worktrees.queue.closeout_projection_publication import (
     ProjectionInvalidationReceipt,
 )
+from agents_remember.worktrees.worktree_contract import WorktreeContract
 
 NOW = "2026-08-24T00:00:00+00:00"
 SPRINT_A = TaskDocumentRef(repository="repo-a", path="a/task.json")
 SPRINT_B = TaskDocumentRef(repository="repo-a", path="b/task.json")
+
+
+def _sprint_document(**updates: object) -> TaskDocument:
+    document = TaskDocument.model_validate(
+        {
+            "id": "SPRINT-A",
+            "slug": "sprint-a",
+            "title": "Sprint A",
+            "kind": "master",
+            "status": "inProgress",
+            "repo": "repo-a",
+            "type": "Sprint",
+            "createdAt": NOW,
+            "orchestrates": ["master-a"],
+        }
+    )
+    return document.model_copy(update=updates)
+
+
+def _leaf_document(**updates: object) -> TaskDocument:
+    document = TaskDocument.model_validate(
+        {
+            "id": "L1",
+            "slug": "01_leaf",
+            "title": "Leaf",
+            "kind": "subTask",
+            "status": "inProgress",
+            "repo": "repo-a",
+            "type": "Code",
+            "createdAt": NOW,
+            "lifecycleId": "old-lifecycle",
+        }
+    )
+    return document.model_copy(update=updates)
 
 
 def _complete_effect(ref: TaskDocumentRef) -> TaskDocProjectionEffect:
@@ -97,7 +138,7 @@ class TaskFactPublicationTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def test_task_truth_commits_before_fixed_order_invalidation_and_failures_continue(self) -> None:
+    def test_scope_preflight_precedes_task_first_fixed_order_invalidation(self) -> None:
         events: list[str] = []
 
         def publish() -> str:
@@ -134,7 +175,7 @@ class TaskFactPublicationTests(unittest.TestCase):
             )
 
         self.assertEqual(result.result, "durable-task-result")
-        self.assertEqual(events[:3], ["validated", "task-published", "scopes-resolved"])
+        self.assertEqual(events[:3], ["validated", "scopes-resolved", "task-published"])
         self.assertEqual(
             _FakeStore.events,
             [f"invalidate:{SPRINT_A.key}", f"invalidate:{SPRINT_B.key}"],
@@ -148,6 +189,94 @@ class TaskFactPublicationTests(unittest.TestCase):
         self.assertIn("closeout_queue(action='rebuild'", failed.nextAction or "")
         self.assertEqual(completed.sprintTaskDocumentRef, SPRINT_B)
         self.assertIsNone(completed.nextAction)
+
+    def test_scope_refusal_happens_before_task_publication(self) -> None:
+        writes = 0
+
+        def publish() -> str:
+            nonlocal writes
+            writes += 1
+            return "must-not-publish"
+
+        with self.assertRaisesRegex(ValueError, "unclassified exact delta"):
+            publication.publish_task_fact_mutation(
+                self.root,
+                "repo-a",
+                validate=lambda: None,
+                projection_scopes=lambda: (_ for _ in ()).throw(
+                    ValueError("unclassified exact delta")
+                ),
+                publication=publish,
+            )
+
+        self.assertEqual(writes, 0)
+
+    def test_empty_projection_scope_publishes_without_queue_churn(self) -> None:
+        store = mock.Mock(side_effect=AssertionError("queue must not be opened"))
+        with mock.patch.object(publication, "CloseoutQueueStore", store):
+            result = publication.publish_task_fact_mutation(
+                self.root,
+                "repo-a",
+                validate=lambda: None,
+                projection_scopes=lambda: (),
+                publication=lambda: "audit-published",
+            )
+
+        self.assertEqual(result.result, "audit-published")
+        self.assertEqual(result.projection_effects, ())
+        store.assert_not_called()
+
+    def test_evidence_and_audit_only_delta_selects_no_task_driven_scope(self) -> None:
+        original = _sprint_document()
+        candidate = original.model_copy(
+            update={
+                "references": ["requirements/CCR-R04.md"],
+                "statusNote": "Review evidence recorded.",
+            }
+        )
+
+        scopes = resolve_projection_scope_union(
+            self.root,
+            "repo-a",
+            (TaskDocScopeChange(SPRINT_A, original, candidate),),
+        )
+
+        self.assertEqual(scopes, ())
+
+    def test_completion_delta_selects_the_affected_sprint(self) -> None:
+        original = _sprint_document()
+        candidate = original.model_copy(update={"status": "Completed"})
+
+        scopes = resolve_projection_scope_union(
+            self.root,
+            "repo-a",
+            (TaskDocScopeChange(SPRINT_A, original, candidate),),
+        )
+
+        self.assertEqual(scopes, (SPRINT_A,))
+
+    def test_contract_lifecycle_restamp_selects_no_task_driven_scope(self) -> None:
+        task_root = self.root / "tasks" / "repo-a" / "master"
+        contract = cast(
+            WorktreeContract,
+            SimpleNamespace(
+                coordination_root=self.root,
+                repo_name="repo-a",
+                task_root=task_root,
+            ),
+        )
+        original = _leaf_document()
+        candidate = original.model_copy(update={"lifecycleId": "new-lifecycle"})
+        leaf_ref = TaskDocumentRef(repository="repo-a", path="master/01_leaf.json")
+        topology = mock.Mock()
+        topology.canonical_ref.return_value = leaf_ref
+        topology.resolve.return_value = SimpleNamespace(document=original)
+
+        with mock.patch.object(publication, "TaskDocumentTopology", return_value=topology):
+            scopes = publication.contract_projection_scopes(contract, (candidate,))
+
+        self.assertEqual(scopes, ())
+        topology.resolve.assert_called_once_with(leaf_ref)
 
     def test_projection_failure_never_rolls_back_or_reinvokes_task_publication(self) -> None:
         writes = 0
