@@ -12,9 +12,10 @@ prepares either:
 
 Ordinary tests, shared support, plugins, and governed fixtures use the same
 consumer graph. Incomplete, ambiguous, global, or otherwise unsupported
-ownership refuses reuse and runs the ordinary safe population. The manifest fingerprints the repository
+ownership refuses reuse. The manifest fingerprints the repository
 bytes, selected tests, resolved diff base, Python/tool versions, invocation
-environment, exact evidence-lane population, and measurement settings. The wrapper refuses before
+environment, exact evidence-lane population, immutable selector result, and measurement settings.
+The wrapper refuses before
 this module is reached unless Dagger's environment nonce matches its attestation
 file. Cache corruption, missing context data, unsupported test arguments, or any
 ambiguity runs the ordinary suite inside that same Dagger graph.
@@ -53,7 +54,7 @@ from agents_remember_test_support.testing.dagger_admission import (
     require_dagger_admission_capability,
 )
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 CACHE_DIRECTORY = "agents-remember-quality-retry"
 MISSING_PATH_DIGEST = hashlib.sha256(b"missing\0").hexdigest()
 DISABLE_ENV = "AR_QUALITY_NO_RETRY"
@@ -112,6 +113,7 @@ class RetryInputs:
     lane_digest: str
     lane_trigger: str
     lane_population: tuple[str, ...]
+    selection_digest: str
 
 
 @dataclass
@@ -131,6 +133,7 @@ class RetryPlan:
     lane_digest: str
     lane_trigger: str
     lane_population: tuple[str, ...]
+    selection_digest: str
     delta_tests: tuple[Path, ...] = ()
     pytest_passed: bool = False
     pytest_ran: bool = False
@@ -252,6 +255,7 @@ def _fresh_plan(inputs: RetryInputs) -> RetryPlan | None:
         lane_digest=inputs.lane_digest,
         lane_trigger=inputs.lane_trigger,
         lane_population=inputs.lane_population,
+        selection_digest=inputs.selection_digest,
     )
 
 
@@ -264,6 +268,9 @@ def _reuse_plan(
     previous_snapshot = manifest["snapshot"]
     changed = _snapshot_delta(previous_snapshot, plan.snapshot)
     if not changed:
+        if manifest.get("selectionDigest") != plan.selection_digest:
+            printer("retry-proof: cache-miss exact-selection-identity-changed; running fresh")
+            return plan
         plan.mode = RetryMode.EXACT
         printer("retry-proof: cache-hit exact-candidate; pytest will not restart")
         return plan
@@ -323,12 +330,11 @@ def _retry_impact(
         printer(f"retry-proof: cache-miss ownership-graph-unavailable ({error}); running fresh")
         return None
     if not impact.complete:
-        reason = (
-            impact.fresh_rerun_reason.render()
-            if impact.fresh_rerun_reason is not None
-            else "unknown"
+        reasons = ";".join(reason.render() for reason in impact.unresolved_inputs)
+        printer(
+            "retry-proof: cache-miss ownership-incomplete "
+            f"({reasons or 'unknown'}); running the admitted current population fresh"
         )
-        printer(f"retry-proof: cache-miss ownership-incomplete ({reason}); running fresh")
     return impact
 
 
@@ -349,17 +355,32 @@ def _selection_is_compatible(
 
 
 def _disabled_reason(inputs: RetryInputs) -> str | None:
-    if os.environ.get(DISABLE_ENV):
-        return f"{DISABLE_ENV} is set"
-    if inputs.untracked_paths:
-        return "relevant untracked files are outside the content-addressed snapshot"
-    if not inputs.coverage_paths:
-        return "the run has no Coverage.py measurement scope"
-    if not inputs.cache_root.is_absolute():
-        return f"{CACHE_ROOT_ENV} must name an absolute Dagger-owned cache root"
-    if not inputs.lane_digest or not inputs.lane_trigger or not inputs.lane_population:
-        return "the exact evidence-lane population is unavailable"
-    return None
+    reasons = (
+        f"{DISABLE_ENV} is set" if os.environ.get(DISABLE_ENV) else None,
+        (
+            "relevant untracked files are outside the content-addressed snapshot"
+            if inputs.untracked_paths
+            else None
+        ),
+        "the run has no Coverage.py measurement scope" if not inputs.coverage_paths else None,
+        (
+            f"{CACHE_ROOT_ENV} must name an absolute Dagger-owned cache root"
+            if not inputs.cache_root.is_absolute()
+            else None
+        ),
+        (
+            "the exact evidence-lane population is unavailable"
+            if not inputs.lane_digest or not inputs.lane_trigger or not inputs.lane_population
+            else None
+        ),
+        (
+            "the exact immutable selection identity is unavailable"
+            if len(inputs.selection_digest) != 64
+            or any(character not in "0123456789abcdef" for character in inputs.selection_digest)
+            else None
+        ),
+    )
+    return next((reason for reason in reasons if reason is not None), None)
 
 
 def _cache_dir(cache_root: Path) -> Path:
@@ -502,6 +523,13 @@ def _manifest_findings(raw: Mapping[str, object], plan: RetryPlan) -> tuple[str,
         findings.append("lane-trigger")
     if raw.get("lanePopulation") != list(plan.lane_population):
         findings.append("lane-population")
+    selection_digest = raw.get("selectionDigest")
+    if (
+        not isinstance(selection_digest, str)
+        or len(selection_digest) != 64
+        or any(character not in "0123456789abcdef" for character in selection_digest)
+    ):
+        findings.append("selection-digest")
     if not valid_snapshot:
         findings.append("snapshot")
     if not valid_selection:
@@ -556,6 +584,7 @@ def _publish_proof(plan: RetryPlan, coverage_json: Path) -> None:
         "laneDigest": plan.lane_digest,
         "laneTrigger": plan.lane_trigger,
         "lanePopulation": list(plan.lane_population),
+        "selectionDigest": plan.selection_digest,
         "snapshot": plan.snapshot,
         "selectedTests": [path.as_posix() for path in plan.selected_tests],
         "coverageDataSha256": _file_digest(data_temp),

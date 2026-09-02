@@ -32,10 +32,15 @@ _RESERVED_PUBLICATION_ROOTS = frozenset({".quality-report-generations", "quality
 _SCALAR_PLACEHOLDERS = frozenset(
     {
         "clean-room",
+        "candidate-kind",
+        "candidate-value",
         "diff-base",
         "memory-cap-bytes",
         "reports",
         "selection-mode",
+        "selector-configuration-digest",
+        "selector-id",
+        "selector-version",
     }
 )
 _PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
@@ -103,7 +108,7 @@ def validate_repository_profile(
     for decoder in profile.resultDecoders:
         _validate_decoder(decoder, findings)
     for selector in profile.selectors:
-        _validate_selector_command(selector, findings)
+        _validate_selector(selector, findings)
     _validate_selection_authority(profile.selections, findings)
     for selection in profile.selections:
         _validate_selection(selection, rails, executors, decoders, findings)
@@ -655,6 +660,18 @@ def _validate_gate_semantics(rail, path, findings) -> None:
         )
 
 
+def _validate_selector(selector, findings) -> None:
+    path = f"selectors.{selector.selectorId}"
+    for field in ("inputUniverse", "externalInputs", "outputArtifacts"):
+        _duplicates(
+            list(getattr(selector, field)),
+            "duplicate-selector-field",
+            f"{path}.{field}",
+            findings,
+        )
+    _validate_selector_command(selector, findings)
+
+
 def _validate_selector_command(selector, findings) -> None:
     path = f"selectors.{selector.selectorId}.command"
     placeholders = _validate_command_placeholders(
@@ -670,6 +687,21 @@ def _validate_selector_command(selector, findings) -> None:
                 "selector-result-path-unused",
                 path,
                 "selector command must consume its exact sandbox result path",
+            )
+        )
+    required_identity = {
+        "candidate-kind",
+        "candidate-value",
+        "selector-configuration-digest",
+        "selector-id",
+        "selector-version",
+    }
+    for missing in sorted(required_identity - placeholders):
+        findings.append(
+            _finding(
+                "selector-identity-input-unused",
+                path,
+                f"selector command must consume {{{missing}}} to bind its exact result",
             )
         )
 

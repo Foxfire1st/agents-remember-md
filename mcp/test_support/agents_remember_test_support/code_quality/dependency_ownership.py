@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -25,6 +27,9 @@ GLOBAL_TEST_INPUTS = frozenset(
         Path("mcp/tests/evidence-lifecycle.toml"),
     }
 )
+OWNERSHIP_AUTHORITY_VERSION = "2.0.0"
+IRRELEVANT_ROOTS = frozenset({"dashboard", "docs", "notes"})
+IRRELEVANT_SUFFIXES = frozenset({".md", ".rst", ".txt"})
 
 # Repository inputs whose pytest population differs from their broader source-consumer
 # lifecycle keep exact test consumers here. Non-Python inputs cannot participate in the
@@ -35,6 +40,13 @@ CERTIFICATION_PROFILE_PATH = Path("mcp") / "certification-profile-v1.json"
 CODEX_CONFIG_PATH = Path(".codex") / "config.toml"
 LAYERS_CONTRACT_PATH = Path("layers").with_suffix(".toml")
 AMBIENT_ROLE_RUNNER_PATH = Path("scripts") / "e2e_harness" / "run.py"
+# These repository-owned patterns are the exact ordinary dashboard-suite population in
+# dashboard/vitest.config.ts. Keeping them in the selector authority digest makes the population
+# contract explicit without teaching the repository-neutral profile framework about Vitest.
+DASHBOARD_TEST_PATTERNS: tuple[tuple[Path, tuple[str, ...]], ...] = (
+    (Path("dashboard/src"), (".spec.ts", ".spec.tsx", ".test.ts", ".test.tsx")),
+    (Path("dashboard/scripts"), (".test.mjs",)),
+)
 REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
     AMBIENT_ROLE_RUNNER_PATH: frozenset(
         {
@@ -218,7 +230,8 @@ class SelectionReasonKind(StrEnum):
     NAME_HEURISTIC = "name-heuristic"
     TEXT_HEURISTIC = "text-heuristic"
     PYTEST_GLOBAL = "pytest-global"
-    SAFE_FULL = "safe-full"
+    IRRELEVANT = "irrelevant"
+    UNRESOLVED = "unresolved"
 
 
 @dataclass(frozen=True, order=True)
@@ -245,10 +258,17 @@ class TestImpact:
     ownership: tuple[OwnedTest, ...]
     complete: bool
     global_invalidation: bool
-    fresh_rerun_reason: SelectionReason | None = None
+    input_decisions: tuple[SelectionReason, ...] = ()
+    unresolved_inputs: tuple[SelectionReason, ...] = ()
+    global_invalidators: tuple[SelectionReason, ...] = ()
 
     def reasons_for(self, path: Path) -> tuple[SelectionReason, ...]:
         return next((item.reasons for item in self.ownership if item.path == path), ())
+
+    @property
+    def reasons(self) -> tuple[SelectionReason, ...]:
+        owned = {reason for item in self.ownership for reason in item.reasons}
+        return tuple(sorted(owned | set(self.input_decisions) | set(self.unresolved_inputs)))
 
 
 def name_match_tests(test_roots: Sequence[Path], module: str, tracked: Sequence[Path]) -> set[Path]:
@@ -280,24 +300,39 @@ class DependencyOwnershipGraph:
         self.declared_consumers, self.catalog_error = _declared_consumers(self.project_root)
 
     def resolve(self, changed: Sequence[Path]) -> TestImpact:
-        """Resolve affected tests or select all with an explicit incomplete-ownership reason."""
+        """Resolve exact consumers and retain every unresolved input without broadening."""
 
         changed_paths = tuple(sorted(set(changed), key=Path.as_posix))
         if not changed_paths:
             return TestImpact((), (), True, False)
-        if refusal := self._graph_refusal(changed_paths[0]):
-            return self._safe_full(refusal.source, refusal.detail)
+        if refusal_detail := self._graph_refusal_detail():
+            unresolved = tuple(
+                SelectionReason(SelectionReasonKind.UNRESOLVED, path, refusal_detail)
+                for path in changed_paths
+            )
+            return TestImpact(
+                tests=(),
+                ownership=(),
+                complete=False,
+                global_invalidation=False,
+                unresolved_inputs=unresolved,
+            )
         return self._resolved_impact(changed_paths)
 
     def _resolved_impact(self, changed_paths: Sequence[Path]) -> TestImpact:
         reasons: dict[Path, set[SelectionReason]] = {}
         global_sources: list[SelectionReason] = []
+        input_decisions: list[SelectionReason] = []
+        unresolved: list[SelectionReason] = []
         for path in changed_paths:
             decision = self._resolve_one(path)
             if isinstance(decision, SelectionReason):
-                if decision.kind is SelectionReasonKind.SAFE_FULL:
-                    return self._safe_full(path, decision.detail)
-                global_sources.append(decision)
+                if decision.kind is SelectionReasonKind.UNRESOLVED:
+                    unresolved.append(decision)
+                elif decision.kind is SelectionReasonKind.IRRELEVANT:
+                    input_decisions.append(decision)
+                else:
+                    global_sources.append(decision)
                 continue
             for test, owned_reasons in decision.items():
                 reasons.setdefault(test, set()).update(owned_reasons)
@@ -311,11 +346,14 @@ class DependencyOwnershipGraph:
         return TestImpact(
             tests=tuple(item.path for item in ownership),
             ownership=ownership,
-            complete=True,
+            complete=not unresolved,
             global_invalidation=bool(global_sources),
+            input_decisions=tuple(sorted(input_decisions)),
+            unresolved_inputs=tuple(sorted(unresolved)),
+            global_invalidators=tuple(sorted(global_sources)),
         )
 
-    def _graph_refusal(self, source: Path) -> SelectionReason | None:
+    def _graph_refusal_detail(self) -> str | None:
         if self.parse_error is not None:
             detail = f"import-graph-invalid:{self.parse_error}"
         elif self.ambiguous_modules:
@@ -325,7 +363,7 @@ class DependencyOwnershipGraph:
             detail = f"lifecycle-catalog-invalid:{self.catalog_error}"
         else:
             return None
-        return SelectionReason(SelectionReasonKind.SAFE_FULL, source, detail)
+        return detail
 
     def _resolve_one(
         self,
@@ -351,11 +389,11 @@ class DependencyOwnershipGraph:
     ) -> dict[Path, set[SelectionReason]] | SelectionReason:
         repository_declared = REPOSITORY_TEST_INPUT_CONSUMERS.get(path)
         declared = repository_declared or self.declared_consumers.get(path)
+        observed = self._observed_consumers(path)
         if declared is not None:
-            observed = self._observed_consumers(path)
             if set(observed) != set(declared):
                 return SelectionReason(
-                    SelectionReasonKind.SAFE_FULL,
+                    SelectionReasonKind.UNRESOLVED,
                     path,
                     "lifecycle-consumer-mismatch",
                 )
@@ -367,11 +405,17 @@ class DependencyOwnershipGraph:
             )
             _merge_owned(owned, observed)
             return owned
+        if observed:
+            return observed
         if path.suffix == ".py":
             return self._python_consumers(path)
         if _irrelevant_to_python_tests(path):
-            return {}
-        return SelectionReason(SelectionReasonKind.SAFE_FULL, path, "unowned-test-input")
+            return SelectionReason(
+                SelectionReasonKind.IRRELEVANT,
+                path,
+                "explicitly-irrelevant-to-python-suite",
+            )
+        return SelectionReason(SelectionReasonKind.UNRESOLVED, path, "unowned-test-input")
 
     def _test_tree_consumers(
         self,
@@ -379,7 +423,11 @@ class DependencyOwnershipGraph:
     ) -> dict[Path, set[SelectionReason]] | SelectionReason:
         if is_test_module(path):
             if path not in self.tracked_set or not (self.project_root / path).is_file():
-                return SelectionReason(SelectionReasonKind.SAFE_FULL, path, "deleted-test-module")
+                return SelectionReason(
+                    SelectionReasonKind.IRRELEVANT,
+                    path,
+                    "deleted-test-removed-from-population",
+                )
             return self._owned({path}, SelectionReasonKind.CHANGED_TEST, path, "self")
         declared = self.declared_consumers.get(path)
         observed = self._observed_consumers(path)
@@ -387,13 +435,13 @@ class DependencyOwnershipGraph:
         if declared is not None:
             if consumers != set(declared):
                 return SelectionReason(
-                    SelectionReasonKind.SAFE_FULL,
+                    SelectionReasonKind.UNRESOLVED,
                     path,
                     "lifecycle-consumer-mismatch",
                 )
             consumers.update(declared)
         if not consumers:
-            return SelectionReason(SelectionReasonKind.SAFE_FULL, path, "unowned-test-support")
+            return SelectionReason(SelectionReasonKind.UNRESOLVED, path, "unowned-test-support")
         owned = observed
         if declared is not None:
             _merge_owned(
@@ -434,7 +482,7 @@ class DependencyOwnershipGraph:
                 ),
             )
         if not owned:
-            return SelectionReason(SelectionReasonKind.SAFE_FULL, path, "unowned-python-change")
+            return SelectionReason(SelectionReasonKind.UNRESOLVED, path, "unowned-python-change")
         return owned
 
     def _importing_tests(self, module: str) -> set[Path]:
@@ -470,17 +518,6 @@ class DependencyOwnershipGraph:
     ) -> dict[Path, set[SelectionReason]]:
         reason = SelectionReason(kind, source, detail)
         return {path: {reason} for path in consumers}
-
-    def _safe_full(self, source: Path, detail: str) -> TestImpact:
-        fresh_rerun_reason = SelectionReason(SelectionReasonKind.SAFE_FULL, source, detail)
-        ownership = tuple(OwnedTest(path, (fresh_rerun_reason,)) for path in self.tests)
-        return TestImpact(
-            tests=self.tests,
-            ownership=ownership,
-            complete=False,
-            global_invalidation=True,
-            fresh_rerun_reason=fresh_rerun_reason,
-        )
 
 
 def transitive_importers(
@@ -549,8 +586,30 @@ def _merge_owned(
 
 
 def _irrelevant_to_python_tests(path: Path) -> bool:
-    return path.parts[:1] in {("docs",), ("notes",), ("dashboard",)} or path.suffix in {
-        ".md",
-        ".txt",
-        ".rst",
+    return bool(path.parts and path.parts[0] in IRRELEVANT_ROOTS) or (
+        path.suffix in IRRELEVANT_SUFFIXES
+    )
+
+
+def ownership_configuration_digest() -> str:
+    """Digest the versioned repository-owned classifications that selection consumes."""
+
+    payload = {
+        "schemaVersion": "agents-remember-test-selection-authority/v2",
+        "version": OWNERSHIP_AUTHORITY_VERSION,
+        "globalInputs": sorted(path.as_posix() for path in GLOBAL_TEST_INPUTS),
+        "declaredConsumers": {
+            path.as_posix(): sorted(consumer.as_posix() for consumer in consumers)
+            for path, consumers in sorted(
+                REPOSITORY_TEST_INPUT_CONSUMERS.items(),
+                key=lambda item: item[0].as_posix(),
+            )
+        },
+        "irrelevantRoots": sorted(IRRELEVANT_ROOTS),
+        "irrelevantSuffixes": sorted(IRRELEVANT_SUFFIXES),
+        "profileTestPatterns": {
+            root.as_posix(): list(suffixes) for root, suffixes in DASHBOARD_TEST_PATTERNS
+        },
     }
+    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()

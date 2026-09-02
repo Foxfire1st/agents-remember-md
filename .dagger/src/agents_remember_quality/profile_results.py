@@ -26,6 +26,7 @@ class QualityProgress:
     skipped: list[str] = dataclass_field(default_factory=list)
     step_exit_codes: dict[str, int] = dataclass_field(default_factory=dict)
     failure_details: dict[str, str] = dataclass_field(default_factory=dict)
+    selection_results: dict[str, dict[str, object]] = dataclass_field(default_factory=dict)
 
 
 def profile_result_payload(
@@ -60,6 +61,10 @@ def profile_result_payload(
     }
     if progress.failure_details:
         result["failureDetails"] = progress.failure_details
+    if progress.selection_results:
+        result["selectionResults"] = [
+            progress.selection_results[key] for key in sorted(progress.selection_results)
+        ]
     return result
 
 

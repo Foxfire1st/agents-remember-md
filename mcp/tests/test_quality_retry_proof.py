@@ -95,6 +95,14 @@ def test_full_proof_becomes_exact_then_test_delta_and_source_change_invalidates(
     exact.prepare_artifacts(coverage_json)
     exact.finish(coverage_json, quality_passed=False)
 
+    stale_identity = retry_proof.prepare(
+        replace(inputs, selection_digest="b" * 64),
+        admission=QUALITY_TEST_ADMISSION,
+        printer=output.append,
+    )
+    assert stale_identity is not None and stale_identity.mode == "fresh"
+    assert "exact-selection-identity-changed" in output[-1]
+
     test_path.write_text(
         test_path.read_text(encoding="utf-8") + "\ndef test_more():\n    assert True\n",
         encoding="utf-8",
@@ -266,6 +274,7 @@ def test_wrapper_retry_runs_only_changed_test_module(
         threshold=30.0,
         top=20,
         diff_base="HEAD",
+        selection_digest="a" * 64,
     )
     with (
         mock.patch.object(check, "run_subprocess", runner),
@@ -342,6 +351,7 @@ def test_exact_proof_is_not_scored_when_a_cheap_rail_breaks(tmp_path: Path) -> N
         threshold=30.0,
         top=20,
         diff_base="HEAD",
+        selection_digest="a" * 64,
     )
     coverage_rails = mock.Mock(return_value=0)
 
@@ -444,6 +454,7 @@ def test_retry_shape_helpers_cover_direct_new_and_malformed_selections(tmp_path:
         lane_digest="lane-digest",
         lane_trigger="affected",
         lane_population=("accept=unit-regression",),
+        selection_digest="a" * 64,
     )
     with mock.patch.object(retry_proof, "_tracked_paths", return_value=()):
         assert retry_proof._selected_test_modules(  # pyright: ignore[reportPrivateUsage]
@@ -637,6 +648,7 @@ def test_manifest_misses_report_absence_corruption_and_digest_failure_explicitly
                 "laneDigest": plan.lane_digest,
                 "laneTrigger": plan.lane_trigger,
                 "lanePopulation": list(plan.lane_population),
+                "selectionDigest": plan.selection_digest,
                 "snapshot": plan.snapshot,
                 "selectedTests": [path.as_posix() for path in plan.selected_tests],
                 "coverageDataSha256": "wrong",
@@ -851,6 +863,7 @@ def _inputs(root: Path) -> retry_proof.RetryInputs:
         lane_digest="lane-digest",
         lane_trigger="release",
         lane_population=("accept=release", *lane_rows),
+        selection_digest="a" * 64,
     )
 
 
@@ -913,6 +926,7 @@ def _plan(tmp_path: Path, *, mode: str = "fresh") -> retry_proof.RetryPlan:
         lane_digest="lane-digest",
         lane_trigger="release",
         lane_population=("accept=release",),
+        selection_digest="a" * 64,
         delta_tests=(Path("tests/test_one.py"),) if mode == "delta" else (),
     )
 

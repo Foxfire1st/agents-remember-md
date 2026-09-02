@@ -283,9 +283,7 @@ def targeted_scope_lines(
     changed = [path.as_posix() for path in result.changed_paths]
     closure = [path.as_posix() for path in result.reverse_import_closure]
     tests = [path.as_posix() for path in result.test_paths]
-    ownership_reasons = sorted(
-        {reason.render() for owned in result.test_impact.ownership for reason in owned.reasons}
-    )
+    ownership_reasons = sorted({reason.render() for reason in result.test_impact.reasons})
     lines = [
         scope_line(
             "targeted",
@@ -306,7 +304,7 @@ def targeted_scope_lines(
         (
             "targeted ownership: complete"
             if result.test_impact.complete
-            else "targeted ownership: incomplete; safe full Python population selected"
+            else "targeted ownership: incomplete; Gate 2 blocked without population expansion"
         ),
         f"targeted selection reasons ({len(ownership_reasons)}):",
         *(f"  {reason}" for reason in ownership_reasons),

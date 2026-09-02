@@ -118,6 +118,7 @@ class CheckConfig:
     coverage_data: Path | None = None
     progress_report: Path | None = None
     progress: QualityProgress | None = None
+    selection_digest: str | None = None
 
 
 @dataclass(frozen=True)

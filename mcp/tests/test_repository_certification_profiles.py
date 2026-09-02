@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,12 +15,17 @@ from agents_remember.certification.repository_profiles import (
     DaggerModuleExecutorAdapter,
     JsonExitStatusDecoder,
     RepositoryExecutionRequest,
+    RepositorySelectionDraft,
+    RepositorySelectionReason,
+    RepositorySelectionResult,
     admit_repository_profile_execution,
     admit_repository_profile_plan,
+    build_repository_selection_result,
     canonicalize_repository_profile,
     compile_repository_profile_plan,
     load_repository_profile,
     repository_profile_digest,
+    repository_selection_result_digest,
     validate_repository_profile,
 )
 from agents_remember.certification.repository_profiles.models import (
@@ -157,6 +164,9 @@ def test_agents_remember_profile_preserves_the_complete_approved_gate_inventory(
     assert set().union(*observed.values()) == {
         rail.identity.railId for rail in admitted.canonical.profile.rails
     }
+    assert admitted.canonical.profile.selectors[0].configurationDigest == (
+        profile_selection.ownership_configuration_digest()
+    )
 
 
 def test_agents_remember_profile_replaces_the_legacy_result_artifact_authority() -> None:
@@ -553,6 +563,124 @@ def test_repository_profile_selector_refuses_an_unadmitted_absolute_output(
 
     with pytest.raises(RuntimeError, match="sandbox scratch root"):
         profile_selection._confined_output(tmp_path, tmp_path / "outside.json")
+
+
+def test_selector_result_digest_binds_candidate_population_reasons_and_outputs() -> None:
+    reason = RepositorySelectionReason(
+        input="src/lib.rs",
+        kind="declared-consumer",
+        effect="select",
+        outputArtifact="selected-tests",
+        outputValue="unit",
+        detail="fixture-owned-test",
+    )
+    result = build_repository_selection_result(
+        RepositorySelectionDraft(
+            selector_id="repository-test-selector",
+            selector_version="2.0.0",
+            configuration_digest="a" * 64,
+            candidate_identity=CandidateIdentity(kind="git-tree", value="b" * 40),
+            mode="targeted",
+            base_revision="base",
+            population="targeted",
+            complete=True,
+            global_invalidators=(),
+            dependency_reasons=(reason,),
+            unresolved_inputs=(),
+            outputs={"selected-tests": ("unit",)},
+        )
+    )
+    payload = result.model_dump(mode="json")
+
+    assert RepositorySelectionResult.model_validate(payload) == result
+    payload["candidateIdentity"]["value"] = "c" * 40
+    with pytest.raises(ValueError, match="digest does not match"):
+        RepositorySelectionResult.model_validate(payload)
+
+
+def test_selector_result_refuses_unreasoned_output_and_targeted_full_expansion() -> None:
+    result = build_repository_selection_result(
+        RepositorySelectionDraft(
+            selector_id="repository-test-selector",
+            selector_version="2.0.0",
+            configuration_digest="a" * 64,
+            candidate_identity=CandidateIdentity(kind="git-tree", value="b" * 40),
+            mode="targeted",
+            base_revision="base",
+            population="targeted",
+            complete=True,
+            global_invalidators=(),
+            dependency_reasons=(
+                RepositorySelectionReason(
+                    input="src/lib.rs",
+                    kind="declared-consumer",
+                    effect="select",
+                    outputArtifact="selected-tests",
+                    outputValue="unit",
+                    detail="fixture-owned-test",
+                ),
+            ),
+            unresolved_inputs=(),
+            outputs={"selected-tests": ("unit",)},
+        )
+    )
+    payload = result.model_dump(mode="json")
+    payload["dependencyReasons"] = []
+    payload["selectionDigest"] = repository_selection_result_digest(payload)
+    with pytest.raises(ValueError, match="exact dependency reason"):
+        RepositorySelectionResult.model_validate(payload)
+
+    payload = result.model_dump(mode="json")
+    payload["population"] = "full"
+    payload["selectionDigest"] = repository_selection_result_digest(payload)
+    with pytest.raises(ValueError, match="cannot broaden itself to full"):
+        RepositorySelectionResult.model_validate(payload)
+
+
+def test_profile_digest_binds_declared_external_selector_inputs() -> None:
+    profile = fixture_profile()
+    selector = profile.selectors[0].model_copy(
+        update={"externalInputs": ("external://ci-owned-test-catalog",)}
+    )
+    changed = profile.model_copy(update={"selectors": (selector,)})
+
+    assert repository_profile_digest(changed) != profile.profileDigest
+
+
+@pytest.mark.parametrize("fixture", (NODE_FIXTURE, RUST_FIXTURE))
+def test_non_python_selector_fixture_emits_the_canonical_generic_result(
+    tmp_path: Path,
+    fixture: FixtureRepository,
+) -> None:
+    script = fixture.source_root / "scripts/select-tests.sh"
+    configuration_digest = hashlib.sha256(script.read_bytes()).hexdigest()
+    output = tmp_path / "selection.json"
+    completed = subprocess.run(
+        (
+            "sh",
+            script.as_posix(),
+            output.as_posix(),
+            "targeted",
+            "base-commit",
+            "git-tree",
+            "d" * 40,
+            "repository-test-selector",
+            "2.0.0",
+            configuration_digest,
+        ),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    result = RepositorySelectionResult.model_validate_json(output.read_text(encoding="utf-8"))
+    assert result.selectorId == "repository-test-selector"
+    assert result.configurationDigest == configuration_digest
+    assert result.candidateIdentity == CandidateIdentity(kind="git-tree", value="d" * 40)
+    assert result.population == "targeted"
+    assert result.complete
+    assert result.output_values()["selected-tests"]
 
 
 def test_repository_profile_teardown_adapter_requires_a_passing_cleanup_checkpoint(

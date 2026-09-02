@@ -17,7 +17,16 @@ sys.path.insert(0, str(MCP_SRC))
 
 from _evidence_catalog_fixture import write_synthetic_evidence_catalog
 from _quality_admission import QUALITY_TEST_ADMISSION
-from agents_remember_test_support.code_quality import check, diff_coverage, targeted
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.repository_profiles.selection_results import (
+    RepositorySelectionResult,
+)
+from agents_remember_test_support.code_quality import (
+    check,
+    diff_coverage,
+    profile_selection,
+    targeted,
+)
 from agents_remember_test_support.code_quality.causal_preflight import evaluate_preflights
 from agents_remember_test_support.code_quality.dependency_ownership import SelectionReasonKind
 from agents_remember_test_support.code_quality.scope import ScopeError
@@ -254,7 +263,7 @@ class TargetedScopeDerivationTests(unittest.TestCase):
             # it through pkg.module and that module's test importer.
             self.assertTrue(any(path.name == "test_module.py" for path in derived.test_paths))
 
-    def test_changed_production_module_without_owner_selects_safe_full_population(self) -> None:
+    def test_changed_production_module_without_owner_refuses_without_broadening(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             base = targeted_repository(root)
@@ -266,10 +275,10 @@ class TargetedScopeDerivationTests(unittest.TestCase):
             derived = targeted.derive_targeted_scope(root, base)
 
             self.assertFalse(derived.test_impact.complete)
-            self.assertIsNotNone(derived.test_impact.fresh_rerun_reason)
+            self.assertEqual(derived.test_paths, ())
             self.assertEqual(
-                derived.test_paths,
-                (Path("tests/test_extra.py"), Path("tests/test_module.py")),
+                tuple(reason.source for reason in derived.test_impact.unresolved_inputs),
+                (Path("src/pkg/naked.py"),),
             )
 
     def test_string_referenced_module_is_covered_by_wiring_tests(self) -> None:
@@ -353,13 +362,39 @@ class TargetedScopeDerivationTests(unittest.TestCase):
 
             unknown = targeted.derive_targeted_scope(root, base)
             self.assertFalse(unknown.test_impact.complete)
-            self.assertEqual(len(unknown.test_paths), 2)
+            self.assertEqual(unknown.test_paths, ())
+            self.assertEqual(
+                tuple(reason.detail for reason in unknown.test_impact.unresolved_inputs),
+                ("unowned-test-support",),
+            )
 
             (root / "tests/_unknown.py").unlink()
-            (root / "tests/test_extra.py").unlink()
+            deleted_test = root / "tests/test_deleted.py"
+            deleted_test.write_text(
+                "def test_deleted() -> None:\n    assert True\n",
+                encoding="utf-8",
+            )
+            run_git(root, "add", deleted_test.relative_to(root).as_posix())
+            run_git(
+                root,
+                "-c",
+                "user.email=targeted@agents-remember.invalid",
+                "-c",
+                "user.name=Targeted Tests",
+                "commit",
+                "--quiet",
+                "-m",
+                "add unowned deletion fixture",
+            )
+            base = run_git(root, "rev-parse", "HEAD").stdout.strip()
+            deleted_test.unlink()
             deleted = targeted.derive_targeted_scope(root, base)
-            self.assertFalse(deleted.test_impact.complete)
-            self.assertEqual(deleted.test_paths, (Path("tests/test_module.py"),))
+            self.assertTrue(deleted.test_impact.complete)
+            self.assertEqual(deleted.test_paths, ())
+            self.assertEqual(
+                tuple(reason.detail for reason in deleted.test_impact.input_decisions),
+                ("deleted-test-removed-from-population",),
+            )
 
     def test_tests_only_change_leaves_production_coverage_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -407,7 +442,147 @@ class TargetedScopeDerivationTests(unittest.TestCase):
             self.assertEqual(derived.type_paths, ())
             self.assertEqual(derived.test_paths, ())
 
-    def test_unowned_script_change_fails_closed_to_the_safe_test_population(self) -> None:
+    def test_generated_projection_uses_its_observed_literal_consumer_before_irrelevance(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = targeted_repository(root)
+            projection = root / ".generated/rules.mdc"
+            projection.parent.mkdir()
+            projection.write_text("generated\n", encoding="utf-8")
+            consumer = root / "tests/test_projection.py"
+            consumer.write_text(
+                'PROJECTION = ".generated/rules.mdc"\n'
+                "def test_projection() -> None:\n"
+                "    assert PROJECTION.endswith('.mdc')\n",
+                encoding="utf-8",
+            )
+            run_git(root, "add", "-A")
+            run_git(
+                root,
+                "-c",
+                "user.email=targeted@agents-remember.invalid",
+                "-c",
+                "user.name=Targeted Tests",
+                "commit",
+                "--quiet",
+                "-m",
+                "projection baseline",
+            )
+            base = run_git(root, "rev-parse", "HEAD").stdout.strip()
+            projection.write_text("regenerated\n", encoding="utf-8")
+
+            derived = targeted.derive_targeted_scope(root, base)
+
+            self.assertTrue(derived.test_impact.complete)
+            self.assertEqual(derived.test_paths, (Path("tests/test_projection.py"),))
+            self.assertEqual(
+                {reason.kind for reason in derived.test_impact.reasons_for(derived.test_paths[0])},
+                {SelectionReasonKind.LITERAL_CONSUMER},
+            )
+
+    def test_selector_result_publishes_every_unresolved_input_without_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = targeted_repository(root)
+            (root / "scripts/first.sh").write_text("exit 0\n", encoding="utf-8")
+            (root / "config.json").write_text("{}\n", encoding="utf-8")
+
+            result = profile_selection.selection_result(
+                root,
+                mode="targeted",
+                diff_base=base,
+                candidate_identity=CandidateIdentity(kind="git-tree", value="a" * 40),
+            )
+
+            reparsed = RepositorySelectionResult.model_validate_json(result.model_dump_json())
+            self.assertFalse(reparsed.complete)
+            self.assertEqual(reparsed.failureCode, "test-selection-ownership-incomplete")
+            self.assertEqual(
+                tuple(reason.input for reason in reparsed.unresolvedInputs),
+                ("config.json", "scripts/first.sh"),
+            )
+            self.assertEqual(reparsed.output_values()["selected-tests"], ())
+
+    def test_selector_result_distinguishes_empty_targeted_and_declared_full(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = targeted_repository(root)
+            candidate = CandidateIdentity(kind="git-tree", value="a" * 40)
+
+            empty = profile_selection.selection_result(
+                root,
+                mode="targeted",
+                diff_base=base,
+                candidate_identity=candidate,
+            )
+            full = profile_selection.selection_result(
+                root,
+                mode="full",
+                diff_base=base,
+                candidate_identity=candidate,
+            )
+
+            self.assertTrue(empty.complete)
+            self.assertEqual(empty.population, "empty")
+            self.assertEqual(full.population, "full")
+            self.assertGreater(len(full.output_values()["selected-tests"]), 0)
+
+    def test_dashboard_change_is_explicitly_global_to_its_declared_suite(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            targeted_repository(root)
+            source = root / "dashboard/src/widget.ts"
+            test = root / "dashboard/src/widget.test.ts"
+            script_test = root / "dashboard/scripts/check-diff-coverage.test.mjs"
+            e2e_test = root / "dashboard/e2e/clean-room.spec.ts"
+            source.parent.mkdir(parents=True)
+            source.write_text("export const value = 1;\n", encoding="utf-8")
+            test.write_text("const expected = 1;\n", encoding="utf-8")
+            script_test.parent.mkdir(parents=True)
+            script_test.write_text("const expected = 1;\n", encoding="utf-8")
+            e2e_test.parent.mkdir(parents=True)
+            e2e_test.write_text("const expected = 1;\n", encoding="utf-8")
+            run_git(root, "add", "-A")
+            run_git(
+                root,
+                "-c",
+                "user.email=targeted@agents-remember.invalid",
+                "-c",
+                "user.name=Targeted Tests",
+                "commit",
+                "--quiet",
+                "-m",
+                "dashboard baseline",
+            )
+            base = run_git(root, "rev-parse", "HEAD").stdout.strip()
+            source.write_text("export const value = 2;\n", encoding="utf-8")
+
+            result = profile_selection.selection_result(
+                root,
+                mode="targeted",
+                diff_base=base,
+                candidate_identity=CandidateIdentity(kind="git-tree", value="a" * 40),
+            )
+
+            self.assertTrue(result.complete)
+            self.assertEqual(
+                result.output_values()["dashboard-tests"],
+                (
+                    "dashboard/scripts/check-diff-coverage.test.mjs",
+                    "dashboard/src/widget.test.ts",
+                ),
+            )
+            relative_reasons = [
+                reason
+                for reason in result.dependencyReasons
+                if reason.input == "dashboard/src/widget.ts"
+            ]
+            self.assertIn("global-invalidate", {reason.effect for reason in relative_reasons})
+            self.assertNotIn("irrelevant", {reason.effect for reason in relative_reasons})
+
+    def test_unowned_script_change_refuses_before_any_test_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             base = targeted_repository(root)
@@ -417,10 +592,7 @@ class TargetedScopeDerivationTests(unittest.TestCase):
 
             self.assertEqual(derived.changed_paths, (Path("scripts/sync.py"),))
             self.assertEqual(derived.coverage_paths, ())
-            self.assertEqual(
-                derived.test_paths,
-                (Path("tests/test_extra.py"), Path("tests/test_module.py")),
-            )
+            self.assertEqual(derived.test_paths, ())
             self.assertFalse(derived.test_impact.complete)
 
     def test_changed_paths_refuses_an_unknown_base(self) -> None:
@@ -615,10 +787,12 @@ class TargetedWrapperRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             base = targeted_repository(root)
-            (root / "tests/test_module.py").write_text(
-                "from pkg.module import value\n\n"
-                "def test_value() -> None:\n"
-                "    assert value() == 2\n",
+            test_module = root / "tests/test_module.py"
+            test_module.write_text(
+                test_module.read_text(encoding="utf-8").replace(
+                    "assert value() == SUPPORT",
+                    "assert value() == 2",
+                ),
                 encoding="utf-8",
             )
             args = argparse.Namespace(
@@ -662,7 +836,7 @@ class TargetedWrapperRunTests(unittest.TestCase):
             self.assertTrue(any("diff-coverage PASS (not applicable)" in line for line in output))
             self.assertFalse(any("## radon-cc" in line for line in output))
 
-    def test_scripts_only_run_fails_closed_to_pytest_but_skips_coverage_rails(self) -> None:
+    def test_scripts_only_run_refuses_before_gate_two(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             base = targeted_repository(root)
@@ -677,34 +851,11 @@ class TargetedWrapperRunTests(unittest.TestCase):
                 targeted=True,
                 memory_cap_bytes=None,
             )
-            config = check.config_from_args(args, admission=QUALITY_TEST_ADMISSION)
-            commands: list[list[str]] = []
-            output: list[str] = []
-
-            exit_code = check.run_quality_check(
-                config,
-                runner=fake_runner(commands, root / "coverage.json", root, []),
-                printer=output.append,
-            )
-
-            self.assertEqual(exit_code, 0)
-            self.assertEqual(
-                [command[2] for command in commands],
-                [
-                    "ruff",
-                    "ruff",
-                    "agents_remember_test_support.code_quality.file_size",
-                    "agents_remember_test_support.code_quality.layering",
-                    "pyright",
-                    "agents_remember_test_support.testing.evidence_lifecycle",
-                    "agents_remember_test_support.code_quality.causal_preflight",
-                    "pytest",
-                ],
-            )
-            self.assertTrue(
-                any("radon report and CRAP rails are not applicable" in line for line in output)
-            )
-            self.assertFalse(any("pytest rail is not applicable" in line for line in output))
+            with self.assertRaisesRegex(
+                ScopeError,
+                "test-selection-ownership-incomplete.*scripts/sync.py",
+            ):
+                check.config_from_args(args, admission=QUALITY_TEST_ADMISSION)
 
     def test_source_import_roots_resolves_files_to_the_package_import_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

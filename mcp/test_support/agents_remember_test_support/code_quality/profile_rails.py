@@ -5,7 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
+
+from agents_remember.certification.repository_profiles.selection_results import (
+    RepositorySelectionResult,
+)
 
 from agents_remember_test_support.code_quality import (
     causal_continuation,
@@ -71,15 +76,22 @@ def _profile_config(args: argparse.Namespace, admission: DaggerAdmission) -> che
         argv.extend(("--memory-cap-bytes", str(args.memory_cap_bytes)))
     parsed = quality_parser().parse_args(argv)
     config = check.config_from_args(parsed, admission=admission)
-    _require_exact_scope(args, config)
-    return config
+    selection = _require_exact_scope(args, config)
+    return replace(config, selection_digest=selection.selectionDigest)
 
 
-def _require_exact_scope(args: argparse.Namespace, config: check.CheckConfig | None = None) -> None:
+def _require_exact_scope(
+    args: argparse.Namespace,
+    config: check.CheckConfig | None = None,
+) -> RepositorySelectionResult:
     try:
         observed = json.loads(args.scope.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise quality_scope.ScopeError("profile selector published no valid scope") from error
+    try:
+        selection = RepositorySelectionResult.model_validate(observed)
+    except ValueError as error:
+        raise quality_scope.ScopeError("profile selector published an invalid contract") from error
     expected = profile_selection.selection_payload(
         args.project_root.resolve(),
         mode=args.mode,
@@ -90,7 +102,8 @@ def _require_exact_scope(args: argparse.Namespace, config: check.CheckConfig | N
             "profile selector result differs from the exact repository-owned derivation"
         )
     if config is None:
-        return
+        return selection
+    values = selection.output_values()
     actual = {
         "lint-paths": _paths(config.scope.lint_paths),
         "type-closure": _paths(config.scope.type_paths),
@@ -99,10 +112,11 @@ def _require_exact_scope(args: argparse.Namespace, config: check.CheckConfig | N
         "size-paths": _paths(config.scope.size_paths),
     }
     for name, value in actual.items():
-        if observed.get(name) != value:
+        if list(values.get(name, ())) != value:
             raise quality_scope.ScopeError(
                 f"profile selector field {name} differs from the executable rail scope"
             )
+    return selection
 
 
 def _paths(paths: list[Path]) -> list[str]:

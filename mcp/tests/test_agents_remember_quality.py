@@ -17,11 +17,15 @@ from unittest.mock import patch
 import pytest
 from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles import (
+    RepositorySelectionDraft,
+    RepositorySelectionReason,
+    build_repository_selection_result,
     canonicalize_repository_profile,
     compile_repository_profile_plan,
     load_repository_profile,
     repository_profile_digest,
 )
+from agents_remember.certification.repository_profiles.models import ProfileMode
 from agents_remember_test_support.testing.dagger_admission import (
     DAGGER_TEST_ATTESTATION_ENV,
     DaggerAdmissionError,
@@ -108,34 +112,30 @@ class FakeContainer:
         if "agents_remember_test_support.code_quality.profile_selection" in command:
             output = command[command.index("--output") + 1]
             self.files[output] = json.dumps(
-                {
-                    "schemaVersion": "repository-selector-result/v1",
-                    "mode": command[command.index("--mode") + 1],
-                    "baseRevision": command[command.index("--diff-base") + 1],
-                    "complete": True,
-                    "globalInvalidation": False,
-                    "changed-files": ["mcp/src/fixture.py"],
-                    "coverage-paths": ["mcp/src/agents_remember"],
-                    "coverage-roots": ["agents_remember"],
-                    "lint-paths": ["mcp/src/fixture.py"],
-                    "selected-tests": ["mcp/tests/test_fixture.py"],
-                    "size-paths": ["mcp/src/fixture.py"],
-                    "type-closure": ["mcp/src/fixture.py"],
-                }
+                _fake_selector_result(
+                    command,
+                    {
+                        "changed-files": ["mcp/src/fixture.py"],
+                        "coverage-paths": ["mcp/src/agents_remember"],
+                        "coverage-roots": ["agents_remember"],
+                        "dashboard-tests": ["dashboard/src/fixture.test.ts"],
+                        "lint-paths": ["mcp/src/fixture.py"],
+                        "selected-tests": ["mcp/tests/test_fixture.py"],
+                        "size-paths": ["mcp/src/fixture.py"],
+                        "type-closure": ["mcp/src/fixture.py"],
+                    },
+                )
             )
         if "scripts/select-tests.sh" in command:
-            output = command[-1]
+            script_index = command.index("scripts/select-tests.sh")
+            output = command[script_index + 1]
             selected = (
                 ["unit"]
                 if self.image and self.image.startswith("rust:")
                 else ["test/unit.test.mjs"]
             )
             self.files[output] = json.dumps(
-                {
-                    "schemaVersion": "repository-selector-result/v1",
-                    "complete": True,
-                    "selected-tests": selected,
-                }
+                _fake_selector_result(command, {"selected-tests": selected})
             )
         for script, output_offsets in (
             ("scripts/run-suite.mjs", (1, 2)),
@@ -197,6 +197,69 @@ class FakeFile:
 
     async def size(self) -> int:
         return len(self.value.encode("utf-8"))
+
+
+def _fake_selector_result(
+    command: list[str],
+    outputs: dict[str, list[str]],
+    *,
+    complete: bool = True,
+) -> dict[str, object]:
+    def value(flag: str, fixture_index: int) -> str:
+        return command[command.index(flag) + 1] if flag in command else command[fixture_index]
+
+    raw_mode = value("--mode", 3)
+    mode: ProfileMode = "full" if raw_mode == "full" else "targeted"
+    base = value("--diff-base", 4)
+    candidate_kind = value("--candidate-kind", 5)
+    candidate_value = value("--candidate-value", 6)
+    selector_id = value("--selector-id", 7)
+    selector_version = value("--selector-version", 8)
+    configuration_digest = value("--selector-configuration-digest", 9)
+    reasons = (
+        tuple(
+            RepositorySelectionReason(
+                input="fixture://selector",
+                kind="declared-consumer",
+                effect="select",
+                outputArtifact=artifact,
+                outputValue=selected,
+                detail="fake-container-owned-output",
+            )
+            for artifact, values in outputs.items()
+            for selected in values
+        )
+        if complete
+        else ()
+    )
+    unresolved = (
+        ()
+        if complete
+        else (
+            RepositorySelectionReason(
+                input="fixture://unknown-input",
+                kind="unresolved",
+                effect="unresolved",
+                detail="fixture-ownership-missing",
+            ),
+        )
+    )
+    return build_repository_selection_result(
+        RepositorySelectionDraft(
+            selector_id=selector_id,
+            selector_version=selector_version,
+            configuration_digest=configuration_digest,
+            candidate_identity=CandidateIdentity(kind=candidate_kind, value=candidate_value),
+            mode=mode,
+            base_revision=base,
+            population="full" if mode == "full" else "targeted",
+            complete=complete,
+            global_invalidators=("declared-full-mode",) if mode == "full" else (),
+            dependency_reasons=reasons,
+            unresolved_inputs=unresolved,
+            outputs=outputs,
+        )
+    ).model_dump(mode="json")
 
 
 class FakeDag:
@@ -827,12 +890,13 @@ def test_profile_selector_shape_failure_is_a_typed_terminal_step() -> None:
         def with_exec(self, command: list[str], **kwargs: object) -> FakeContainer:
             container = super().with_exec(command, **kwargs)
             if "scripts/select-tests.sh" in command:
-                self.files[command[-1]] = json.dumps(
-                    {
-                        "schemaVersion": "repository-selector-result/v1",
-                        "complete": False,
-                        "selected-tests": [],
-                    }
+                script_index = command.index("scripts/select-tests.sh")
+                self.files[command[script_index + 1]] = json.dumps(
+                    _fake_selector_result(
+                        command,
+                        {"selected-tests": []},
+                        complete=False,
+                    )
                 )
             return container
 
@@ -855,6 +919,8 @@ def test_profile_selector_shape_failure_is_a_typed_terminal_step() -> None:
             scalar_values={
                 "reports": "/reports",
                 "selection-mode": "full",
+                "candidate-kind": "git-tree",
+                "candidate-value": "d" * 40,
                 "diff-base": "base-commit",
                 "memory-cap-bytes": "0",
                 "clean-room": "/workspace",
@@ -869,8 +935,13 @@ def test_profile_selector_shape_failure_is_a_typed_terminal_step() -> None:
     assert progress.completed == []
     assert progress.step_exit_codes == {name: 65}
     assert progress.failure_details == {
-        name: "selector result has the wrong schema or is incomplete"
+        name: (
+            "test-selection-ownership-incomplete: fixture://unknown-input:fixture-ownership-missing"
+        )
     }
+    assert progress.selection_results[name.removeprefix("selector:")]["failureCode"] == (
+        "test-selection-ownership-incomplete"
+    )
 
 
 def test_dagger_quality_refuses_a_rail_runtime_outside_the_admitted_adapter() -> None:

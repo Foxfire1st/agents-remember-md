@@ -3,7 +3,7 @@
   "semanticRevision": "1.0.0",
   "repositoryId": "agents-remember",
   "profileId": "agents-remember-certification",
-  "profileDigest": "d8fc1225932de5f46946fc410c40e544018bff8b34da0c706615abdd307d96a4",
+  "profileDigest": "47c065597c909229994b680562b508e202ac8217e39f2fd3c3fa25267139d003",
   "selections": [
     {
       "selectionId": "closeout-full",
@@ -2578,19 +2578,22 @@
   "selectors": [
     {
       "selectorId": "agents-remember-test-selection",
-      "schemaVersion": "repository-selector-result/v1",
-      "version": "1.0.0",
-      "configurationDigest": "41d9a68aae0ec67307f51d171587c0973b7e2e6b23b9a3390b8fc743635e10ad",
+      "schemaVersion": "repository-selector-result/v2",
+      "version": "2.0.0",
+      "configurationDigest": "b579121789223284da5e2fb864a38f3298ebb388748eb19b1d24d48ffe60cb3b",
       "inputUniverse": [
         "configuration and generated projections",
         "fixtures support and plugins",
+        "profile-declared external inputs",
         "production and test sources",
         "runtime and harness files"
       ],
+      "externalInputs": [],
       "outputArtifacts": [
         "changed-files",
         "coverage-paths",
         "coverage-roots",
+        "dashboard-tests",
         "lint-paths",
         "selected-tests",
         "size-paths",
@@ -2607,6 +2610,16 @@
         "{selection-mode}",
         "--diff-base",
         "{diff-base}",
+        "--candidate-kind",
+        "{candidate-kind}",
+        "--candidate-value",
+        "{candidate-value}",
+        "--selector-id",
+        "{selector-id}",
+        "--selector-version",
+        "{selector-version}",
+        "--selector-configuration-digest",
+        "{selector-configuration-digest}",
         "--output",
         "{selector-output}"
       ],
@@ -2627,7 +2640,7 @@
       "planArgument": "execution-manifest",
     "reportsField": "reports",
     "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-    "runtimeDigest": "d5582420d11a32655d9c7bdecf77d0400a7bb2ea77a2181badb0427cc42abd9d",
+    "runtimeDigest": "de2193a75d44131eb52c58a5c5432b014e6ed284d767e1aa17cc1ec55bfde17b",
       "consumingGates": [1, 2, 3, 4]
     }
   ],

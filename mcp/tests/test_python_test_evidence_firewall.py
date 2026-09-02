@@ -75,6 +75,7 @@ class PythonTestEvidenceFirewallTests(unittest.TestCase):
             lane_digest="lane-digest",
             lane_trigger="release",
             lane_population=("accept=release",),
+            selection_digest="a" * 64,
         )
         with self.assertRaises(DaggerAdmissionError):
             retry_proof.prepare(inputs, admission=forged, printer=lambda _line: None)

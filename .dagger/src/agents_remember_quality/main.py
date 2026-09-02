@@ -29,6 +29,11 @@ from agents_remember_quality.retry_evidence_route import (
     run_exact_retry_evidence,
     run_retry_matrix_evidence,
 )
+from agents_remember_quality.selection_result import (
+    SelectionAdmission,
+    SelectionResultError,
+    parse_selection_result,
+)
 
 AMBIENT_CODEX_PROTOCOL = profile_results.AMBIENT_CODEX_PROTOCOL
 BASELINE_CODEX_PROTOCOL = profile_results.BASELINE_CODEX_PROTOCOL
@@ -380,6 +385,8 @@ async def _run_profile_acceptance(
     scalar_values = {
         "reports": inputs.reports,
         "selection-mode": inputs.mode,
+        "candidate-kind": inputs.plan.candidate_kind,
+        "candidate-value": inputs.plan.candidate_value,
         "diff-base": inputs.diff_base,
         "memory-cap-bytes": str(inputs.memory_cap_bytes),
         "clean-room": "/workspace",
@@ -431,7 +438,13 @@ async def _run_profile_selector(
     result_path = _selector_result_path(str(definition["resultPath"]))
     command = expand_command(
         definition.get("command", []),
-        scalar_values={**scalar_values, "selector-output": result_path},
+        scalar_values={
+            **scalar_values,
+            "selector-output": result_path,
+            "selector-id": selector.selector_id,
+            "selector-version": str(definition["version"]),
+            "selector-configuration-digest": str(definition["configurationDigest"]),
+        },
         list_values={},
     )
     name = f"selector:{selector.selector_id}"
@@ -470,35 +483,35 @@ async def _run_profile_selector(
             result_path,
             "selector result is not valid JSON",
         )
-    if (
-        not isinstance(payload, dict)
-        or payload.get("schemaVersion") != definition.get("schemaVersion")
-        or payload.get("complete") is not True
-    ):
+    outputs = definition.get("outputArtifacts")
+    if not isinstance(outputs, list) or any(not isinstance(item, str) for item in outputs):
+        raise ValueError(f"selector {selector.selector_id} output contract is invalid")
+    try:
+        parsed = parse_selection_result(
+            payload,
+            admission=SelectionAdmission(
+                selector_id=selector.selector_id,
+                selector_version=str(definition["version"]),
+                configuration_digest=str(definition["configurationDigest"]),
+                candidate_kind=scalar_values["candidate-kind"],
+                candidate_value=scalar_values["candidate-value"],
+                mode=scalar_values["selection-mode"],
+                base_revision=scalar_values["diff-base"],
+            ),
+            output_artifacts=tuple(outputs),
+        )
+    except SelectionResultError as error:
+        if str(error).startswith("test-selection-ownership-incomplete:"):
+            progress.selection_results[selector.selector_id] = payload
         return _selector_result_failure(
             progress,
             name,
             result_path,
-            "selector result has the wrong schema or is incomplete",
+            str(error),
         )
-    values: dict[str, tuple[str, ...]] = {}
-    outputs = definition.get("outputArtifacts")
-    if not isinstance(outputs, list):
-        raise ValueError(f"selector {selector.selector_id} output contract is invalid")
-    for output in outputs:
-        if not isinstance(output, str):
-            raise ValueError(f"selector {selector.selector_id} output identity is invalid")
-        raw = payload.get(output)
-        if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
-            return _selector_result_failure(
-                progress,
-                name,
-                result_path,
-                f"selector result omitted string-list {output}",
-            )
-        values[output] = tuple(raw)
+    progress.selection_results[selector.selector_id] = payload
     progress.completed.append(name)
-    return result_path, values
+    return result_path, parsed.values
 
 
 def _selector_result_failure(

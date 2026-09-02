@@ -1,5 +1,19 @@
 set -eu
 
 output=$1
+mode=$2
+base=$3
+candidate_kind=$4
+candidate_value=$5
+selector_id=$6
+selector_version=$7
+configuration_digest=$8
+population=$mode
+global_invalidators='[]'
+if [ "$mode" = full ]; then
+    global_invalidators='["declared-full-mode"]'
+fi
 mkdir -p "$(dirname "$output")"
-printf '%s\n' '{"schemaVersion":"repository-selector-result/v1","complete":true,"selected-tests":["unit"]}' > "$output"
+payload=$(printf '%s' "{\"baseRevision\":\"$base\",\"candidateIdentity\":{\"kind\":\"$candidate_kind\",\"value\":\"$candidate_value\"},\"complete\":true,\"configurationDigest\":\"$configuration_digest\",\"dependencyReasons\":[{\"detail\":\"fixture-owned-test\",\"effect\":\"select\",\"input\":\"tests/unit.rs\",\"kind\":\"declared-consumer\",\"outputArtifact\":\"selected-tests\",\"outputValue\":\"unit\"}],\"failureCode\":null,\"globalInvalidators\":$global_invalidators,\"mode\":\"$mode\",\"outputs\":[{\"artifactId\":\"selected-tests\",\"values\":[\"unit\"]}],\"population\":\"$population\",\"schemaVersion\":\"repository-selector-result/v2\",\"selectorId\":\"$selector_id\",\"selectorVersion\":\"$selector_version\",\"unresolvedInputs\":[]}")
+digest=$(printf '%s' "$payload" | sha256sum | cut -d ' ' -f 1)
+printf '%s\n' "${payload%?},\"selectionDigest\":\"$digest\"}" > "$output"

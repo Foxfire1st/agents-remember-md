@@ -147,13 +147,23 @@ preflight. It records why each test was selected:
 - exact changed test;
 - narrow name or text heuristic;
 - global pytest input; or
-- explicit safe-full refusal when ownership is incomplete.
+- explicit irrelevant classification.
 
 The graph treats root pytest configuration and `conftest.py` as global. A changed support module
 uses declared and import consumers. A governed recording/fixture uses catalog consumers. An
-ordinary test selects itself. Unowned executable/support input, parse errors, ambiguous module
-identity, invalid lifecycle metadata, and deleted test modules fail closed to the safe population.
-Documentation-only changes remain visible but do not invent a Python test owner.
+ordinary test selects itself. A deleted test is explicitly removed from the population.
+Unowned executable/support input, parse errors, ambiguous module identity, and invalid lifecycle
+metadata publish every unresolved path as `test-selection-ownership-incomplete` and stop before
+Gate 2; they never broaden to a safe-full population. Documentation and dashboard inputs remain
+visible and explicitly irrelevant to the Python suite while their own repository-profile rails
+retain their declared populations.
+
+The repository selector publishes the canonical `repository-selector-result/v2` contract. It
+binds the exact candidate, selector identity/version/configuration, mode and base revision to the
+empty, targeted, or profile-approved full population; every output value has a source-backed
+dependency reason. The independent Dagger reader verifies that digest and identity before any
+Gate-2 command. The generic contract is language-neutral; Python ownership is only this
+repository's provider implementation.
 
 Broad fan-out is not automatically a false positive. A central conversation model currently has
 440 import consumers; those are real transitive ownership edges. The report separates those edges
@@ -165,8 +175,9 @@ consumers.
 ## Dependency-aware retry proof
 
 Retry is an internal Dagger optimization after a passed pytest run and a later coverage-derived
-failure. Its schema binds repository bytes, selected tests, diff base, Python/tool versions,
-environment digest, measurement settings, and the exact included/excluded lane population. Proof
+failure. Its schema binds repository bytes, selected tests, the immutable selector-result digest,
+diff base, Python/tool versions, environment digest, measurement settings, and the exact
+included/excluded lane population. Proof
 lives only in the explicit `AR_QUALITY_RETRY_CACHE` root mounted from the locked Dagger
 `ar-quality-retry-v3` volume; there is no Git-directory or compatibility reader.
 
@@ -175,10 +186,11 @@ lives only in the explicit `AR_QUALITY_RETRY_CACHE` root mounted from the locked
 | No change | Reuse exact proof; pytest does not restart. |
 | Completely owned, no affected selected test | Reuse exact proof. |
 | Completely owned ordinary test/support/fixture change | Retain unaffected test contexts outside pytest-cov, rerun affected selected tests into clean coverage data, then explicitly merge and regenerate the scored JSON report. |
-| Affected consumer lies outside the current selection | Fresh safe population. |
-| Global input or incomplete/ambiguous ownership | Fresh safe population with the exact ownership reason. |
-| Selection/config/environment/lane drift | Fresh safe population with the mismatched manifest fields. |
-| Missing, malformed, corrupt, or digest-mismatched proof | Fresh safe population with the exact cache-integrity reason. |
+| Affected consumer lies outside the current selection | Run the current admitted population fresh. |
+| Global input | Run the current admitted population fresh with the exact ownership reason. |
+| Incomplete/ambiguous ownership | Refuse in Gate 1 before retry or pytest. |
+| Selection/config/environment/lane drift | Run the current admitted population fresh with the mismatched manifest fields. |
+| Missing, malformed, corrupt, or digest-mismatched proof | Run the current admitted population fresh with the exact cache-integrity reason. |
 
 The retry path never chains a filtered proof as a new baseline. A passing wrapper deletes the
 proof; only a fresh full pytest pass followed by a later rail failure may publish one. The actual

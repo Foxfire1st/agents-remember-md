@@ -94,7 +94,7 @@ def test_nested_pytest_plugin_edges_reach_the_complete_test_population(tmp_path:
     impact = DependencyOwnershipGraph(tmp_path).resolve([Path("tests/plugins/beta.py")])
 
     assert impact.complete
-    assert impact.fresh_rerun_reason is None
+    assert impact.unresolved_inputs == ()
     assert impact.tests == (Path("tests/test_one.py"), Path("tests/test_two.py"))
     assert all(
         any(reason.kind.value == "import-consumer" for reason in impact.reasons_for(test))
@@ -117,9 +117,8 @@ def test_dynamic_nested_plugin_declaration_refuses_complete_ownership(tmp_path: 
     impact = DependencyOwnershipGraph(tmp_path).resolve([Path("tests/plugins/beta.py")])
 
     assert not impact.complete
-    assert impact.fresh_rerun_reason is not None
-    assert "import-graph-invalid" in impact.fresh_rerun_reason.detail
-    assert impact.tests == (Path("tests/test_one.py"),)
+    assert "import-graph-invalid" in impact.unresolved_inputs[0].detail
+    assert impact.tests == ()
 
 
 def test_imported_support_reaches_a_test_that_loads_its_owner_by_literal_path(
@@ -206,7 +205,7 @@ def test_ambient_role_runner_has_exact_pytest_consumers() -> None:
     impact = DependencyOwnershipGraph(repository_root).resolve([AMBIENT_ROLE_RUNNER_PATH])
 
     assert impact.complete
-    assert impact.fresh_rerun_reason is None
+    assert impact.unresolved_inputs == ()
     assert impact.tests == (Path("mcp/tests/test_agents_remember_quality.py"),)
     assert all(
         any(

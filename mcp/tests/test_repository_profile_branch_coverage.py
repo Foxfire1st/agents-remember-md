@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -12,10 +14,16 @@ from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles import (
     DaggerModuleExecutorAdapter,
     RepositoryExecutionRequest,
+    RepositorySelectionDraft,
+    RepositorySelectionOutput,
+    RepositorySelectionReason,
+    RepositorySelectionResult,
     admit_repository_profile_plan,
+    build_repository_selection_result,
     canonicalize_repository_profile,
     compile_repository_profile_plan,
     repository_profile_digest,
+    repository_selection_result_digest,
     resolve_repository_profile_path,
     resolve_repository_profile_selection,
     validate_repository_profile,
@@ -51,6 +59,18 @@ from agents_remember.errors import CertificationProfileError
 from repository_profile_test_support import fixture_profile
 
 _CANDIDATE = CandidateIdentity(kind="git-tree", value="c" * 40)
+_SELECTOR_READER = (
+    Path(__file__).parents[2] / ".dagger/src/agents_remember_quality/selection_result.py"
+)
+
+
+def _load_selector_reader() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("l19_selection_result", _SELECTOR_READER)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _unchecked(profile) -> CanonicalRepositoryCertificationProfile:
@@ -184,6 +204,7 @@ def test_profile_selection_validation_reports_each_fail_closed_branch(
         ("incomplete-clean-room", "integration-clean-room-incomplete"),
         ("clean-room-wrong-gate", "clean-room-wrong-gate"),
         ("unused-selector-output", "selector-result-path-unused"),
+        ("duplicate-selector-field", "duplicate-selector-field"),
         ("malformed-placeholder", "command-placeholder-malformed"),
         ("embedded-list-placeholder", "command-list-placeholder-embedded"),
         ("ambiguous-artifact-producer", "artifact-producer-ambiguous"),
@@ -223,6 +244,11 @@ def test_profile_rail_validation_reports_each_fail_closed_branch(
     elif case == "unused-selector-output":
         selector = profile.selectors[0].model_copy(update={"command": ("selector",)})
         profile = profile.model_copy(update={"selectors": (selector,)})
+    elif case == "duplicate-selector-field":
+        selector = profile.selectors[0].model_copy(
+            update={"externalInputs": ("external://fixture", "external://fixture")}
+        )
+        profile = profile.model_copy(update={"selectors": (selector,)})
     elif case == "malformed-placeholder":
         execution = rails[0].execution.model_copy(update={"command": ("runner", "{reports")})
         rails[0] = rails[0].model_copy(update={"execution": execution})
@@ -247,6 +273,189 @@ def test_profile_rail_validation_reports_each_fail_closed_branch(
         profile = profile.model_copy(update={"selections": tuple(selections)})
 
     assert expected in _codes(profile)
+
+
+def test_dagger_selector_reader_refuses_stale_identity_and_unreasoned_population() -> None:
+    reader = _load_selector_reader()
+    result = build_repository_selection_result(
+        RepositorySelectionDraft(
+            selector_id="repository-test-selector",
+            selector_version="2.0.0",
+            configuration_digest="a" * 64,
+            candidate_identity=CandidateIdentity(kind="git-tree", value="b" * 40),
+            mode="targeted",
+            base_revision="base",
+            population="targeted",
+            complete=True,
+            global_invalidators=(),
+            dependency_reasons=(
+                RepositorySelectionReason(
+                    input="src/lib.rs",
+                    kind="declared-consumer",
+                    effect="select",
+                    outputArtifact="selected-tests",
+                    outputValue="unit",
+                    detail="fixture-owned-test",
+                ),
+            ),
+            unresolved_inputs=(),
+            outputs={"selected-tests": ("unit",)},
+        )
+    )
+    payload = result.model_dump(mode="json")
+    with pytest.raises(reader.SelectionResultError, match="candidateIdentity differs"):
+        reader.parse_selection_result(
+            payload,
+            admission=reader.SelectionAdmission(
+                selector_id="repository-test-selector",
+                selector_version="2.0.0",
+                configuration_digest="a" * 64,
+                candidate_kind="git-tree",
+                candidate_value="c" * 40,
+                mode="targeted",
+                base_revision="base",
+            ),
+            output_artifacts=("selected-tests",),
+        )
+
+    payload["dependencyReasons"] = []
+    payload["selectionDigest"] = repository_selection_result_digest(payload)
+    with pytest.raises(reader.SelectionResultError, match="exact dependency reason"):
+        reader.parse_selection_result(
+            payload,
+            admission=reader.SelectionAdmission(
+                selector_id="repository-test-selector",
+                selector_version="2.0.0",
+                configuration_digest="a" * 64,
+                candidate_kind="git-tree",
+                candidate_value="b" * 40,
+                mode="targeted",
+                base_revision="base",
+            ),
+            output_artifacts=("selected-tests",),
+        )
+
+
+def _valid_selection_payload() -> dict[str, object]:
+    reason = RepositorySelectionReason(
+        input="src/lib.rs",
+        kind="declared-consumer",
+        effect="select",
+        outputArtifact="selected-tests",
+        outputValue="unit",
+        detail="fixture-owned-test",
+    )
+    result = build_repository_selection_result(
+        RepositorySelectionDraft(
+            selector_id="repository-test-selector",
+            selector_version="2.0.0",
+            configuration_digest="a" * 64,
+            candidate_identity=CandidateIdentity(kind="git-tree", value="b" * 40),
+            mode="targeted",
+            base_revision="base",
+            population="targeted",
+            complete=True,
+            global_invalidators=(),
+            dependency_reasons=(reason,),
+            unresolved_inputs=(),
+            outputs={"selected-tests": ("unit",)},
+        )
+    )
+    return result.model_dump(mode="json")
+
+
+def _redigest_selection_payload(payload: dict[str, object]) -> dict[str, object]:
+    payload["selectionDigest"] = repository_selection_result_digest(payload)
+    return payload
+
+
+def test_selector_result_components_refuse_noncanonical_or_misclassified_values() -> None:
+    with pytest.raises(ValueError, match="unique and canonically ordered"):
+        RepositorySelectionOutput(artifactId="selected-tests", values=("unit-b", "unit-a"))
+    with pytest.raises(ValueError, match="must name its exact output"):
+        RepositorySelectionReason(
+            input="src/lib.rs",
+            kind="declared-consumer",
+            effect="select",
+            detail="missing-output",
+        )
+    with pytest.raises(ValueError, match="non-selection reason cannot claim"):
+        RepositorySelectionReason(
+            input="docs/readme.md",
+            kind="irrelevant-input",
+            effect="irrelevant",
+            outputArtifact="selected-tests",
+            outputValue="unit",
+            detail="false-output",
+        )
+
+
+@pytest.mark.parametrize(
+    ("updates", "expected"),
+    (
+        ({"mode": "full"}, "declared full selector result"),
+        (
+            {
+                "failureCode": "test-selection-ownership-incomplete",
+            },
+            "complete selector result cannot carry unresolved",
+        ),
+        (
+            {
+                "complete": False,
+                "failureCode": None,
+            },
+            "incomplete selector result requires",
+        ),
+        (
+            {
+                "globalInvalidators": ["same", "same"],
+            },
+            "global invalidators must be unique",
+        ),
+        (
+            {
+                "dependencyReasons": [
+                    {
+                        "input": "unknown",
+                        "kind": "unknown-input",
+                        "effect": "unresolved",
+                        "outputArtifact": None,
+                        "outputValue": None,
+                        "detail": "unresolved",
+                    }
+                ],
+            },
+            "unresolved reasons belong only",
+        ),
+        (
+            {
+                "complete": False,
+                "failureCode": "test-selection-ownership-incomplete",
+                "unresolvedInputs": [
+                    {
+                        "input": "docs/readme.md",
+                        "kind": "irrelevant-input",
+                        "effect": "irrelevant",
+                        "outputArtifact": None,
+                        "outputValue": None,
+                        "detail": "classified",
+                    }
+                ],
+            },
+            "unresolvedInputs may contain only unresolved",
+        ),
+    ),
+)
+def test_selector_result_reports_each_fail_closed_semantic_branch(
+    updates: dict[str, object],
+    expected: str,
+) -> None:
+    payload = _valid_selection_payload()
+    payload.update(updates)
+
+    with pytest.raises(ValueError, match=expected):
+        RepositorySelectionResult.model_validate(_redigest_selection_payload(payload))
 
 
 def test_path_and_gate_selection_models_refuse_invalid_payloads() -> None:

@@ -150,10 +150,11 @@ class RepositoryRailDefinition(FrozenContractModel):
 
 class RepositorySelectorAuthority(FrozenContractModel):
     selectorId: str = Field(pattern=_ID_PATTERN, max_length=128)
-    schemaVersion: SemanticText = Field(max_length=128)
+    schemaVersion: Literal["repository-selector-result/v2"] = "repository-selector-result/v2"
     version: SemanticText = Field(pattern=_VERSION_PATTERN)
     configurationDigest: str = Field(pattern=_DIGEST_PATTERN)
     inputUniverse: tuple[SemanticText, ...] = Field(min_length=1, max_length=1024)
+    externalInputs: tuple[SemanticText, ...] = Field(default_factory=tuple, max_length=1024)
     outputArtifacts: tuple[str, ...] = Field(min_length=1, max_length=256)
     workingDirectory: RelativeRepositoryPath
     command: tuple[SemanticText, ...] = Field(min_length=1, max_length=1024)
@@ -359,6 +360,7 @@ def _normalize_selector(
     return selector.model_copy(
         update={
             "inputUniverse": tuple(sorted(selector.inputUniverse)),
+            "externalInputs": tuple(sorted(selector.externalInputs)),
             "outputArtifacts": tuple(sorted(selector.outputArtifacts)),
         }
     )

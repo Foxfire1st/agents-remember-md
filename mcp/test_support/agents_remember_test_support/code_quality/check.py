@@ -697,6 +697,7 @@ def prepare_retry_plan(
                 lane_digest=manifest.digest,
                 lane_trigger=trigger.value,
                 lane_population=manifest.compatibility_population(accepting),
+                selection_digest=config.selection_digest or "",
             ),
             admission=config.admission,
             printer=printer,
@@ -780,6 +781,9 @@ def config_from_args(
     if args.targeted:
         base = diff_coverage.resolve_base(project_root, explicit_base=args.diff_base)
         derived = targeted.derive_targeted_scope(project_root, base.revision)
+        if not derived.test_impact.complete:
+            details = "; ".join(reason.render() for reason in derived.test_impact.unresolved_inputs)
+            raise ScopeError("test-selection-ownership-incomplete: " + (details or "unknown input"))
         full_scope = derive_scope(project_root)
         return CheckConfig(
             project_root=project_root,
