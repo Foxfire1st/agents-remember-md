@@ -15,6 +15,16 @@ from agents_remember.certification.certificate_invalidation import (
     plan_certificate_reuse,
 )
 from agents_remember.certification.certificate_store import ContentAddressedCertificateStore
+from agents_remember.certification.lifecycle_admission import (
+    compile_lifecycle_admission,
+    validate_lifecycle_admission_currentness,
+)
+from agents_remember.certification.lifecycle_recovery import (
+    authorize_finalization_leg,
+    compile_certification_recovery_record,
+    compile_lifecycle_finalization,
+    validate_lifecycle_finalization_currentness,
+)
 from agents_remember.certification.planning import (
     admit_certification_plan,
     compile_certification_plan,
@@ -36,20 +46,26 @@ __all__ = [
     "ContentAddressedCertificateStore",
     "admit_certification_plan",
     "admit_repository_profile_plan",
+    "authorize_finalization_leg",
     "build_rail_result",
     "canonicalize_registry",
     "canonicalize_repository_profile",
     "classify_certificate_invalidation",
     "compile_certification_admission",
     "compile_certification_plan",
+    "compile_certification_recovery_record",
     "compile_finalization_authority",
     "compile_gate_certificate",
     "compile_gate_result_manifest",
+    "compile_lifecycle_admission",
+    "compile_lifecycle_finalization",
     "compile_repository_profile_plan",
     "load_repository_profile",
     "plan_certificate_reuse",
     "validate_certificate_chain",
     "validate_finalization_currentness",
+    "validate_lifecycle_admission_currentness",
+    "validate_lifecycle_finalization_currentness",
     "validate_registry",
     "validate_repository_profile",
 ]

@@ -13,6 +13,15 @@ from agents_remember.certification import (
     compile_gate_result_manifest,
 )
 from agents_remember.certification.digests import content_digest
+from agents_remember.certification.lifecycle_models import (
+    CorrectiveInputChange,
+    DurableFinalizationLeg,
+    ExactCandidateObservation,
+    FinalizationJournalState,
+    FinalizationLeg,
+    FinalizationLegState,
+    RedCatalogDisposition,
+)
 from agents_remember.certification.models import (
     CandidateIdentity,
     CanonicalRailRegistry,
@@ -21,6 +30,7 @@ from agents_remember.certification.models import (
     GateResultAdmission,
     GateResultManifest,
     RailApplicability,
+    RailIdentity,
     RailResult,
     RailTerminalObservation,
     RegistryProfile,
@@ -64,6 +74,17 @@ def _green_gate_one_manifest() -> tuple[CertificationPlan, GatePlan, GateResultM
     gate = _gate(plan, 1)
     results = tuple(_result(gate, ObservationSpec(rail.identity.railId)) for rail in gate.rails)
     return plan, gate, _manifest(plan, gate, results, altitude="certifying")
+
+
+def _finalization_leg(leg: FinalizationLeg, state: FinalizationLegState) -> DurableFinalizationLeg:
+    if state == "not-applicable":
+        return DurableFinalizationLeg(leg=leg, state=state)
+    values = {"authorityDigest": _DIGEST}
+    if state in {"intent", "proven"}:
+        values["intendedOutputDigest"] = "b" * 64
+    if state == "proven":
+        values["provenOutputDigest"] = "b" * 64
+    return DurableFinalizationLeg(leg=leg, state=state, **values)
 
 
 @pytest.mark.parametrize(
@@ -205,6 +226,130 @@ def test_certification_plan_rejects_a_gate_bound_to_another_candidate() -> None:
                 gates=[item.model_dump(mode="json") for item in gates],
             )
         )
+
+
+@pytest.mark.parametrize(
+    "updates",
+    (
+        {"worktreeStatus": "conflicted", "conflictedPaths": []},
+        {"worktreeStatus": "conflicted", "conflictedPaths": ["b.py", "a.py"]},
+    ),
+)
+def test_exact_candidate_rejects_contradictory_conflict_shapes(
+    updates: dict[str, object],
+) -> None:
+    payload: dict[str, object] = {
+        "taskId": "leaf",
+        "contractPath": "/coordination/contract.md",
+        "lifecycleAuthorityDigest": _DIGEST,
+        "repositoryId": "repository",
+        "sourceBranchRef": "refs/heads/leaf",
+        "sourceBranchTip": "a" * 40,
+        "candidateCodeTree": CandidateIdentity(kind="git-tree", value="c" * 40).model_dump(
+            mode="json"
+        ),
+        "topologyIdentityDigest": _DIGEST,
+        "taskIntentIdentityDigest": _DIGEST,
+        "normalizedCommitIntentDigest": _DIGEST,
+        "mutationAuthorityDigest": _DIGEST,
+        "sourceAuthorityDigest": _DIGEST,
+        "worktreeRuleDigest": _DIGEST,
+        "generatedInputsDigest": _DIGEST,
+        "mutationAuthorityStatus": "valid",
+        "sourceAuthorityStatus": "valid",
+        "branchAuthorityStatus": "valid",
+        "worktreeStatus": "admissible",
+        "generatedArtifactStatus": "current",
+    }
+    with pytest.raises(ValidationError):
+        ExactCandidateObservation.model_validate({**payload, **updates})
+
+
+@pytest.mark.parametrize(
+    ("state", "authority", "intended", "proven"),
+    (
+        ("not-applicable", _DIGEST, None, None),
+        ("pending", None, None, None),
+        ("pending", _DIGEST, _DIGEST, None),
+        ("intent", _DIGEST, None, None),
+        ("intent", _DIGEST, _DIGEST, _DIGEST),
+        ("proven", _DIGEST, None, _DIGEST),
+        ("proven", _DIGEST, _DIGEST, None),
+    ),
+)
+def test_finalization_leg_rejects_state_shape_mismatches(
+    state: FinalizationLegState,
+    authority: str | None,
+    intended: str | None,
+    proven: str | None,
+) -> None:
+    with pytest.raises(ValidationError):
+        DurableFinalizationLeg(
+            leg="code-commit",
+            state=state,
+            authorityDigest=authority,
+            intendedOutputDigest=intended,
+            provenOutputDigest=proven,
+        )
+
+
+def test_red_disposition_and_journal_reject_noncanonical_shapes() -> None:
+    rail = RailIdentity(railId="rail", version="1.0.0")
+    change = CorrectiveInputChange(
+        inputKind="candidate-code-tree",
+        inputId="candidate",
+        beforeDigest="a" * 40,
+        afterDigest="b" * 40,
+    )
+    common = {
+        "rail": rail,
+        "priorStatus": "fail",
+        "priorResultDigest": _DIGEST,
+        "correctiveOwner": "owner",
+        "rationale": "exact corrective evidence",
+    }
+    invalid = (
+        {"disposition": "direct-repair", "changedInputs": ()},
+        {
+            "disposition": "repaired-root",
+            "repairedRoot": rail,
+            "changedInputs": (change,),
+        },
+        {"disposition": "direct-repair", "changedInputs": (change, change)},
+    )
+    for updates in invalid:
+        with pytest.raises(ValidationError):
+            RedCatalogDisposition(**common, **updates)
+
+    order: tuple[FinalizationLeg, ...] = (
+        "code-commit",
+        "external-memory-commit",
+        "ledger-commit",
+        "contract-finalization",
+    )
+
+    def journal(states: tuple[FinalizationLegState, ...]) -> FinalizationJournalState:
+        return FinalizationJournalState(
+            journalAuthorityDigest=_DIGEST,
+            legs=tuple(
+                _finalization_leg(leg, state) for leg, state in zip(order, states, strict=True)
+            ),
+        )
+
+    with pytest.raises(ValidationError, match="durable leg order"):
+        FinalizationJournalState(
+            journalAuthorityDigest=_DIGEST,
+            legs=tuple(_finalization_leg(leg, "not-applicable") for leg in reversed(order)),
+        )
+    with pytest.raises(ValidationError, match="at most one"):
+        journal(("intent", "intent", "not-applicable", "not-applicable"))
+    with pytest.raises(ValidationError, match="not monotonic"):
+        journal(("intent", "proven", "not-applicable", "not-applicable"))
+    pending = journal(("proven", "pending", "pending", "pending"))
+    assert pending.next_leg == "external-memory-commit"
+    intent = journal(("intent", "pending", "not-applicable", "not-applicable"))
+    assert intent.next_leg == "code-commit"
+    assert journal(("proven", "proven", "proven", "proven")).next_leg is None
 
 
 @pytest.mark.parametrize(
