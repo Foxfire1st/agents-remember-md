@@ -50,6 +50,7 @@ describe("TaskNotes entry surface", () => {
     const view = render(<TaskNotes repo={REPO} master={MASTER} references={[]} onOpenNotes={onOpenNotes} />);
     fireEvent.click(await view.findByTestId("note-open-2"));
     expect(onOpenNotes).toHaveBeenCalledWith({
+      kind: "notes",
       repo: REPO,
       master: MASTER,
       path: "reports/260703-L1-worker-report.md",
@@ -90,7 +91,12 @@ describe("TaskNotes reference resolution", () => {
     const link = await view.findByTestId("note-ref-1");
     expect(link.tagName.toLowerCase()).toBe("button");
     fireEvent.click(link);
-    expect(onOpenNotes).toHaveBeenCalledWith({ repo: REPO, master: MASTER, path: "friction-ledger.md" });
+    expect(onOpenNotes).toHaveBeenCalledWith({
+      kind: "notes",
+      repo: REPO,
+      master: MASTER,
+      path: "friction-ledger.md",
+    });
   });
 
   it("keeps a non-matching reference as plain text", async () => {

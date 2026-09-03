@@ -422,6 +422,7 @@ integration = [
   "mcp/tests/test_serving_harness_control_api.py",
   "mcp/tests/test_serving_helper_behaviour.py",
   "mcp/tests/test_serving_notes.py",
+  "mcp/tests/test_serving_requirements.py",
   "mcp/tests/test_setup_progress.py",
   "mcp/tests/test_spawn_agent_session.py",
   "mcp/tests/test_spawn_agent_session_resolution.py",

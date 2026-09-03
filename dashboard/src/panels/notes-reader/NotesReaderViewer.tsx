@@ -15,15 +15,15 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { css } from "../../../styled-system/css";
 import type { FileContent } from "../../data/files";
 import { listNotes, readNote, type NoteContent, type NotesListing } from "../../data/notes";
+import {
+  listRequirements,
+  readRequirement,
+  type RequirementContent,
+} from "../../data/requirements";
+import type { TaskArtifactReaderTarget } from "../../data/taskArtifacts";
 import { DualPane, type SidecarView } from "../file-viewer/DualPane";
 
-// The target a notes entry point opens: a note file inside a master's notes/ tree. Shared with the
-// entry surfaces (TaskNotes) and CockpitShell, which holds it as the takeover's lifted selection.
-export interface NotesReaderTarget {
-  repo: string;
-  master: string;
-  path: string; // posix path relative to the series' notes/ root (e.g. "reports/…-report.md")
-}
+export type { TaskArtifactReaderTarget } from "../../data/taskArtifacts";
 
 // Screen chrome — the ChangeSetViewer takeover idiom (flex column · sticky back header · rail+pane).
 const screen = css({ height: "100%", minHeight: "0", display: "flex", flexDirection: "column", background: "bg" });
@@ -115,7 +115,9 @@ const truncBanner = css({
 
 // A fetched note mapped to DualPane's props: markdown renders full-pane as a partnerless markdown doc
 // (the File Viewer's overview treatment); other text / binary render through CodeSide.
-function noteAsFileContent(note: NoteContent): FileContent {
+type ArtifactContent = NoteContent | (RequirementContent & { language: "markdown"; truncated: false });
+
+function noteAsFileContent(note: ArtifactContent): FileContent {
   // CodeSide reads only language/size/truncated/content; scope/onboarding are inert for a note.
   return {
     scope: "",
@@ -128,7 +130,7 @@ function noteAsFileContent(note: NoteContent): FileContent {
   };
 }
 
-function dualPaneProps(note: NoteContent): { code: FileContent | null; sidecar: SidecarView } {
+function dualPaneProps(note: ArtifactContent): { code: FileContent | null; sidecar: SidecarView } {
   return note.language === "markdown"
     ? { code: null, sidecar: { state: "markdown", body: note.content } }
     : { code: noteAsFileContent(note), sidecar: { state: "empty" } };
@@ -139,16 +141,18 @@ function NotesRail({
   truncated,
   activePath,
   onSelectNote,
+  kind,
 }: {
   notes: NotesListing["notes"];
   truncated: boolean;
   activePath: string;
   onSelectNote: (path: string) => void;
+  kind: TaskArtifactReaderTarget["kind"];
 }) {
   return (
     <div className={railCol}>
       <div className={railScroll} data-testid="notes-rail">
-        <div className={railHead}>notes ({notes.length})</div>
+        <div className={railHead}>{kind} ({notes.length})</div>
         {notes.map((entry, index) => (
           <button
             key={entry.path}
@@ -170,11 +174,15 @@ function NotesRail({
   );
 }
 
-function NotePane({ failed, note }: { failed: boolean; note: NoteContent | null }) {
+function NotePane({ failed, note, kind }: {
+  failed: boolean;
+  note: ArtifactContent | null;
+  kind: TaskArtifactReaderTarget["kind"];
+}) {
   if (failed) {
     return (
       <div className={placeholder} data-testid="note-status">
-        Could not load this note.
+        Could not load this {kind === "notes" ? "note" : "requirement"}.
       </div>
     );
   }
@@ -199,56 +207,82 @@ function NotePane({ failed, note }: { failed: boolean; note: NoteContent | null 
   );
 }
 
-function NotesReaderViewerImpl({
-  repo,
-  master,
-  path,
-  onSelectNote,
-  onBack,
-}: NotesReaderTarget & { onSelectNote: (path: string) => void; onBack: () => void }) {
+function useArtifactListing(
+  repo: string,
+  master: string,
+  document: string | undefined,
+): NotesListing | null {
   const [listing, setListing] = useState<NotesListing | null>(null);
-  const [note, setNote] = useState<NoteContent | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  // The rail listing: fetched per (repo, master). An unreachable API leaves an empty rail rather than
-  // crashing — the entry point already proved a note exists, so this only guards a transient failure.
   useEffect(() => {
     let live = true;
     setListing(null);
-    void listNotes(repo, master).then(
+    const request = document === undefined
+      ? listNotes(repo, master)
+      : listRequirements(repo, master, document).then((data) => ({
+          repo: data.repo,
+          master: data.master,
+          notes: data.requirements.map((entry) => ({ ...entry, language: "markdown" })),
+          truncated: false,
+        }));
+    void request.then(
       (data) => live && setListing(data),
       () => {},
     );
     return () => {
       live = false;
     };
-  }, [repo, master]);
+  }, [document, master, repo]);
+  return listing;
+}
 
-  // The opened note: re-fetched whenever the lifted `path` changes (rail click or a fresh entry) — the
-  // "switch the pane in place" path. null = loading; `failed` = the read errored.
+function useArtifactContent(
+  repo: string,
+  master: string,
+  document: string | undefined,
+  path: string,
+): { failed: boolean; content: ArtifactContent | null } {
+  const [content, setContent] = useState<ArtifactContent | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
-    setNote(null);
+    setContent(null);
     setFailed(false);
-    void readNote(repo, master, path).then(
-      (data) => live && setNote(data),
+    const request = document === undefined
+      ? readNote(repo, master, path)
+      : readRequirement(repo, master, document, path).then((data) => ({
+          ...data,
+          language: "markdown" as const,
+          truncated: false as const,
+        }));
+    void request.then(
+      (data) => live && setContent(data),
       () => live && setFailed(true),
     );
     return () => {
       live = false;
     };
-  }, [repo, master, path]);
+  }, [document, master, path, repo]);
+  return { failed, content };
+}
+
+function NotesReaderViewerImpl(
+  props: TaskArtifactReaderTarget & { onSelectNote: (path: string) => void; onBack: () => void },
+) {
+  const { kind, repo, master, path, onSelectNote, onBack } = props;
+  const document = kind === "requirements" ? props.document : undefined;
+  const listing = useArtifactListing(repo, master, document);
+  const { failed, content } = useArtifactContent(repo, master, document, path);
 
   const notes = listing?.notes ?? [];
 
   return (
-    <div className={screen} data-testid="notes-reader-viewer">
+    <div className={screen} data-testid="notes-reader-viewer" data-artifact-kind={kind}>
       <header className={header}>
         <button type="button" className={back} onClick={onBack} data-testid="notes-reader-back">
           ← back
         </button>
-        <span className={title}>notes · {master}</span>
-        <span className={openPath} data-testid="notes-reader-open">notes/{path}</span>
+        <span className={title}>{kind} · {master}</span>
+        <span className={openPath} data-testid="notes-reader-open">{kind}/{path}</span>
       </header>
       <PanelGroup direction="horizontal" autoSaveId="notesreader.outer" className={css({ flex: "1", minHeight: "0" })}>
         <Panel defaultSize={26} minSize={16}>
@@ -257,11 +291,12 @@ function NotesReaderViewerImpl({
             truncated={listing?.truncated === true}
             activePath={path}
             onSelectNote={onSelectNote}
+            kind={kind}
           />
         </Panel>
         <PanelResizeHandle className={handle} />
         <Panel minSize={30}>
-          <NotePane failed={failed} note={note} />
+          <NotePane failed={failed} note={content} kind={kind} />
         </Panel>
       </PanelGroup>
     </div>

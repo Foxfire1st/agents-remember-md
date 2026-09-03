@@ -3,7 +3,7 @@ import { Panel } from "../../grammar/Panel";
 import type { TaskDocNode } from "../../types/projection";
 import { EmptyStateBackdrop } from "../EmptyStateBackdrop";
 import type { ChangeSetTarget } from "../changeset/ChangeSetViewer";
-import type { NotesReaderTarget } from "../notes-reader/NotesReaderViewer";
+import type { TaskArtifactReaderTarget as NotesReaderTarget } from "../../data/taskArtifacts";
 import {
   masterDocWithSeriesTokens,
   seriesAsMasterDoc,

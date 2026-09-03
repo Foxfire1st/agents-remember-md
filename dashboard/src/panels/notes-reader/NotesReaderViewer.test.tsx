@@ -54,6 +54,47 @@ function stubNotesApi(notes: NoteEntry[], contents: Record<string, NoteContent> 
   );
 }
 
+function stubRequirementsApi(path: string, contentBody: string) {
+  const fetch = vi.fn(async (url: string) => {
+    const params = new URLSearchParams(url.split("?")[1] ?? "");
+    if (url.startsWith("/api/requirements/list")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          repo: REPO,
+          master: MASTER,
+          document: params.get("document"),
+          registered: true,
+          requirements: [
+            { name: path, path, address: `requirements/${path}`, size: 100, sha256: "abc" },
+          ],
+        }),
+      } as unknown as Response;
+    }
+    if (url.startsWith("/api/requirements/read")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          repo: REPO,
+          master: MASTER,
+          document: params.get("document"),
+          name: path,
+          path,
+          address: `requirements/${path}`,
+          size: contentBody.length,
+          sha256: "abc",
+          content: contentBody,
+        }),
+      } as unknown as Response;
+    }
+    return { ok: false, status: 404, json: async () => ({ status: "not-found" }) } as unknown as Response;
+  });
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -67,7 +108,7 @@ describe("NotesReaderViewer rail", () => {
       { "friction-ledger.md": content("friction-ledger.md") },
     );
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="friction-ledger.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="friction-ledger.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     const first = await view.findByTestId("note-rail-1");
     expect(first.textContent).toContain("friction-ledger.md");
@@ -84,12 +125,12 @@ describe("NotesReaderViewer rail", () => {
       { "a.md": content("a.md"), "b.md": content("b.md") },
     );
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="a.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="a.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     await view.findByTestId("note-rail-1");
     expect(view.getByTestId("note-rail-1").getAttribute("data-active")).toBe("true");
     view.rerender(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="b.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="b.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     expect(view.getByTestId("note-rail-1").getAttribute("data-active")).toBe("false");
     expect(view.getByTestId("note-rail-2").getAttribute("data-active")).toBe("true");
@@ -100,7 +141,7 @@ describe("NotesReaderViewer rail", () => {
     stubNotesApi([entry("a.md"), entry("b.md")], { "a.md": content("a.md") });
     const onSelectNote = vi.fn();
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="a.md" onSelectNote={onSelectNote} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="a.md" onSelectNote={onSelectNote} onBack={vi.fn()} />,
     );
     fireEvent.click(await view.findByTestId("note-rail-2"));
     expect(onSelectNote).toHaveBeenCalledWith("b.md");
@@ -113,7 +154,7 @@ describe("NotesReaderViewer content pane (reuses the File Viewer DualPane)", () 
       "friction-ledger.md": content("friction-ledger.md", { content: "The **F-M** row." }),
     });
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="friction-ledger.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="friction-ledger.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     await view.findByTestId("sidecar-pane");
     expect((await view.findByText("F-M")).tagName.toLowerCase()).toBe("strong"); // formatted, not raw
@@ -125,7 +166,7 @@ describe("NotesReaderViewer content pane (reuses the File Viewer DualPane)", () 
       "trace.txt": content("trace.txt", { language: "text", content: "line one\nline two" }),
     });
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="trace.txt" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="trace.txt" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     expect((await view.findByTestId("file-pane")).textContent).toBe("line one\nline two");
   });
@@ -135,7 +176,7 @@ describe("NotesReaderViewer content pane (reuses the File Viewer DualPane)", () 
       "scan.png": content("scan.png", { language: "binary", size: 2048, content: "" }),
     });
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="scan.png" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="scan.png" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     expect((await view.findByTestId("pane-placeholder")).textContent).toContain(
       "Binary file — 2,048 bytes (not shown)",
@@ -150,7 +191,7 @@ describe("NotesReaderViewer content pane (reuses the File Viewer DualPane)", () 
       "big.md": content("big.md", { truncated: true, size: 2_097_162, content: "# big\n\nlots" }),
     });
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="big.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="big.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     const banner = await view.findByTestId("notes-trunc-banner");
     expect(banner.textContent).toContain("Showing the first 2 MiB of 2,097,162 bytes");
@@ -161,7 +202,7 @@ describe("NotesReaderViewer content pane (reuses the File Viewer DualPane)", () 
   it("shows no truncation banner for a normal (untruncated) markdown note", async () => {
     stubNotesApi([entry("small.md")], { "small.md": content("small.md") });
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="small.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="small.md" onSelectNote={vi.fn()} onBack={vi.fn()} />,
     );
     await view.findByTestId("sidecar-pane");
     expect(view.queryByTestId("notes-trunc-banner")).toBeNull();
@@ -171,10 +212,39 @@ describe("NotesReaderViewer content pane (reuses the File Viewer DualPane)", () 
     stubNotesApi([entry("a.md")], { "a.md": content("a.md") });
     const onBack = vi.fn();
     const view = render(
-      <NotesReaderViewer repo={REPO} master={MASTER} path="a.md" onSelectNote={vi.fn()} onBack={onBack} />,
+      <NotesReaderViewer kind="notes" repo={REPO} master={MASTER} path="a.md" onSelectNote={vi.fn()} onBack={onBack} />,
     );
     fireEvent.click(await view.findByTestId("notes-reader-back"));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("requirements artifact reader", () => {
+  it("shows the explicit Requirements root and renders the exact selected packet", async () => {
+    const path = "CCR-R23-v1.md";
+    const document = `${MASTER}/23_leaf.json`;
+    const fetch = stubRequirementsApi(path, "# CCR-R23\n\nRegistered root.");
+    const view = render(
+      <NotesReaderViewer
+        kind="requirements"
+        repo={REPO}
+        master={MASTER}
+        document={document}
+        path={path}
+        onSelectNote={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect((await view.findByTestId("notes-reader-viewer")).getAttribute("data-artifact-kind")).toBe(
+      "requirements",
+    );
+    expect(view.getByText(`requirements · ${MASTER}`)).toBeTruthy();
+    expect(view.getByTestId("notes-reader-open").textContent).toBe(`requirements/${path}`);
+    expect((await view.findByText("CCR-R23")).tagName.toLowerCase()).toBe("h1");
+    const urls = (fetch.mock.calls as unknown as string[][]).map((call) => call[0]);
+    expect(urls).toContain(
+      `/api/requirements/read?repo=${REPO}&master=${MASTER}&document=${encodeURIComponent(document)}&path=${path}`,
+    );
   });
 });
 

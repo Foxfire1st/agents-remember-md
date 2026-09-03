@@ -3,6 +3,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { css } from "../../styled-system/css";
+import { isRequirementAddress, resolveRequirementAddress } from "../data/requirements";
+import { useTaskRequirementLinks } from "./TaskRequirementLinks";
 
 // Markdown rendering for task/master prose (slice 6g). The task-doc section bodies are GFM markdown
 // (tables, blockquotes, **bold**, `code`, lists, links) folded from the original task.md; without a
@@ -64,6 +66,15 @@ const box = css({
   "& th": { color: "amber", fontWeight: "600", whiteSpace: "nowrap" },
 });
 const tableScroll = css({ overflowX: "auto", maxWidth: "100%", margin: "0.3rem 0" });
+const internalLink = css({
+  font: "inherit",
+  color: "cyan",
+  background: "transparent",
+  border: "0",
+  padding: "0",
+  cursor: "pointer",
+  textDecoration: "underline",
+});
 
 // Inline variant for list items / decision cells: the markdown is a single phrase, so unwrap the
 // paragraph (no block margins, no <p>-in-<span>) and keep bold/code/links/em.
@@ -102,10 +113,37 @@ export const Markdown = memo(function Markdown({
   children: string;
   inline?: boolean;
 }) {
+  const requirementLinks = useTaskRequirementLinks();
+  const requirementAnchor: Components["a"] = ({ node, href = "", children: linkChildren, ...props }) => {
+    void node;
+    const target = requirementLinks
+      ? resolveRequirementAddress(href, requirementLinks.requirements)
+      : undefined;
+    if (target) {
+      return (
+        <button
+          type="button"
+          className={internalLink}
+          data-testid="requirement-link"
+          title={`open requirements/${target}`}
+          onClick={() => requirementLinks?.open(target)}
+        >
+          {linkChildren}
+        </button>
+      );
+    }
+    if (isRequirementAddress(href)) {
+      return <span data-testid="requirement-link-refused">{linkChildren}</span>;
+    }
+    return <a href={href} {...props}>{linkChildren}</a>;
+  };
+  const components = inline
+    ? { ...inlineComponents, a: requirementAnchor }
+    : { ...blockComponents, a: requirementAnchor };
   if (inline) {
     return (
       <span className={inlineBox}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={inlineComponents}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
           {children}
         </ReactMarkdown>
       </span>
@@ -113,7 +151,7 @@ export const Markdown = memo(function Markdown({
   }
   return (
     <div className={box}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={blockComponents}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </ReactMarkdown>
     </div>

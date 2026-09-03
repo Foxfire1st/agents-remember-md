@@ -39,6 +39,46 @@ class ServingResponseConformance2(ServingResponseConformanceTests):
                 params={"repo": "R", "master": "t", "path": "ghost.md"},
             )
 
+    def test_requirement_routes_conform(self) -> None:
+        context = {"repo": "R", "master": "t", "document": "t/task.json"}
+        with self._client() as client:
+            self._check(client, "GET", "/api/requirements/list", status=200, params=context)
+            self._check(
+                client,
+                "GET",
+                "/api/requirements/list",
+                status=400,
+                params={**context, "document": "other/task.json"},
+            )
+            self._check(
+                client,
+                "GET",
+                "/api/requirements/list",
+                status=404,
+                params={**context, "repo": "ghost"},
+            )
+            self._check(
+                client,
+                "GET",
+                "/api/requirements/read",
+                status=200,
+                params={**context, "path": "R1.md"},
+            )
+            self._check(
+                client,
+                "GET",
+                "/api/requirements/read",
+                status=400,
+                params={**context, "path": "../task.json"},
+            )
+            self._check(
+                client,
+                "GET",
+                "/api/requirements/read",
+                status=404,
+                params={**context, "path": "ghost.md"},
+            )
+
     def test_changeset_routes_conform(self) -> None:
         leaf = {"repo": "R", "master": "t", "leaf": "leaf-1", "mode": "working"}
         with self._client() as client:

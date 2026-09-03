@@ -1,12 +1,12 @@
 """Conformance tests for the declared HTTP response contract (``serving.response_contract``).
 
-The sibling of ``test_served_state_conformance.py``, widened from one route to all 61. That
+The sibling of ``test_served_state_conformance.py``, widened from one route to all 63. That
 suite proved ``/api/state``'s assembled body validates against ``ServedWorkspaceProjection``;
 this one does the same job for every other route, against the model that route now declares.
 
 **Why the declaration cannot be the gate, and this file has to be.** FastAPI applies
 ``response_model`` only to values it serializes itself -- a handler that returns a ``Response``
-instance is handed back untouched and never reaches ``serialize_response``. 57 of the 61
+instance is handed back untouched and never reaches ``serialize_response``. 59 of the 63
 handlers do exactly that and two more are async-generator SSE routes, so on 59 of them the
 decorator buys an OpenAPI schema and validates nothing at runtime. A suite that only asserted
 "every route declares a model" would have gone green the moment the decorators landed and
@@ -141,7 +141,7 @@ def walk_routes(routes: Any, prefix: str = "") -> Iterator[WalkedRoute]:
 
     * ``include_router`` -- FastAPI keeps the included ``APIRouter`` behind one opaque
       ``_IncludedRouter`` and resolves it at dispatch time. The 25 conversation routes live
-      inside one, so a test reading ``app.routes`` alone would see 36 of the 61 and would have
+      inside one, so a test reading ``app.routes`` alone would see 38 of the 63 and would have
       declared victory over a surface it never looked at. ``include_context.prefix`` is the
       prefix that router was mounted under and the inner ``route.path`` does **not** carry it:
       reporting the bare path would key the index -- and the websocket path assertion -- on a
@@ -531,6 +531,12 @@ def _seed_notes(tmp: Path) -> None:
     (notes / "reports" / "worker.md").write_text("# report\n", encoding="utf-8")
 
 
+def _seed_requirements(tmp: Path) -> None:
+    requirements = tmp / "tasks" / "R" / "t" / "requirements"
+    requirements.mkdir(parents=True, exist_ok=True)
+    (requirements / "R1.md").write_text("# R1\n", encoding="utf-8")
+
+
 # --- inventory --------------------------------------------------------------------------------
 
 
@@ -572,10 +578,10 @@ class ServingRouteInventoryTests(unittest.TestCase):
             self.assertNotIsInstance(socket.route, APIRoute)
 
     def test_the_declared_surface_is_the_whole_surface(self) -> None:
-        # 62 route decorators: 61 HTTP + 1 websocket. Pinned so a new route cannot be added
+        # 64 route decorators: 63 HTTP + 1 websocket. Pinned so a new route cannot be added
         # without this suite being told to exercise it.
         sockets = [w for w in self.walked if isinstance(w.route, APIWebSocketRoute)]
-        self.assertEqual(len(self.http), 61)
+        self.assertEqual(len(self.http), 63)
         self.assertEqual(len(sockets), 1)
 
     def test_no_registration_form_escapes_the_walker(self) -> None:
@@ -858,6 +864,7 @@ class ServingResponseConformanceTests(unittest.TestCase):
         _seed_changeset(self.tmp, self.code)
         _seed_notes(self.tmp)
         _seed_task_doc(self.tmp)
+        _seed_requirements(self.tmp)
         # A SECOND repo with no memory root at all. ``FileScope.onboarding_root`` is ``None``
         # only when ``resolve_coordination_context`` raises ``MissingMemoryError``, and that is
         # the sole input that reaches ``OnboardingPartnerNone`` -- the fifth of the five shapes
