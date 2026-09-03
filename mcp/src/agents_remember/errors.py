@@ -267,6 +267,39 @@ class CuratorCoherencePairError(CuratorCoherenceError):
         return result
 
 
+class FinalCertificationError(AgentsRememberError):
+    """The final full memory-coherence certification refused or was blocked."""
+
+    def __init__(
+        self,
+        status: str,
+        detail: str,
+        *,
+        expected: Mapping[str, object] | None = None,
+        observed: Mapping[str, object] | None = None,
+        next_action: str = "memory_quality_check",
+    ) -> None:
+        self.status = status
+        self.detail = detail
+        self.expected = dict(expected or {})
+        self.observed = dict(observed or {})
+        self.next_action = next_action
+        super().__init__(detail)
+
+    def response_fields(self) -> dict[str, object]:
+        """Project the bounded typed Gate-5 refusal without duplicating other families."""
+        result: dict[str, object] = {
+            "certificationStatus": self.status,
+            "detail": self.detail,
+            "nextAction": self.next_action,
+        }
+        if self.expected:
+            result["expected"] = self.expected
+        if self.observed:
+            result["observed"] = self.observed
+        return result
+
+
 class CitationCacheError(AgentsRememberError):
     """A citation cache authority, capacity, or lifecycle lease was invalid."""
 

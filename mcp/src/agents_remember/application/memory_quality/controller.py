@@ -39,6 +39,10 @@ from agents_remember.memory_quality.curator_checklist import (
     split_commit_owned_findings,
     write_curator_checklist,
 )
+from agents_remember.memory_quality.final_certification import final_catalog_readiness
+from agents_remember.memory_quality.final_certification.catalog import (
+    ReadinessProjectionInput,
+)
 from agents_remember.memory_quality.integrity.check_missing_onboarding import (
     check_missing_onboarding,
 )
@@ -428,6 +432,59 @@ def _attach_curator_checklist(
     response.pop("reportOnlyFindings", None)
     response.update(checklist)
     _attach_coherence_readiness(scope, response)
+    _attach_final_full_catalog(
+        scope,
+        response,
+        candidate_inputs=candidate_inputs,
+        missing_onboarding=missing_onboarding,
+        stale_route_indexes=route_indexes.stale_indexes,
+    )
+
+
+def _attach_final_full_catalog(
+    scope: MemoryScope,
+    response: dict[str, object],
+    *,
+    candidate_inputs: _CuratorCandidateInputs,
+    missing_onboarding: dict[str, Any],
+    stale_route_indexes: list[str],
+) -> None:
+    """Project the deterministic complete Gate-5 catalog onto the full run result.
+
+    The interactive full contract-scoped run is the execution surface of the final full
+    memory-coherence certification (CCR-R08). It cannot hold the R21 Gate 1-4
+    certificates or the R07 affected-closure plan, so the projection names the exact
+    complete catalog population, every item's typed status, and the still-missing
+    certification authorities without claiming certification eligibility.
+    """
+
+    coherence_status = str(
+        response.get("coherenceStatus") or "not-evaluated-quality-action-required"
+    )
+    coherence_record_digest = response.get("coherenceRecordDigest")
+    if scope.pair_identity is None:
+        raise RuntimeError("final full catalog projection requires the exact pair identity")
+    response["finalFullCatalog"] = final_catalog_readiness(
+        ReadinessProjectionInput(
+            executed_checks=_catalog_checks(response),
+            missing_onboarding_count=int(missing_onboarding.get("missingCount", 0) or 0),
+            stale_route_index_count=len(stale_route_indexes),
+            coherence_status=coherence_status if coherence_status == "current" else None,
+            coherence_record_digest=(
+                str(coherence_record_digest) if coherence_record_digest else None
+            ),
+            candidate_pair_authority_digest=scope.pair_identity.contractDigest,
+            affected_closure_plan_digest=None,
+            memory_tree=candidate_inputs.memory_tree,
+        )
+    )
+
+
+def _catalog_checks(response: dict[str, object]) -> dict[str, dict[str, Any]]:
+    checks = response.get("checks")
+    if isinstance(checks, dict):
+        return {name: result for name, result in checks.items() if isinstance(result, dict)}
+    return {}
 
 
 def _curator_candidate_inputs(scope: MemoryScope) -> _CuratorCandidateInputs:
