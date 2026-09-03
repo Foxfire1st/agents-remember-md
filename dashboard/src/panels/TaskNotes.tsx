@@ -9,8 +9,14 @@ import { useEffect, useState } from "react";
 
 import { css } from "../../styled-system/css";
 import { listNotes, resolveNoteReference, type NotesListing } from "../data/notes";
+import {
+  requirementAddressFromReference,
+  resolveRequirementReference,
+  type RequirementEntry,
+} from "../data/requirements";
+import type { TaskArtifactReaderTarget as NotesReaderTarget } from "../data/taskArtifacts";
 import { Markdown } from "../grammar/Markdown";
-import type { NotesReaderTarget } from "./notes-reader/NotesReaderViewer";
+import { useTaskRequirementLinks } from "../grammar/TaskRequirementLinks";
 
 const section = css({ display: "grid", gap: "0.3rem" });
 const heading = css({
@@ -69,27 +75,45 @@ const listCapHint = css({ color: "muted", fontSize: "0.72rem" });
 function ReferenceList({
   references,
   notePaths,
-  open,
+  requirements,
+  openNote,
+  openRequirement,
 }: {
   references: string[];
   notePaths: string[];
-  open: (path: string) => void;
+  requirements: RequirementEntry[];
+  openNote: (path: string) => void;
+  openRequirement: (path: string) => void;
 }) {
   return (
     <section className={section}>
       <h3 className={heading}>References</h3>
       <ul className={bullets}>
         {references.map((reference, index) => {
-          const target = resolveNoteReference(reference, notePaths);
+          const requirementAddress = requirementAddressFromReference(reference);
+          const requirementTarget = resolveRequirementReference(reference, requirements);
+          const noteTarget = requirementAddress
+            ? undefined
+            : resolveNoteReference(reference, notePaths);
           return (
             <li key={reference}>
-              {target ? (
+              {requirementTarget ? (
                 <button
                   type="button"
                   className={refLink}
-                  onClick={() => open(target)}
+                  onClick={() => openRequirement(requirementTarget)}
+                  data-testid={`requirement-ref-${index + 1}`}
+                  title={`open requirements/${requirementTarget}`}
+                >
+                  {reference}
+                </button>
+              ) : noteTarget ? (
+                <button
+                  type="button"
+                  className={refLink}
+                  onClick={() => openNote(noteTarget)}
                   data-testid={`note-ref-${index + 1}`}
-                  title={`open notes/${target}`}
+                  title={`open notes/${noteTarget}`}
                 >
                   <Markdown inline>{reference}</Markdown>
                 </button>
@@ -157,6 +181,7 @@ export function TaskNotes({
   onOpenNotes?: (target: NotesReaderTarget) => void;
 }) {
   const [listing, setListing] = useState<NotesListing | null>(null);
+  const requirementLinks = useTaskRequirementLinks();
 
   useEffect(() => {
     let live = true;
@@ -174,15 +199,21 @@ export function TaskNotes({
 
   const notes = listing?.notes ?? [];
   const notePaths = notes.map((note) => note.path);
-  const open = (path: string) => onOpenNotes?.({ repo, master, path });
+  const openNote = (path: string) => onOpenNotes?.({ kind: "notes", repo, master, path });
 
   return (
     <>
       {references.length > 0 ? (
-        <ReferenceList references={references} notePaths={notePaths} open={open} />
+        <ReferenceList
+          references={references}
+          notePaths={notePaths}
+          requirements={requirementLinks?.requirements ?? []}
+          openNote={openNote}
+          openRequirement={(path) => requirementLinks?.open(path)}
+        />
       ) : null}
       {notes.length > 0 ? (
-        <SeriesNotesList notes={notes} truncated={listing?.truncated === true} open={open} />
+        <SeriesNotesList notes={notes} truncated={listing?.truncated === true} open={openNote} />
       ) : null}
     </>
   );

@@ -32,7 +32,8 @@ import {
 import { ModeBar } from "../grammar/ModeBar";
 import { AttentionQueue } from "../panels/AttentionQueue";
 import { ChangeSetViewer, type ChangeSetTarget } from "../panels/changeset/ChangeSetViewer";
-import { NotesReaderViewer, type NotesReaderTarget } from "../panels/notes-reader/NotesReaderViewer";
+import type { TaskArtifactReaderTarget as NotesReaderTarget } from "../data/taskArtifacts";
+import { NotesReaderViewer } from "../panels/notes-reader/NotesReaderViewer";
 import { DetailPanel } from "../panels/detail-panel/DetailPanel";
 import type { ViewedTaskContext } from "../panels/detail-panel/state";
 import { EngineRoom } from "../panels/EngineRoom";
@@ -590,11 +591,12 @@ function NotesTakeover({
       style={hidden ? { display: "none" } : undefined}
       aria-hidden={hidden ? true : undefined}
     >
-      <main className={cx(viewport, "viewport")} data-view="notes-reader">
+      <main
+        className={cx(viewport, "viewport")}
+        data-view={target.kind === "notes" ? "notes-reader" : "requirements-reader"}
+      >
         <NotesReaderViewer
-          repo={target.repo}
-          master={target.master}
-          path={target.path}
+          {...target}
           onSelectNote={onSelectNote}
           onBack={onBack}
         />

@@ -6,7 +6,7 @@
 import { memo } from "react";
 
 import type { ChangeSetTarget } from "../changeset/ChangeSetViewer";
-import type { NotesReaderTarget } from "../notes-reader/NotesReaderViewer";
+import type { TaskArtifactReaderTarget as NotesReaderTarget } from "../../data/taskArtifacts";
 import {
   EmptyDetailPanel,
   SeriesDetailPanel,

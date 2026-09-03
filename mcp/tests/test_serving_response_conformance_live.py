@@ -519,15 +519,15 @@ class DeclaredSurfaceCoverageTests(unittest.TestCase):
         # never declared would otherwise be validated against the success model by fallback.
         self.assertEqual(sorted(driven - declared), [])
         self.assertEqual(_grouped(declared - driven), UNDRIVEN_DECLARATIONS)
-        # The headline, pinned so neither side can move without a decision: 286 declared pairs,
-        # 133 driven against a real body, 153 declared-and-undriven with a reason each.
-        self.assertEqual(len(declared), 286)
-        self.assertEqual(len(driven), 133)
+        # The headline, pinned so neither side can move without a decision: 292 declared pairs,
+        # 139 driven against a real body, 153 declared-and-undriven with a reason each.
+        self.assertEqual(len(declared), 292)
+        self.assertEqual(len(driven), 139)
         self.assertEqual(len(declared) - len(driven), 153)
 
     def test_every_route_has_at_least_one_driven_status(self) -> None:
         # The weaker claim, but the one that has to hold without exception: a route no request
-        # ever reaches is a route whose declaration is pure decoration. Every one of the 61 is
+        # ever reaches is a route whose declaration is pure decoration. Every one of the 63 is
         # driven on at least one status, which is what makes the ledger above a list of
         # unexercised *legs* rather than of unexercised routes.
         driven = {(method, path) for method, path, _ in _driven_pairs()}

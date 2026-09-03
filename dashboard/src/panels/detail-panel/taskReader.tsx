@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { cx } from "../../../styled-system/css";
 import { Markdown } from "../../grammar/Markdown";
+import { TaskRequirementLinksProvider } from "../../grammar/TaskRequirementLinks";
 import { ProgressFill } from "../../grammar/ProgressFill";
 import {
   type TaskDocumentBodyState,
@@ -26,6 +27,7 @@ import type {
   TaskSectionNode,
   TaskStepNode,
 } from "../../types/projection";
+import type { TaskArtifactReaderTarget as NotesReaderTarget } from "../../data/taskArtifacts";
 import { CloseoutQueue } from "../CloseoutQueue";
 import { SprintGraphView } from "../sprint-graph/SprintGraphView";
 import { DocChangeSetBar } from "./changeSetBar";
@@ -79,8 +81,28 @@ import {
   taskdocTitle,
 } from "./styles";
 import type { ChangeSetTarget } from "../changeset/ChangeSetViewer";
-import type { NotesReaderTarget } from "../notes-reader/NotesReaderViewer";
 import { TaskNotes } from "../TaskNotes";
+
+function TaskRequirementBoundary({
+  doc,
+  onOpenNotes,
+  children,
+}: {
+  doc: Pick<TaskDocNode, "repository" | "docPath">;
+  onOpenNotes?: (target: NotesReaderTarget) => void;
+  children: ReactNode;
+}) {
+  return (
+    <TaskRequirementLinksProvider
+      repo={doc.repository}
+      master={dirName(doc.docPath)}
+      document={taskDocumentRefForDoc(doc)?.path}
+      onOpenArtifact={onOpenNotes}
+    >
+      {children}
+    </TaskRequirementLinksProvider>
+  );
+}
 
 export function TaskContent({
   docs,
@@ -184,6 +206,7 @@ export function MasterOverview({
   docPathForRef?: (ref: TaskDocumentRef) => string | undefined;
 }) {
   return (
+    <TaskRequirementBoundary doc={doc} onOpenNotes={onOpenNotes}>
     <div className={taskdoc}>
       <MasterOverviewHeader
         doc={doc}
@@ -238,6 +261,7 @@ export function MasterOverview({
         />
       ) : null}
     </div>
+    </TaskRequirementBoundary>
   );
 }
 
@@ -625,6 +649,7 @@ export function TaskReader({
   const progress = taskStepProgress(doc);
   const leafKey = qualifiedLeafKey(doc);
   return (
+    <TaskRequirementBoundary doc={doc} onOpenNotes={onOpenNotes}>
     <div className={taskdoc} data-task-leaf-key={leafKey}>
       <div className={taskdocHead}>
         <span className={badge}>{doc.kind}</span>
@@ -644,6 +669,7 @@ export function TaskReader({
       ) : null}
       <TaskReaderSections doc={doc} bodyState={bodyState} onOpenNotes={onOpenNotes} />
     </div>
+    </TaskRequirementBoundary>
   );
 }
 

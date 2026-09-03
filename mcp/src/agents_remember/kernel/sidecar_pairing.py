@@ -16,7 +16,7 @@ present "this source file has no onboarding yet".
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from agents_remember.errors import AuthorityError
@@ -47,6 +47,45 @@ def confine_rel(code_root: Path, requested: str) -> str:
     if not path_is_relative_to(resolved, code_root):
         raise AuthorityError(f"path {requested!r} escapes the repository root")
     return resolved.relative_to(code_root.resolve()).as_posix()
+
+
+def confine_non_symlink_rel(root: Path, requested: str) -> str:
+    """Confine one existing POSIX-relative path without accepting symlink aliases.
+
+    ``confine_rel`` intentionally follows in-root symlinks because code/onboarding
+    pairing addresses the resolved repository file.  Artifact roots with immutable
+    canonical addresses need the stricter posture: every requested component must
+    already exist beneath ``root`` and none may be a symlink, even when it points
+    back inside the root.
+    """
+
+    if not requested or "\\" in requested or "\x00" in requested:
+        raise AuthorityError("artifact paths must be non-empty POSIX-relative paths")
+    candidate = PurePosixPath(requested)
+    windows_candidate = PureWindowsPath(requested)
+    raw_parts = requested.split("/")
+    if (
+        candidate.is_absolute()
+        or windows_candidate.is_absolute()
+        or windows_candidate.drive
+        or any(part in {"", ".", ".."} for part in raw_parts)
+    ):
+        raise AuthorityError("artifact paths must be confined POSIX-relative paths")
+
+    root.lstat()
+    if root.is_symlink():
+        raise AuthorityError("artifact root must not be a symlink")
+    resolved_root = root.resolve(strict=True)
+    cursor = root
+    for part in raw_parts:
+        cursor /= part
+        cursor.lstat()  # Missing components remain FileNotFoundError for the caller.
+        if cursor.is_symlink():
+            raise AuthorityError(f"artifact path {requested!r} contains a symlink")
+    resolved = cursor.resolve(strict=True)
+    if not path_is_relative_to(resolved, resolved_root):
+        raise AuthorityError(f"artifact path {requested!r} escapes its registered root")
+    return resolved.relative_to(resolved_root).as_posix()
 
 
 def route_sidecar_status(onboarding_root: Path, rel: str) -> str:

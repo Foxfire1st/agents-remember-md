@@ -52,6 +52,7 @@ describe("DetailPanel series notes (L9)", () => {
     // plain text. Reading itself now happens in the reader takeover, so the click opens it (no inline pane).
     fireEvent.click(await view.findByTestId("note-ref-1"));
     expect(onOpenNotes).toHaveBeenCalledWith({
+      kind: "notes",
       repo: "agents-remember",
       master: "260703_agent-orchestration",
       path: "friction-ledger.md",
@@ -77,4 +78,3 @@ describe("DetailPanel series notes (L9)", () => {
     expect((await view.findByTestId("note-open-1")).textContent).toContain("design.md");
   });
 });
-

@@ -1,6 +1,6 @@
 """The declared response contract for every HTTP route the serving app registers.
 
-**Why this module exists at all.** Not one of the 61 HTTP routes declared a
+**Why this module exists at all.** Not one of the original 61 HTTP routes declared a
 ``response_model``. Twenty-five of them (the conversation surface) already *dumped* a strict
 :class:`~agents_remember.models.conversations.primitives.WireModel`, which proves a model existed --
 not that the route declared its contract. Nothing anywhere said what
@@ -8,7 +8,7 @@ not that the route declared its contract. Nothing anywhere said what
 
 **Why the declaration alone is not the gate.** FastAPI applies ``response_model`` only to
 values it serializes itself: ``fastapi.routing.get_request_handler`` returns a ``Response``
-instance untouched and never reaches ``serialize_response``. Of the 61 handlers, **57** return
+instance untouched and never reaches ``serialize_response``. Of the 63 handlers, **59** return
 a ``Response`` subclass (``JSONResponse``/``Response``/``StreamingResponse``) directly and
 **two** -- ``GET /api/stream`` and ``GET /api/events`` -- are async generators feeding an
 ``EventSourceResponse``; on all 59 the decorator contributes an OpenAPI schema and **validates
@@ -758,6 +758,43 @@ class NoteContents(WireResponse):
     language: str
     size: int
     truncated: bool
+    content: str
+
+
+# --- task-local requirements ----------------------------------------------------------------
+
+
+class RequirementRow(WireResponse):
+    """One canonical Markdown packet under a task master's ``requirements/`` root."""
+
+    name: str
+    path: str
+    address: str
+    size: int
+    sha256: str
+
+
+class RequirementsListing(WireResponse):
+    """``GET /api/requirements/list``: the registered root selected by task context."""
+
+    repo: str
+    master: str
+    document: str
+    registered: bool
+    requirements: list[RequirementRow]
+
+
+class RequirementContents(WireResponse):
+    """``GET /api/requirements/read``: exact UTF-8 bytes decoded from one packet."""
+
+    repo: str
+    master: str
+    document: str
+    name: str
+    path: str
+    address: str
+    size: int
+    sha256: str
     content: str
 
 

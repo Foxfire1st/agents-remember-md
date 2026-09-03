@@ -15,7 +15,7 @@ import type {
 } from "../../types/projection";
 import type { ChangeSetTarget } from "../changeset/ChangeSetViewer";
 import { GateResponder } from "../GateResponder";
-import type { NotesReaderTarget } from "../notes-reader/NotesReaderViewer";
+import type { TaskArtifactReaderTarget as NotesReaderTarget } from "../../data/taskArtifacts";
 import { ChangeSetButton } from "./changeSetBar";
 import {
   masterDocWithSeriesTokens,
