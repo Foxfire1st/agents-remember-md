@@ -39,10 +39,26 @@ DECLINE_REMEDIATION = {
 
 
 @dataclass(frozen=True)
+class ResolvedLocation:
+    """One anchor's chosen extent, exactly as the shared oracle resolved it.
+
+    Carried on Repair so the deterministic projection binds the extent the
+    repair actually followed -- the in-file tiebreaker when the cited range picks one
+    candidate, the tree-wide Sightings.unique definition otherwise -- without a
+    second lookup or a second authority for the answer.
+    """
+
+    anchor: model.Anchor
+    path: str
+    extent: extents.Extent
+
+
+@dataclass(frozen=True)
 class Repair:
     """The source list ``--fix`` would write for one claim."""
 
     sources: tuple[str, ...]
+    locations: tuple[ResolvedLocation, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -93,10 +109,12 @@ class _Plan:
     reached: set[str] = field(default_factory=set)
     relocated: bool = False
     declined: Decline | None = None
+    locations: list[ResolvedLocation] = field(default_factory=list)
 
-    def add(self, path: str, extent: extents.Extent) -> None:
+    def add(self, anchor: model.Anchor, path: str, extent: extents.Extent) -> None:
         self.spans.setdefault(path, []).append((extent.start, extent.end))
         self.reached.add(path)
+        self.locations.append(ResolvedLocation(anchor=anchor, path=path, extent=extent))
 
     def refuse(self, decline: Decline) -> None:
         self.declined = self.declined or decline
@@ -115,7 +133,10 @@ def plan(
         _place(anchor, cited, found, sources, sightings)
     if found.declined is not None:
         return found.declined
-    return Repair(sources=tuple(_written(found, cited, trees)))
+    return Repair(
+        sources=tuple(_written(found, cited, trees)),
+        locations=tuple(found.locations),
+    )
 
 
 def _carried(cited: tuple[Cited, ...], found: _Plan, trees: Trees) -> list[str]:
@@ -161,7 +182,7 @@ def _place(
         if extent is None:
             found.refuse(_ambiguous_in_file(anchor, one, holds))
             return
-        found.add(one.citation.path, extent)
+        found.add(anchor, one.citation.path, extent)
         placed = True
     if placed:
         return
@@ -180,7 +201,7 @@ def _place_elsewhere(anchor: model.Anchor, found: _Plan, seen: symbol_index.Sigh
             )
         )
         return
-    found.add(unique.path, unique.extent)
+    found.add(anchor, unique.path, unique.extent)
     found.relocated = True
 
 

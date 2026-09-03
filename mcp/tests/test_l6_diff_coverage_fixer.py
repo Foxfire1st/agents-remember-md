@@ -51,9 +51,9 @@ class TestDecideRefused:
             _decide(
                 cast(fixer.Candidate, one),
                 None,
-                Path("/onboarding"),
                 cast(fixer.Walk, walk),
-                {},
+                fixer.Staging(),
+                Path("/onboarding"),
             )
         assert walk.result.refused == [refused]
 

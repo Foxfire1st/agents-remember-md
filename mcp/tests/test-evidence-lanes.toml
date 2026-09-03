@@ -220,6 +220,7 @@ integration = [
   "mcp/tests/test_carryover_memory.py",
   "mcp/tests/test_cgc_seed_bundle_path.py",
   "mcp/tests/test_change_watcher.py",
+  "mcp/tests/test_citation_deterministic_projection.py",
   "mcp/tests/test_citation_resolution.py",
   "mcp/tests/test_claude_stream_transport.py",
   "mcp/tests/test_clean_quality_executor.py",
