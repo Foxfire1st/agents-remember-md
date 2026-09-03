@@ -47,4 +47,10 @@ class ScopeUnprovenError(AgentsRememberError):
         return payload
 
 
-__all__ = ["ScopeFailure", "ScopeUnprovenError"]
+class GateFiveClosureRefusedError(ScopeUnprovenError):
+    """R07 could not prove or execute one exact Gate-5 affected closure."""
+
+    status = "gate-5-closure-refused"
+
+
+__all__ = ["GateFiveClosureRefusedError", "ScopeFailure", "ScopeUnprovenError"]
