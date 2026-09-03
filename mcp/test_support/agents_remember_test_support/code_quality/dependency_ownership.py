@@ -99,6 +99,7 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_durable_store_contract.py"),
             Path("mcp/tests/test_evidence_dependencies.py"),
             Path("mcp/tests/test_file_size_detector.py"),
+            Path("mcp/tests/test_gate_certificate_authority.py"),
             Path("mcp/tests/test_gate_replay_window.py"),
             Path("mcp/tests/test_integration_organizational_decisions_l2.py"),
             Path("mcp/tests/test_integration_apply_recovery_edges_l2.py"),

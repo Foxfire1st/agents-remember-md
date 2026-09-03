@@ -105,13 +105,20 @@ def _canonical_python_base(
         .with_exec(
             [
                 "bash",
-                "-c",
+                "-euc",
                 f". {RUNTIME_CONTRACT}; "
-                f"bash {RUNTIME_INSTALLER} "
+                f"exec bash {RUNTIME_INSTALLER} "
                 f'--prefix "{RUNTIME_ROOT}/cpython-$AR_PYTHON_VERSION" '
                 f"--cache-root {PYTHON_BUILD_CACHE_ROOT} "
-                f"--tooling-root {PYTHON_BUILD_CACHE_ROOT}/tooling; "
-                f"mkdir -p {RUNTIME_ROOT}; cd {RUNTIME_ROOT}; "
+                f"--tooling-root {PYTHON_BUILD_CACHE_ROOT}/tooling",
+            ]
+        )
+        .with_exec(
+            [
+                "bash",
+                "-euc",
+                f". {RUNTIME_CONTRACT}; mkdir -p {RUNTIME_ROOT}; "
+                f"cd {RUNTIME_ROOT}; "
                 'ln -s "cpython-$AR_PYTHON_VERSION" current',
             ]
         )

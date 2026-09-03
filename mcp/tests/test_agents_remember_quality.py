@@ -499,22 +499,18 @@ def test_candidate_setup_precedes_every_attempt_specific_cache_input() -> None:
         "image_reference",
     )
     operations = fake_dag.container_value.operations
-    runtime_build_index = next(
-        index
-        for index, operation in enumerate(operations)
-        if operation[0] == "exec"
-        and "install-python-runtime.sh" in " ".join(str(part) for part in operation[1:])
-    )
-    source_index = next(
-        index
-        for index, operation in enumerate(operations)
-        if operation[:2] == ("directory", "/workspace")
-    )
-    install_index = next(
-        index
-        for index, operation in enumerate(operations)
-        if operation[0] == "exec" and "uv sync" in " ".join(str(part) for part in operation[1:])
-    )
+
+    def find_operation(kind: str, needle: str) -> tuple[int, tuple[object, ...]]:
+        return next(
+            (index, operation)
+            for index, operation in enumerate(operations)
+            if operation[0] == kind and needle in " ".join(str(part) for part in operation[1:])
+        )
+
+    runtime_build_index, runtime_build = find_operation("exec", "install-python-runtime.sh")
+    runtime_link_index, runtime_link = find_operation("exec", 'ln -s "cpython-$AR_PYTHON_VERSION"')
+    source_index, _ = find_operation("directory", "/workspace")
+    install_index, _ = find_operation("exec", "uv sync")
     late_names = {
         "PYTHONPATH",
         "AR_QUALITY_INVOCATION",
@@ -529,22 +525,17 @@ def test_candidate_setup_precedes_every_attempt_specific_cache_input() -> None:
         for index, operation in enumerate(operations)
         if operation[0] == "env" and operation[1] in late_names
     ]
-    retry_cache_index = next(
-        index
-        for index, operation in enumerate(operations)
-        if operation[0] == "cache" and operation[1] == module.RETRY_CACHE_ROOT
-    )
+    retry_cache_index, _ = find_operation("cache", module.RETRY_CACHE_ROOT)
 
     assert len(late_indices) == len(late_names)
-    assert all(
-        operation[:2]
-        not in {
-            ("env", "AR_CODEX_PROBE_MODE"),
-            ("env", "AR_CODEX_PROBE_REPORT"),
-        }
-        for operation in operations
-    )
-    assert runtime_build_index < source_index < install_index
+    assert not {("env", "AR_CODEX_PROBE_MODE"), ("env", "AR_CODEX_PROBE_REPORT")} & {
+        operation[:2] for operation in operations
+    }
+    assert runtime_build[1:3] == ("bash", "-euc")
+    assert "exec bash" in str(runtime_build[3]) and "ln -s" not in str(runtime_build[3])
+    assert runtime_link[1:3] == ("bash", "-euc")
+    assert "install-python-runtime.sh" not in str(runtime_link[3])
+    assert runtime_build_index < runtime_link_index < source_index < install_index
     assert all(index > install_index for index in late_indices)
     assert retry_cache_index > install_index
     assert all(VALID_DAGGER_NONCE not in operation for operation in operations[:install_index])

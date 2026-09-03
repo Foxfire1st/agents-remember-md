@@ -103,28 +103,58 @@ observed="$(sha256sum "$archive" | awk '{print $1}')"
 
 short_commit="$(printf '%s' "$AR_PYTHON_BUILD_COMMIT" | cut -c1-12)"
 builder_root="$tooling_root/pyenv-$short_commit"
-if [ ! -d "$builder_root/.git" ]; then
-  [ ! -e "$builder_root" ] || {
-    echo "[python-runtime] refusing foreign builder path: $builder_root" >&2
-    exit 1
+
+validate_builder() {
+  candidate_root="$1"
+  observed_commit="$(git -C "$candidate_root" rev-parse HEAD)"
+  [ "$observed_commit" = "$AR_PYTHON_BUILD_COMMIT" ] || {
+    echo "[python-runtime] builder commit mismatch: expected $AR_PYTHON_BUILD_COMMIT, observed $observed_commit" >&2
+    return 1
   }
-  git clone --filter=blob:none --no-checkout "$AR_PYTHON_BUILD_REPOSITORY" "$builder_root"
-  git -C "$builder_root" checkout --detach "$AR_PYTHON_BUILD_COMMIT"
+  definition="$candidate_root/plugins/python-build/share/python-build/$AR_PYTHON_VERSION"
+  [ -f "$definition" ] || {
+    echo "[python-runtime] pinned builder lacks the $AR_PYTHON_VERSION definition" >&2
+    return 1
+  }
+  grep -F "$AR_PYTHON_SOURCE_URL#$AR_PYTHON_SOURCE_SHA256" "$definition" >/dev/null || {
+    echo "[python-runtime] builder definition does not bind the approved source and digest" >&2
+    return 1
+  }
+}
+
+require_reusable_builder() {
+  candidate_root="$1"
+  if [ -L "$candidate_root" ] || [ ! -d "$candidate_root/.git" ]; then
+    echo "[python-runtime] refusing foreign builder path: $builder_root" >&2
+    return 1
+  fi
+  validate_builder "$candidate_root"
+}
+
+if [ -e "$builder_root" ] || [ -L "$builder_root" ]; then
+  require_reusable_builder "$builder_root"
+else
+  builder_staging="$(mktemp -d "$tooling_root/.pyenv-$short_commit.staging.XXXXXX")"
+  cleanup_builder_staging() {
+    [ -z "${builder_staging:-}" ] || rm -rf -- "$builder_staging"
+  }
+  trap cleanup_builder_staging EXIT
+  git clone --no-checkout "$AR_PYTHON_BUILD_REPOSITORY" "$builder_staging"
+  git -C "$builder_staging" checkout --detach "$AR_PYTHON_BUILD_COMMIT"
+  validate_builder "$builder_staging"
+  if ! mv -T --no-clobber -- "$builder_staging" "$builder_root"; then
+    if [ ! -e "$builder_root" ] && [ ! -L "$builder_root" ]; then
+      echo "[python-runtime] failed to publish builder at $builder_root" >&2
+      exit 1
+    fi
+  fi
+  require_reusable_builder "$builder_root"
+  if [ -e "$builder_staging" ]; then
+    cleanup_builder_staging
+  fi
+  builder_staging=""
+  trap - EXIT
 fi
-observed_commit="$(git -C "$builder_root" rev-parse HEAD)"
-[ "$observed_commit" = "$AR_PYTHON_BUILD_COMMIT" ] || {
-  echo "[python-runtime] builder commit mismatch: expected $AR_PYTHON_BUILD_COMMIT, observed $observed_commit" >&2
-  exit 1
-}
-definition="$builder_root/plugins/python-build/share/python-build/$AR_PYTHON_VERSION"
-[ -f "$definition" ] || {
-  echo "[python-runtime] pinned builder lacks the $AR_PYTHON_VERSION definition" >&2
-  exit 1
-}
-grep -F "$AR_PYTHON_SOURCE_URL#$AR_PYTHON_SOURCE_SHA256" "$definition" >/dev/null || {
-  echo "[python-runtime] builder definition does not bind the approved source and digest" >&2
-  exit 1
-}
 
 echo "[python-runtime] source=$AR_PYTHON_SOURCE_URL"
 echo "[python-runtime] sha256=$AR_PYTHON_SOURCE_SHA256"

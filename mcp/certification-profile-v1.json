@@ -3,7 +3,7 @@
   "semanticRevision": "1.0.0",
   "repositoryId": "agents-remember",
   "profileId": "agents-remember-certification",
-  "profileDigest": "47c065597c909229994b680562b508e202ac8217e39f2fd3c3fa25267139d003",
+  "profileDigest": "87142fc28363382c9f92696206efa2f2ceebdeb20e125eaff3dba1c7abf93879",
   "selections": [
     {
       "selectionId": "closeout-full",
@@ -2580,7 +2580,7 @@
       "selectorId": "agents-remember-test-selection",
       "schemaVersion": "repository-selector-result/v2",
       "version": "2.0.0",
-      "configurationDigest": "b579121789223284da5e2fb864a38f3298ebb388748eb19b1d24d48ffe60cb3b",
+      "configurationDigest": "8ceb5c1d4e4b1bb6d12bcc9503c62c1e15ba4550d3e4c574b27d57f9eaeb62e3",
       "inputUniverse": [
         "configuration and generated projections",
         "fixtures support and plugins",
@@ -2640,7 +2640,7 @@
       "planArgument": "execution-manifest",
     "reportsField": "reports",
     "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-    "runtimeDigest": "de2193a75d44131eb52c58a5c5432b014e6ed284d767e1aa17cc1ec55bfde17b",
+    "runtimeDigest": "32b57c7905b507d6e4e5a87dc542f839af5b4f3c75309daff84b6acadbadc858",
       "consumingGates": [1, 2, 3, 4]
     }
   ],
