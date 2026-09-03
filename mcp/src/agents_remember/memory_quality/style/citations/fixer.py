@@ -12,13 +12,15 @@ preserve every byte outside the selected citation span.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from agents_remember.memory_quality.integrity.onboarding_drift_check.discovery import rel
 from agents_remember.memory_quality.style.citations import (
     cells,
+    deterministic_projection,
     drafts,
     migration,
     model,
@@ -105,6 +107,7 @@ class Result:
     wrapped: int = 0
     written: int = 0
     remaining: int = 0
+    projections: list[deterministic_projection.Projection] = field(default_factory=list)
 
 
 def table_sites(lines: list[str]) -> list[tuple[model.Claim, Site]]:
@@ -238,6 +241,15 @@ def candidates(
     return found
 
 
+@dataclass
+class Staging:
+    """One run's pending writes: per-document edit batches, history bullets, and stamp."""
+
+    edits: dict[Path, list[tuple[Site, str]]] = field(default_factory=dict)
+    bullets: dict[Path, list[str]] = field(default_factory=dict)
+    stamp: datetime | None = None
+
+
 def fix_onboarding_root(
     onboarding_root: Path,
     code_repository_root: Path | Trees,
@@ -276,13 +288,33 @@ def fix_onboarding_root(
             trees,
             index=index,
         )
-        edits: dict[Path, list[tuple[Site, str]]] = {}
+        staging = Staging()
+        if staging.stamp is None:
+            staging.stamp = deterministic_projection.now_utc()
         for one in found:
             outcome = repair.plan(one.claim, trees, sources, seen) if one.repairing else None
-            _decide(one, outcome, onboarding_root, walk, edits)
-        result.written = len(edits)
+            _decide(one, outcome, walk, staging, onboarding_root)
+        for document, doc_bullets in staging.bullets.items():
+            lines = document_cache.lines(document)
+            heading = deterministic_projection.history_section_line(lines)
+            if heading is None:  # pragma: no cover - bullets only stage beside a section
+                continue
+            staging.edits.setdefault(document, []).append(
+                deterministic_projection.history_edit(lines, heading, doc_bullets)
+            )
+        for document, per_document in staging.edits.items():
+            digest = deterministic_projection.document_digest(
+                document_cache.lines(document), per_document
+            )
+            relative = rel(document, onboarding_root)
+            for position, projection in enumerate(walk.result.projections):
+                if projection.document == relative:
+                    walk.result.projections[position] = replace(
+                        projection, new_document_digest=digest
+                    )
+        result.written = len(staging.edits)
         if not dry_run:
-            for document, per_document in edits.items():
+            for document, per_document in staging.edits.items():
                 body = "\n".join(rewritten(document_cache.lines(document), per_document))
                 document.write_text(body, encoding="utf-8")
         result.remaining = range_resolution.check_onboarding_root(
@@ -300,9 +332,9 @@ def fix_onboarding_root(
 def _decide(
     one: Candidate,
     outcome: repair.Repair | repair.Decline | None,
-    onboarding_root: Path,
     walk: Walk,
-    edits: dict[Path, list[tuple[Site, str]]],
+    staging: Staging,
+    onboarding_root: Path,
 ) -> None:
     line = walk.documents.lines(one.document)[one.site.line - 1]
     was = line[one.site.start : one.site.end].strip()
@@ -329,7 +361,41 @@ def _decide(
             repairing=one.gating,
         )
     )
-    edits.setdefault(one.document, []).append((one.site, now))
+    staging.edits.setdefault(one.document, []).append((one.site, now))
+    if not one.repairing:
+        return
+    assert isinstance(outcome, repair.Repair)
+    lines = walk.documents.lines(one.document)
+    heading = deterministic_projection.history_section_line(lines)
+    stamp = staging.stamp if staging.stamp is not None else deterministic_projection.now_utc()
+    projection = deterministic_projection.plan_projection(
+        deterministic_projection.ProjectionRequest(
+            lines=lines,
+            site=one.site,
+            relative=one.relative,
+            claim=one.claim,
+            outcome=outcome,
+            index=walk.index,
+            now=stamp,
+            history_line=heading,
+        )
+    )
+    if isinstance(projection, deterministic_projection.ProjectionDecline):
+        walk.result.refused.append(
+            Refused(
+                path=one.relative,
+                line=one.claim.line,
+                code=projection.code,
+                anchor=projection.anchor,
+                message=projection.message,
+            )
+        )
+        return
+    walk.result.projections.append(projection)
+    if heading is not None:
+        bullet = projection.history_bullet
+        assert bullet is not None
+        staging.bullets.setdefault(one.document, []).append(bullet)
 
 
 def _scoped_source(
@@ -462,6 +528,9 @@ def payload(
             }
             for one in result.applied
         ],
+        "projectionCount": len(result.projections),
+        "projections": [one.to_dict() for one in result.projections],
+        "repairToolVersion": deterministic_projection.REPAIR_TOOL_VERSION,
         "declinedCount": len(result.refused),
         "declined": [one.to_dict() for one in result.refused],
         "findingsRemaining": result.remaining,
