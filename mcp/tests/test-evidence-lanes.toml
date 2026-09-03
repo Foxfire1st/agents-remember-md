@@ -193,6 +193,7 @@ public-contract = [
   "mcp/tests/test_hosted_control_conformance.py",
   "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
   "mcp/tests/test_quality_gate_public_contract.py",
+  "mcp/tests/test_quality_gate_public_contract_coverage.py",
   "mcp/tests/test_served_state_conformance.py",
   "mcp/tests/test_serving_response_conformance.py",
   "mcp/tests/test_serving_response_conformance_cases_1.py",

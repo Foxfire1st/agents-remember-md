@@ -43,6 +43,12 @@ class CertificationExecutorPrerequisiteError(CertificationContractError):
     status = "certification-executor-prerequisite-failed"
 
 
+class CloseoutReadinessContractError(CertificationContractError):
+    """One closeout readiness projection contradicted its exact authorities."""
+
+    status = "closeout-readiness-contract-failed"
+
+
 def _freeze_contract_finding(finding: Mapping[str, object]) -> Mapping[str, object]:
     return MappingProxyType({key: _freeze_contract_value(value) for key, value in finding.items()})
 
