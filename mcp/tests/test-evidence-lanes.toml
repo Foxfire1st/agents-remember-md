@@ -66,6 +66,7 @@ unit-regression = [
   "mcp/tests/test_execution_graph_view.py",
   "mcp/tests/test_expectation_rows.py",
   "mcp/tests/test_gate_certificate_authority.py",
+  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
   "mcp/tests/test_global_state_isolation.py",
   "mcp/tests/test_harness_adapters.py",
   "mcp/tests/test_harness_capabilities.py",

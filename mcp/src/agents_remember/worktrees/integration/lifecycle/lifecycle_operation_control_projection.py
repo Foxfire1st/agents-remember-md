@@ -95,7 +95,9 @@ def legal_operation_controls(
     migration = classify_migrated_lifecycle(record)
     if migration.state == "terminal" and record.status == "failed":
         return []
-    if worker_exit_unproven(record):
+    if record.status == "termination-required":
+        controls = [_control("cancel", base, "Complete exact same-generation cancellation.")]
+    elif worker_exit_unproven(record):
         controls = [_control("cancel", base, "Retry exact worker termination and prove exit.")]
     elif record.status == "cancelled":
         controls = _cancelled_controls(

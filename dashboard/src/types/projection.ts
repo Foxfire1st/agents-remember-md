@@ -328,8 +328,14 @@ export interface LedgerRefNode {
   memorySubject?: string;
 }
 
+export interface LifecycleApprovalObservation {
+  state: "claimed" | "unclaimed";
+}
+
 export interface LifecycleOperationProjection {
+  approval?: LifecycleApprovalObservation;
   cancellable: boolean;
+  componentBindings?: LifecycleProjectionComponentBindings;
   currentCommand: string;
   elapsedSeconds: number;
   failure?: string;
@@ -337,16 +343,22 @@ export interface LifecycleOperationProjection {
   generation?: number;
   guidance?: string;
   heartbeatAt?: string;
+  identity?: LifecycleProjectionIdentity;
   kind: "closeout" | "integrate" | "direct-landing";
+  /** JSON Schema refinements: {"maxItems":32} */
   legalControls: Record<string, unknown>[];
   phase: "queued" | "preflight" | "memory-preflight" | "quality" | "approval-claim" | "recovering-after-claim" | "code-commit" | "memory-refresh" | "memory-commit" | "ledger-commit" | "integration-replay" | "integration-quality" | "source-merge" | "contract-finalization" | "door-publication" | "termination-required" | "direct-preflight" | "direct-memory-commit" | "direct-ledger-commit" | "direct-terminal-publication" | "completed" | "failed" | "cancelled";
   /** JSON Schema refinements: {"maxItems":8} */
   projectionEffects: TaskDocProjectionEffect[];
+  recommendedAction?: LifecycleRecommendedAction;
   reportPath: string;
   result?: Record<string, unknown>;
+  schemaVersion: "lifecycle-operation-projection/v1";
   startedAt?: string;
-  status: "queued" | "running" | "input-required" | "termination-required" | "completed" | "failed" | "cancelled" | "unreadable";
+  stateMatrixVersion: "lifecycle-operation-state-matrix/v1";
+  status: "queued" | "running" | "input-required" | "termination-required" | "completed" | "failed" | "cancelled" | "unreadable" | "incoherent";
   taskIntent?: TaskIntentIdentity;
+  worker?: LifecycleWorkerObservation;
 }
 
 export interface LifecycleProjection {
@@ -367,6 +379,56 @@ export interface LifecycleProjection {
   stateEnteredAt: string;
   tokenSeries: TokenSample[];
   tokens: number;
+}
+
+export interface LifecycleProjectionComponentBindings {
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  approval?: string;
+  /** JSON Schema refinements: {"maxItems":32} */
+  legalControls: string[];
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  recommendedAction?: string;
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  result?: string;
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  worker?: string;
+}
+
+export interface LifecycleProjectionIdentity {
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  candidateTupleDigest: string;
+  /** JSON Schema refinements: {"maxLength":4096,"minLength":1} */
+  contractPath: string;
+  /** JSON Schema refinements: {"minimum":1} */
+  generation: number;
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  identityDigest: string;
+  operationKind: "closeout" | "integrate" | "direct-landing";
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  planIdentityDigest: string;
+  /** JSON Schema refinements: {"minimum":1} */
+  recordRevision: number;
+}
+
+export interface LifecycleRecommendedAction {
+  /** JSON Schema refinements: {"maxLength":128,"minLength":1} */
+  action: string;
+  arguments?: Record<string, unknown>;
+  mutating: boolean;
+  /** JSON Schema refinements: {"maxLength":2048,"minLength":1} */
+  summary: string;
+  /** JSON Schema refinements: {"maxLength":256} */
+  tool?: string;
+}
+
+export interface LifecycleWorkerObservation {
+  /** JSON Schema refinements: {"maxLength":1024} */
+  detail: string;
+  identityRetained: boolean;
+  observedAt?: string;
+  state: "live" | "termination-requested" | "termination-required" | "exited";
+  /** JSON Schema refinements: {"pattern":"^[0-9a-f]{64}$"} */
+  workerIdentitySha256?: string;
 }
 
 type Camel<S extends string> = S extends `${infer Head}-${infer Tail}`

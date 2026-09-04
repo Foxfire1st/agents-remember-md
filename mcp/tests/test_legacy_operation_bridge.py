@@ -1007,8 +1007,13 @@ class LegacyOperationBridgeTests(unittest.TestCase):
         active = next(
             row for row in active_status["lifecycleOperations"] if row["kind"] == "closeout"
         )
-        self.assertEqual(active["result"]["state"], "worker-termination-required")
-        self.assertEqual(active["result"]["nextAction"], "cancel")
+        # L18: a retained exact worker binding is ordinary live authority until a
+        # real cancellation/termination transition records durable termination
+        # evidence (worker_termination_required_result).  While the launched
+        # recovery worker is live the projection stays on the running generation
+        # and advertises only cancel, never a synthetic worker-termination result.
+        self.assertEqual(active["result"]["state"], "legacy-closeout-recovery-required")
+        self.assertEqual(active["result"]["nextAction"], "recover")
         self.assertEqual([row["action"] for row in active["legalControls"]], ["cancel"])
         cancel = active["legalControls"][0]
 

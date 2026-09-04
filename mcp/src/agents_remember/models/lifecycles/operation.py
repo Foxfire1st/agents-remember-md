@@ -8,9 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agents_remember.models.base import StrictResponseModel
 from agents_remember.models.closeout.input import EffectiveCloseoutInput, EnabledCloseoutLeg
-from agents_remember.models.closeout.projection import TaskDocProjectionEffect
 from agents_remember.models.lifecycles.direct_landing import (
     DirectLandingLedgerIntent,
     DirectLandingOperationInput,
@@ -31,7 +29,14 @@ from agents_remember.models.lifecycles.mutation_evidence import (
     CloseoutMutationLeg,
     GitMutationEvidence,
 )
-from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
+from agents_remember.models.lifecycles.operation_kinds import (
+    LifecycleOperationKind,
+    LifecycleOperationPhase,
+    LifecycleOperationStatus,
+)
+from agents_remember.models.lifecycles.operation_projection import (
+    LifecycleOperationProjection,  # noqa: F401 - public re-export
+)
 from agents_remember.models.lifecycles.policy import GatePolicyRuleSnapshot
 from agents_remember.models.lifecycles.termination import (
     LifecycleCancellationEvidence,
@@ -40,40 +45,6 @@ from agents_remember.models.lifecycles.termination import (
 from agents_remember.models.task_intent import TaskIntentIdentity, TaskIntentState
 
 IntegrateStrategy = Literal["ff-only", "replay"]
-LifecycleOperationStatus = Literal[
-    "queued",
-    "running",
-    "input-required",
-    "termination-required",
-    "completed",
-    "failed",
-    "cancelled",
-]
-LifecycleOperationPhase = Literal[
-    "queued",
-    "preflight",
-    "memory-preflight",
-    "quality",
-    "approval-claim",
-    "recovering-after-claim",
-    "code-commit",
-    "memory-refresh",
-    "memory-commit",
-    "ledger-commit",
-    "integration-replay",
-    "integration-quality",
-    "source-merge",
-    "contract-finalization",
-    "door-publication",
-    "termination-required",
-    "direct-preflight",
-    "direct-memory-commit",
-    "direct-ledger-commit",
-    "direct-terminal-publication",
-    "completed",
-    "failed",
-    "cancelled",
-]
 
 
 class LifecycleOperationRecoveryCommits(BaseModel):
@@ -353,6 +324,7 @@ class LifecycleOperationRecord(BaseModel):
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     operationKey: str = Field(pattern=r"^[0-9a-f]{64}$")
     generation: int = Field(default=1, ge=1)
+    recordRevision: int = Field(default=1, ge=1)
     predecessorFingerprint: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
     successorFingerprint: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
     generationDisposition: Literal["active", "cancelled", "retired", "superseded"] = "active"
@@ -914,25 +886,3 @@ def _require_canonical_cancellation_handoff(
         raise ValueError(
             "organizational repair evidence requires its canonical cancellation handoff"
         )
-
-
-class LifecycleOperationProjection(StrictResponseModel):
-    """Public task-addressed view; process and resume identities never cross the wire."""
-
-    kind: LifecycleOperationKind
-    status: LifecycleOperationStatus | Literal["unreadable"]
-    phase: LifecycleOperationPhase
-    startedAt: str | None = None
-    heartbeatAt: str | None = None
-    finishedAt: str | None = None
-    elapsedSeconds: float
-    currentCommand: str = ""
-    reportPath: str
-    taskIntent: TaskIntentIdentity | None = None
-    result: dict[str, Any] | None = None
-    failure: str | None = None
-    guidance: str | None = None
-    cancellable: bool = False
-    generation: int | None = None
-    legalControls: list[dict[str, Any]] = Field(default_factory=list)
-    projectionEffects: list[TaskDocProjectionEffect] = Field(default_factory=list, max_length=8)

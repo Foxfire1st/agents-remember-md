@@ -17,6 +17,7 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 from agents_remember.worktrees.worktree_contract import WorktreeContract
 
 _ACTIVE = frozenset({"queued", "running", "input-required", "termination-required"})
+_TERMINAL = frozenset({"completed", "failed", "cancelled"})
 
 
 class LifecycleOperationCompatibilityError(RuntimeError):

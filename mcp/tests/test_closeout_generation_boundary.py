@@ -316,7 +316,9 @@ def test_recovery_cells_without_exact_finalization_state_do_not_retain_generatio
     assert recorded.closeoutFinalizedContractSha256 is None
     assert recorded.irreversibleBoundaryEntered is False
     assert closeout_generation_retained(recorded) is False
-    assert operation_projection(recorded).cancellable is True
+    # L18: cancel is a task-addressed control derived from the contract; the
+    # no-contract projection no longer advertises it (see _operation_cancellable).
+    assert operation_projection(recorded, contract=contract).cancellable is True
 
 
 def test_unrelated_contract_advancement_cannot_replace_completed_unintegrated_generation(

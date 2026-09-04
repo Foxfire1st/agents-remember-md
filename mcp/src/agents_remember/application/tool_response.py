@@ -13,10 +13,41 @@ from typing import Any
 
 from agents_remember.application.next_step import next_step_for
 from agents_remember.kernel.agentic_settings import DEFAULT_AGENT_NOTIFIER_STALE_CUTOFF_SECONDS
-from agents_remember.models.base import ResponseEnvelope
+from agents_remember.models.base import NextStep, ResponseEnvelope
 from agents_remember.models.tools.tool_response import finalize_tool_response
 from agents_remember.observer.ambient import AmbientLifecycle, ambient
 from agents_remember.serving.agent_notifier_heartbeat import agent_notifier_staleness_banner
+
+_RESPONSE_PATH_FIELDS = ("contractPath", "enclosurePath")
+_ARGUMENT_PATH_FIELDS = (
+    "contract_path",
+    "enclosure_path",
+    "contractPath",
+    "enclosurePath",
+)
+
+
+def bound_next_step(response: ResponseEnvelope, step: NextStep | None) -> NextStep | None:
+    """Omit guidance whose task address contradicts the response's exact address."""
+
+    if step is None or step.nextArgs is None:
+        return step
+    response_paths = {
+        value
+        for field in _RESPONSE_PATH_FIELDS
+        if isinstance((value := getattr(response, field, None)), str) and value
+    }
+    if not response_paths:
+        return step
+    if len(response_paths) != 1:
+        return None
+    expected = next(iter(response_paths))
+    observed = {
+        str(step.nextArgs[field]) for field in _ARGUMENT_PATH_FIELDS if field in step.nextArgs
+    }
+    if observed and observed != {expected}:
+        return None
+    return step
 
 
 def _agent_notifier_banner(amb: AmbientLifecycle) -> str | None:
@@ -43,8 +74,8 @@ def _attach_lifecycle_tail(
     # A refusal/recovery producer may supply an explicit nextStep alongside its top-level
     # recovery keys. Preserve that one authority instead of overwriting it with ambient phase
     # guidance derived from a contract the operation intentionally refused or just rewrote.
-    if response.nextStep is None:
-        response.nextStep = next_step_for(amb, tool_name)
+    step = response.nextStep or next_step_for(amb, tool_name)
+    response.nextStep = bound_next_step(response, step)
     banner = _agent_notifier_banner(amb)
     response.agentNotifierBanner = banner
     response.supervisorBanner = banner

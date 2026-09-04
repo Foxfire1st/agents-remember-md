@@ -42,6 +42,7 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
     publish_terminal_lifecycle_operation_location,
     require_matching_lifecycle_operation_location,
 )
+from agents_remember.worktrees.integration.lifecycle.worker.state import project_worker_exit
 from agents_remember.worktrees.modules.models import WorktreeCommandResult
 from agents_remember.worktrees.worktree_contract import WorktreeContract
 
@@ -536,8 +537,9 @@ def _require_archivable_operation(
 ) -> None:
     _require_terminal_operation(record, name)
     _require_cleanup_retry_disposition(record, operation, current, name)
-    _require_absent_worker_authority(record, name)
-    _require_resolved_worker_termination(record, name)
+    observed = project_worker_exit(record)
+    _require_absent_worker_authority(observed, name)
+    _require_resolved_worker_termination(observed, name)
     _require_resolved_mutations(record, name)
     _require_resolved_publications(record, name)
 

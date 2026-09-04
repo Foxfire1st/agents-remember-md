@@ -153,6 +153,8 @@ describe("Hangar renders worktree truth (L11)", () => {
             phase: "quality",
             projectionEffects: [],
             reportPath: "reports/closeout-operation.log",
+            schemaVersion: "lifecycle-operation-projection/v1",
+            stateMatrixVersion: "lifecycle-operation-state-matrix/v1",
             status: "running",
           },
         }),

@@ -26,7 +26,9 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_projection import (
     OperationProjectionContext,
+    bind_projection_decision,
     operation_projection,
+    operation_projection_identity,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_read_decision import (
     lifecycle_journal_read_decision,
@@ -145,14 +147,10 @@ def _operation_location_decision(
         "expected": error.expected,
         "observed": error.observed,
     }
-    return operation_projection(record).model_copy(
-        update={
-            "result": result,
-            "failure": error.detail,
-            "guidance": error.detail,
-            "cancellable": False,
-            "legalControls": [],
-        }
+    return bind_projection_decision(
+        operation_projection(record),
+        result,
+        error.detail,
     )
 
 
@@ -192,7 +190,10 @@ def unreadable_contract_operation_projections(
             projections.append(
                 operation_projection(
                     record,
-                    context=OperationProjectionContext(door=observation),
+                    context=OperationProjectionContext(
+                        door=observation,
+                        doorIdentity=operation_projection_identity(record),
+                    ),
                 )
             )
             continue
@@ -216,18 +217,7 @@ def unreadable_contract_operation_projections(
                 observed={"state": "unreadable"},
             ),
         }
-        projected = operation_projection(record)
-        projections.append(
-            projected.model_copy(
-                update={
-                    "result": result,
-                    "failure": surface,
-                    "guidance": surface,
-                    "cancellable": False,
-                    "legalControls": [],
-                }
-            )
-        )
+        projections.append(bind_projection_decision(operation_projection(record), result, surface))
     return projections
 
 

@@ -1187,7 +1187,19 @@
       "leafId": "sim-leaf",
       "lifecycleId": "sim-replay-lifecycle",
       "lifecycleOperation": {
+        "approval": {
+          "state": "claimed"
+        },
         "cancellable": false,
+        "componentBindings": {
+          "approval": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "legalControls": [
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          ],
+          "recommendedAction": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "result": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "worker": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
         "currentCommand": "quality: diff-coverage",
         "elapsedSeconds": 12,
         "failure": "fixture failure",
@@ -1195,6 +1207,15 @@
         "generation": 1,
         "guidance": "Fix the reported preflight failure, then restart this task operation.",
         "heartbeatAt": "2026-08-12T12:00:10+00:00",
+        "identity": {
+          "candidateTupleDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "contractPath": "/tasks/sim",
+          "generation": 1,
+          "identityDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "operationKind": "closeout",
+          "planIdentityDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "recordRevision": 1
+        },
         "kind": "closeout",
         "legalControls": [
           {
@@ -1262,6 +1283,18 @@
             }
           }
         ],
+        "recommendedAction": {
+          "action": "recover",
+          "arguments": {
+            "action": "recover",
+            "contract_path": "/tasks/sim",
+            "expected_generation": 1,
+            "operation_kind": "closeout"
+          },
+          "mutating": true,
+          "summary": "Apply the exact recover control.",
+          "tool": "worktree_operation_control"
+        },
         "taskIntent": {
           "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "schema": "task-intent/v1"
@@ -1270,8 +1303,17 @@
         "result": {
           "reason": "fixture failure"
         },
+        "schemaVersion": "lifecycle-operation-projection/v1",
         "startedAt": "2026-08-12T12:00:00+00:00",
-        "status": "failed"
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
+        "status": "failed",
+        "worker": {
+          "detail": "exact worker exit is proven",
+          "identityRetained": false,
+          "observedAt": "2026-08-12T12:00:10+00:00",
+          "state": "exited",
+          "workerIdentitySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
       },
       "memoryWorktreeExists": true,
       "repoName": "agents-remember",
@@ -1300,6 +1342,8 @@
         "phase": "queued",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "queued"
       },
       "memoryWorktreeExists": true,
@@ -1329,6 +1373,8 @@
         "phase": "preflight",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1358,6 +1404,8 @@
         "phase": "memory-preflight",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1387,6 +1435,8 @@
         "phase": "quality",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1416,6 +1466,8 @@
         "phase": "approval-claim",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1445,6 +1497,8 @@
         "phase": "recovering-after-claim",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "input-required"
       },
       "memoryWorktreeExists": true,
@@ -1474,6 +1528,8 @@
         "phase": "code-commit",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1503,6 +1559,8 @@
         "phase": "memory-refresh",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1532,6 +1590,8 @@
         "phase": "memory-commit",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1561,6 +1621,8 @@
         "phase": "ledger-commit",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/closeout-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1590,6 +1652,8 @@
         "phase": "integration-replay",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/integrate-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1619,6 +1683,8 @@
         "phase": "integration-quality",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/integrate-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1648,6 +1714,8 @@
         "phase": "source-merge",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/integrate-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "running"
       },
       "memoryWorktreeExists": true,
@@ -1677,6 +1745,8 @@
         "phase": "contract-finalization",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/integrate-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "input-required"
       },
       "memoryWorktreeExists": true,
@@ -1706,6 +1776,8 @@
         "phase": "completed",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/integrate-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "completed"
       },
       "memoryWorktreeExists": true,
@@ -1735,6 +1807,8 @@
         "phase": "cancelled",
         "projectionEffects": [],
         "reportPath": "/coordination/worktrees/sim-group/reports/integrate-operation.log",
+        "schemaVersion": "lifecycle-operation-projection/v1",
+        "stateMatrixVersion": "lifecycle-operation-state-matrix/v1",
         "status": "cancelled"
       },
       "memoryWorktreeExists": true,

@@ -1809,14 +1809,55 @@
       "title": "LedgerRefNode",
       "type": "object"
     },
+    "LifecycleApprovalObservation": {
+      "additionalProperties": false,
+      "description": "Approval claim read from the same exact journal revision.",
+      "properties": {
+        "state": {
+          "enum": [
+            "claimed",
+            "unclaimed"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "LifecycleApprovalObservation",
+      "type": "object"
+    },
     "LifecycleOperationProjection": {
       "additionalProperties": false,
-      "description": "Public task-addressed view; process and resume identities never cross the wire.",
+      "description": "One coherent, task-addressed lifecycle journal observation.",
       "properties": {
+        "approval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LifecycleApprovalObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "cancellable": {
           "default": false,
           "title": "Cancellable",
           "type": "boolean"
+        },
+        "componentBindings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LifecycleProjectionComponentBindings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "currentCommand": {
           "default": "",
@@ -1887,6 +1928,17 @@
           "default": null,
           "title": "Heartbeatat"
         },
+        "identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LifecycleProjectionIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "kind": {
           "enum": [
             "closeout",
@@ -1901,6 +1953,7 @@
             "additionalProperties": true,
             "type": "object"
           },
+          "maxItems": 32,
           "title": "Legalcontrols",
           "type": "array"
         },
@@ -1941,6 +1994,17 @@
           "title": "Projectioneffects",
           "type": "array"
         },
+        "recommendedAction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LifecycleRecommendedAction"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "reportPath": {
           "title": "Reportpath",
           "type": "string"
@@ -1958,6 +2022,12 @@
           "default": null,
           "title": "Result"
         },
+        "schemaVersion": {
+          "const": "lifecycle-operation-projection/v1",
+          "default": "lifecycle-operation-projection/v1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
         "startedAt": {
           "anyOf": [
             {
@@ -1969,6 +2039,12 @@
           ],
           "default": null,
           "title": "Startedat"
+        },
+        "stateMatrixVersion": {
+          "const": "lifecycle-operation-state-matrix/v1",
+          "default": "lifecycle-operation-state-matrix/v1",
+          "title": "Statematrixversion",
+          "type": "string"
         },
         "status": {
           "anyOf": [
@@ -1985,7 +2061,10 @@
               "type": "string"
             },
             {
-              "const": "unreadable",
+              "enum": [
+                "unreadable",
+                "incoherent"
+              ],
               "type": "string"
             }
           ],
@@ -1995,6 +2074,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/TaskIntentIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "worker": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LifecycleWorkerObservation"
             },
             {
               "type": "null"
@@ -2168,6 +2258,243 @@
         "lastEventTs"
       ],
       "title": "LifecycleProjection",
+      "type": "object"
+    },
+    "LifecycleProjectionComponentBindings": {
+      "additionalProperties": false,
+      "description": "Identity digest claimed by every optional nested projection component.",
+      "properties": {
+        "approval": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval"
+        },
+        "legalControls": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Legalcontrols",
+          "type": "array"
+        },
+        "recommendedAction": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommendedaction"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "worker": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worker"
+        }
+      },
+      "title": "LifecycleProjectionComponentBindings",
+      "type": "object"
+    },
+    "LifecycleProjectionIdentity": {
+      "additionalProperties": false,
+      "description": "One exact journal snapshot and its admitted candidate/plan.",
+      "properties": {
+        "candidateTupleDigest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Candidatetupledigest",
+          "type": "string"
+        },
+        "contractPath": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Contractpath",
+          "type": "string"
+        },
+        "generation": {
+          "minimum": 1,
+          "title": "Generation",
+          "type": "integer"
+        },
+        "identityDigest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Identitydigest",
+          "type": "string"
+        },
+        "operationKind": {
+          "enum": [
+            "closeout",
+            "integrate",
+            "direct-landing"
+          ],
+          "title": "Operationkind",
+          "type": "string"
+        },
+        "planIdentityDigest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Planidentitydigest",
+          "type": "string"
+        },
+        "recordRevision": {
+          "minimum": 1,
+          "title": "Recordrevision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operationKind",
+        "contractPath",
+        "generation",
+        "recordRevision",
+        "candidateTupleDigest",
+        "planIdentityDigest",
+        "identityDigest"
+      ],
+      "title": "LifecycleProjectionIdentity",
+      "type": "object"
+    },
+    "LifecycleRecommendedAction": {
+      "additionalProperties": false,
+      "description": "Required recovery edge, distinct from optional legal controls.",
+      "properties": {
+        "action": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arguments"
+        },
+        "mutating": {
+          "default": false,
+          "title": "Mutating",
+          "type": "boolean"
+        },
+        "summary": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        }
+      },
+      "required": [
+        "action",
+        "summary"
+      ],
+      "title": "LifecycleRecommendedAction",
+      "type": "object"
+    },
+    "LifecycleWorkerObservation": {
+      "additionalProperties": false,
+      "description": "Public liveness class without exposing process or lease authority.",
+      "properties": {
+        "detail": {
+          "maxLength": 1024,
+          "title": "Detail",
+          "type": "string"
+        },
+        "identityRetained": {
+          "title": "Identityretained",
+          "type": "boolean"
+        },
+        "observedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observedat"
+        },
+        "state": {
+          "enum": [
+            "live",
+            "termination-requested",
+            "termination-required",
+            "exited"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "workerIdentitySha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workeridentitysha256"
+        }
+      },
+      "required": [
+        "state",
+        "identityRetained",
+        "detail"
+      ],
+      "title": "LifecycleWorkerObservation",
       "type": "object"
     },
     "Metrics": {

@@ -65,7 +65,10 @@ def _disposition_preserved_artifacts(contract, record) -> dict[str, object]:
     contract_payload = asdict(load_contract(contract.contract_path))
     contract_payload.pop("closeout_door")
     record_payload = record.model_dump(mode="json")
+    # recordRevision is journal-mutable under L18 (advanced exactly once per
+    # accepted store mutation); disposition artifacts exclude it.
     for mutable in (
+        "recordRevision",
         "generationDisposition",
         "supersedeDeclarationFingerprint",
         "doorPublication",
@@ -151,6 +154,9 @@ def test_completed_unintegrated_disposition_preserves_artifacts(
     require_lifecycle_operation_dependencies(current)
     assert result["lifecycleOperation"]["generation"] == 1
     assert current.generationDisposition == ("retired" if action == "retire" else "superseded")
+    # retire is one accepted store mutation, supersede two (door-intent update
+    # then door-locked completion): the journal advances exactly once per write.
+    assert current.recordRevision == record.recordRevision + (1 if action == "retire" else 2)
     observed_contract = load_contract(finalized.contract_path)
     assert _disposition_preserved_artifacts(observed_contract, current) == preserved
     if action == "supersede":
@@ -412,3 +418,36 @@ def test_supersede_exact_replay_converges_and_competing_declaration_refuses(
     assert refused["status"] == "lifecycle-supersede-declaration-conflict"
     assert store.read() == accepted
     assert load_contract(finalized.contract_path).closeout_door == accepted_door
+
+
+def test_completed_unintegrated_supersede_dry_run_previews_would_supersede(
+    tmp_path: Path,
+) -> None:
+    contract = _contract(tmp_path)
+    _operation_input, store, finalized = _publish_mutated_code_generation(contract)
+    record = store.read()
+    assert record is not None
+    owner = _sprint_owner(finalized)
+    assert completed_disposition_authorized(finalized, owner)
+    config = load_config(Path(record.input.configPath))
+    row = next(
+        item
+        for item in legal_operation_controls(
+            finalized,
+            record,
+            context=LifecycleControlProjectionContext(
+                allow_completed_disposition=True,
+                caller=owner,
+            ),
+        )
+        if item["action"] == "supersede"
+    )
+    preview_arguments = {**row["arguments"], "dry_run": True}
+    previewed = worktree_operation_control_tool(
+        config,
+        OperationControlRequest(**preview_arguments),
+    )
+    assert previewed["ok"] is True
+    assert previewed["lifecycleOperation"]["result"]["state"] == "would-supersede"
+    # A dry-run supersede preview leaves the completed journal untouched.
+    assert store.read() == record

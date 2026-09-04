@@ -313,6 +313,9 @@ def _validate_identity_and_evidence_transition(
 ) -> None:
     """Validate the shared immutable/monotonic envelope for every store mutation."""
 
+    if updated.recordRevision != current.recordRevision + 1:
+        raise RuntimeError("lifecycle operation record revision must advance exactly once")
+
     immutable = (
         "schemaVersion",
         "taskId",
@@ -353,6 +356,21 @@ def _validate_identity_and_evidence_transition(
     _validate_closeout_finalization_transition(current, updated)
     if current.irreversibleBoundaryEntered and not updated.irreversibleBoundaryEntered:
         raise RuntimeError("an entered irreversible boundary cannot be cleared")
+
+
+def _advance_record_revision(
+    current: LifecycleOperationRecord,
+    transformed: LifecycleOperationRecord,
+) -> LifecycleOperationRecord:
+    """Assign the next revision at the one canonical journal writer boundary."""
+
+    if transformed.recordRevision != current.recordRevision:
+        raise RuntimeError("lifecycle operation transforms cannot assign record revision")
+    return LifecycleOperationRecord.model_validate(
+        transformed.model_copy(update={"recordRevision": current.recordRevision + 1}).model_dump(
+            mode="json"
+        )
+    )
 
 
 def operation_record_path(worktree_group: Path, operation_kind: LifecycleOperationKind) -> Path:
@@ -516,9 +534,12 @@ class LifecycleOperationStore:
                 raise RuntimeError(f"lifecycle operation record does not exist: {self.path}")
             if current != observed:
                 return current, False
-            updated = LifecycleOperationRecord.model_validate(
+            transformed = LifecycleOperationRecord.model_validate(
                 transform(current).model_dump(mode="json")
             )
+            if transformed == current:
+                return current, True
+            updated = _advance_record_revision(current, transformed)
             self._validate_transition(current, updated)
             self._write(updated)
             return updated, True
@@ -528,6 +549,8 @@ class LifecycleOperationStore:
         # generation already exists. Otherwise a record for another lifecycle
         # plane can be mistaken for a convergent duplicate.
         _require_record_matches_canonical_path(self.path, record)
+        if record.recordRevision != 1:
+            raise RuntimeError("a new lifecycle operation must begin at record revision 1")
         with exclusive_access(self.path, _OWNERSHIP):
             current = self.read()
             if current is not None:
@@ -543,9 +566,12 @@ class LifecycleOperationStore:
             current = self.read()
             if current is None:
                 raise RuntimeError(f"lifecycle operation record does not exist: {self.path}")
-            updated = LifecycleOperationRecord.model_validate(
+            transformed = LifecycleOperationRecord.model_validate(
                 transform(current).model_dump(mode="json")
             )
+            if transformed == current:
+                return current
+            updated = _advance_record_revision(current, transformed)
             self._validate_transition(current, updated)
             self._write(updated)
             return updated
@@ -563,9 +589,15 @@ class LifecycleOperationStore:
                 if current is None:
                     raise RuntimeError("lifecycle operation generation does not exist")
                 return current, False
-            updated = LifecycleOperationRecord.model_validate(
+            transformed = LifecycleOperationRecord.model_validate(
                 transform(current).model_dump(mode="json")
             )
+            # resume_generation must always revalidate the resume contract (attempt
+            # increment exactly once, sanctioned status/phase, disposition identity)
+            # BEFORE any no-op short-circuit; a transform that leaves the record
+            # unchanged but fails the attempt guard is a contract violation, not an
+            # idempotent resume.
+            updated = _advance_record_revision(current, transformed)
             _validate_identity_and_evidence_transition(current, updated)
             if current.status in _NON_RESUMABLE:
                 raise RuntimeError("terminal lifecycle operation cannot resume its generation")
@@ -613,10 +645,17 @@ class LifecycleOperationStore:
             for field in ("taskId", "taskName", "contractPath", "operationKind"):
                 if getattr(candidate, field) != getattr(current, field):
                     raise RuntimeError(f"a sequential lifecycle operation cannot change {field}")
+            successor_revision = current.recordRevision + (
+                1
+                if current.operationKind in {"closeout", "direct-landing"}
+                and task_intent_is_missing(current.taskIntent)
+                else 2
+            )
             validated = LifecycleOperationRecord.model_validate(
                 candidate.model_copy(
                     update={
                         "generation": current.generation + 1,
+                        "recordRevision": successor_revision,
                         "predecessorFingerprint": current.fingerprint,
                         "attempt": 1,
                     }
@@ -628,7 +667,10 @@ class LifecycleOperationStore:
                 return self._retire_missing_intent_generation(current, validated)
             predecessor = LifecycleOperationRecord.model_validate(
                 current.model_copy(
-                    update={"successorFingerprint": validated.fingerprint}
+                    update={
+                        "successorFingerprint": validated.fingerprint,
+                        "recordRevision": current.recordRevision + 1,
+                    }
                 ).model_dump(mode="json")
             )
             self._archive_generation(predecessor)
