@@ -26,7 +26,8 @@ from agents_remember.models.lifecycles.evidence_dependencies import (
     require_evidence_dependencies,
 )
 
-QUALITY_MANIFEST_SCHEMA_VERSION: Final[Literal["3.0"]] = "3.0"
+QUALITY_MANIFEST_SCHEMA_VERSION: Final[Literal["3.1"]] = "3.1"
+RUNTIME_AUTHORITY_ROOT_FIELD = "runtimeAuthorityDigest"
 REPORT_SET_MANIFEST = "quality-report-set.json"
 _MANIFEST_ERROR = "no complete Dagger report generation is published"
 _ALLOWED_ROOT_FIELDS = frozenset(
@@ -42,6 +43,7 @@ _ALLOWED_ROOT_FIELDS = frozenset(
         "files",
         "attestation",
         "dependencies",
+        "runtimeAuthorityDigest",
     }
 )
 _GENERATION_DIGEST_FIELDS = frozenset(
@@ -54,6 +56,7 @@ _GENERATION_DIGEST_FIELDS = frozenset(
         "resultDecoder",
         "files",
         "dependencies",
+        "runtimeAuthorityDigest",
     }
 )
 _PROFILE_IDENTITY_FIELDS = frozenset(
@@ -79,7 +82,7 @@ class PublishedQualityFile:
 
 @dataclass(frozen=True)
 class PublishedQualityManifest:
-    schema_version: Literal["3.0"]
+    schema_version: Literal["3.1"]
     generation: str
     candidate_tree: str
     profile_digest: str
@@ -90,6 +93,7 @@ class PublishedQualityManifest:
     files: Mapping[str, PublishedQualityFile]
     attestation: Mapping[str, str] | None
     dependencies: EvidenceDependencies
+    runtime_authority_digest: str | None
 
     def require_file(self, name: str) -> PublishedQualityFile:
         """Return one declared file without constructing an unverified path."""
@@ -139,6 +143,9 @@ def _parse_manifest(raw: object) -> PublishedQualityManifest:
     if result_decoder.artifactPath not in files:
         raise ValueError("quality manifest result decoder names no published file")
     attestation = _parse_attestation(raw.get("attestation"))
+    runtime_authority_digest = _parse_runtime_authority_digest(
+        raw.get(RUNTIME_AUTHORITY_ROOT_FIELD)
+    )
     profile_identity = {
         "profileDigest": profile_digest,
         "profilePlanDigest": profile_plan_digest,
@@ -150,8 +157,11 @@ def _parse_manifest(raw: object) -> PublishedQualityManifest:
         raw,
         candidate_tree,
         files,
-        attestation,
         profile_identity,
+        _ManifestBindings(
+            attestation=attestation,
+            runtime_authority_digest=runtime_authority_digest,
+        ),
     )
     expected_generation = quality_generation_digest(
         {
@@ -159,6 +169,7 @@ def _parse_manifest(raw: object) -> PublishedQualityManifest:
             **profile_identity,
             "files": raw.get("files"),
             "dependencies": dependencies.model_dump(mode="json"),
+            "runtimeAuthorityDigest": runtime_authority_digest,
         }
     )
     if generation != expected_generation:
@@ -176,23 +187,38 @@ def _parse_manifest(raw: object) -> PublishedQualityManifest:
         files=files,
         attestation=attestation,
         dependencies=dependencies,
+        runtime_authority_digest=runtime_authority_digest,
     )
+
+
+class _ManifestBindings:
+    """Admission-order bindings packed behind one argument at the parse boundary."""
+
+    def __init__(
+        self,
+        *,
+        attestation: Mapping[str, str] | None,
+        runtime_authority_digest: str | None,
+    ) -> None:
+        self.attestation = attestation
+        self.runtime_authority_digest = runtime_authority_digest
 
 
 def _parse_dependencies(
     raw: dict[object, object],
     candidate_tree: str,
     files: Mapping[str, PublishedQualityFile],
-    attestation: Mapping[str, str] | None,
     profile_identity: Mapping[str, object],
+    bindings: _ManifestBindings,
 ) -> EvidenceDependencies:
     dependencies = EvidenceDependencies.model_validate(raw.get("dependencies"))
     require_evidence_dependencies(dependencies, record_type="quality-report/v2")
     expected = quality_report_dependencies(
         candidate_tree,
         {name: {"sha256": record.sha256, "size": record.size} for name, record in files.items()},
-        attestation,
+        bindings.attestation,
         profile_identity,
+        bindings.runtime_authority_digest,
     )
     if dependencies != expected:
         raise ValueError("quality manifest dependencies do not match its canonical inputs")
@@ -230,6 +256,15 @@ def _parse_attestation(raw: object) -> Mapping[str, str] | None:
     return MappingProxyType(dict(raw))
 
 
+def _parse_runtime_authority_digest(raw: object) -> str | None:
+    """One optional host-authority digest; when present it must be a safe digest."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or re.fullmatch(r"[0-9a-f]{64}", raw) is None:
+        raise ValueError("quality manifest runtime authority digest is invalid")
+    return raw
+
+
 def _digest_field(raw: Mapping[str, object], name: str) -> str:
     value = raw.get(name)
     if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
@@ -263,6 +298,7 @@ def quality_report_dependencies(
     files: Mapping[str, object],
     attestation: Mapping[str, str] | None,
     profile_identity: Mapping[str, object],
+    runtime_authority_digest: str | None = None,
 ) -> EvidenceDependencies:
     """Declare the exact candidate, execution, and report bytes read by consumers."""
 
@@ -273,6 +309,11 @@ def quality_report_dependencies(
         name: dict(record) if isinstance(record, Mapping) else record
         for name, record in sorted(files.items())
     }
+    runtime_authority = (
+        []
+        if runtime_authority_digest is None
+        else [dependency("admission", "shared-dagger-authority", runtime_authority_digest)]
+    )
     return build_evidence_dependencies(
         "quality-report/v2",
         [
@@ -283,6 +324,7 @@ def quality_report_dependencies(
                 "repository-profile-execution",
                 canonical_sha256(dict(profile_identity)),
             ),
+            *runtime_authority,
             *(
                 dependency("evidence-bytes", name, str(record["sha256"]))
                 for name, record in file_values.items()

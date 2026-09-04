@@ -166,7 +166,7 @@ EVIDENCE_DEPENDENCY_POLICIES: Mapping[EvidenceRecordType, EvidenceDependencyPoli
     ),
     "quality-report/v2": _policy(
         required=("code-tree", "rail-execution", "evidence-bytes", "validator"),
-        optional=("rail-plan",),
+        optional=("rail-plan", "admission"),
     ),
     "closeout-door/v1": _policy(
         required=(

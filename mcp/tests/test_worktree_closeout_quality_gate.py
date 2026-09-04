@@ -529,8 +529,8 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
 
             quality.assert_not_called()
 
-    def test_memory_preflight_failure_never_starts_the_code_quality_gate(self) -> None:
-        """A broken entity catalog must abort before hooks, Ruff, Pyright, or pytest."""
+    def test_memory_preflight_aborts_closeout_after_the_code_quality_gate(self) -> None:
+        """A broken entity catalog aborts closeout only after the code gate ran."""
         with tempfile.TemporaryDirectory() as tmp:
             contract = dirty_open_external_contract_fixture(Path(tmp))
             failed_quality = {
@@ -545,6 +545,12 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
                 ],
             }
 
+            order: list[str] = []
+
+            def gate_probe(target, *, diff_base, candidate_tree=None) -> dict[str, object]:
+                order.append("code-gate")
+                return {"status": "enforced", "passed": True, "diffBase": diff_base}
+
             with (
                 mock.patch.object(
                     closeout_module, "requires_strict_code_quality", return_value=True
@@ -554,16 +560,37 @@ class CloseoutCodeQualityGateTests(unittest.TestCase):
                     "run_check",
                     return_value=failed_quality,
                 ),
-                mock.patch.object(
-                    closeout_staged_quality, "run_pre_commit_hook_if_configured"
-                ) as hook,
-                mock.patch.object(closeout_staged_quality, "run_strict_code_quality_gate") as gate,
+                mock.patch.object(closeout_module, "_gate_staged_code", side_effect=gate_probe),
                 self.assertRaisesRegex(RuntimeError, "entity_fingerprint_without_inventory"),
             ):
                 run_authorized_closeout_mechanics(closeout_args(contract))
 
-            hook.assert_not_called()
-            gate.assert_not_called()
+            self.assertEqual(order, ["code-gate"])
+            self.assertEqual(
+                git(contract.code_worktree, "rev-parse", "HEAD"), contract.code_base_commit
+            )
+
+    def test_a_red_code_quality_gate_blocks_the_memory_preflight_and_every_commit(
+        self,
+    ) -> None:
+        """A refused targeted leaf gate stops closeout before Gate-5 work or a commit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            contract = dirty_open_external_contract_fixture(Path(tmp))
+            with (
+                mock.patch.object(
+                    closeout_module, "requires_strict_code_quality", return_value=True
+                ),
+                mock.patch.object(
+                    closeout_module,
+                    "_gate_staged_code",
+                    return_value={"status": "enforced", "passed": False},
+                ),
+                mock.patch.object(closeout_module, "_memory_quality_before_refresh") as memory,
+                self.assertRaisesRegex(RuntimeError, "closeout code-quality gate is red"),
+            ):
+                run_authorized_closeout_mechanics(closeout_args(contract))
+
+            memory.assert_not_called()
             self.assertEqual(
                 git(contract.code_worktree, "rev-parse", "HEAD"), contract.code_base_commit
             )
@@ -748,10 +775,8 @@ def _refusing_gate(message: str = GATE_REFUSAL):
 
 
 def _task_worktree(root: Path) -> tuple[Path, Path]:
-    """A repository and a linked worktree off it, which is the shape closeout runs in.
-    ``(repository checkout, task worktree)``. Both are real: the precondition under test
-    is git's own distinction between the two, so a fixture that faked it would be testing
-    the fixture.
+    """A real repository and linked worktree off it -- the shape closeout stages in.
+    Both are real: the precondition is git's own distinction, so a fake would test itself.
     """
     repo = root / "repo"
     init_repo(repo, "main")
@@ -948,23 +973,16 @@ def _conflicted_task_worktree(root: Path) -> Path:
 
 class TaskWorktreePreconditionTests(unittest.TestCase):
     """Closeout stages, so it must first establish that staging here is free.
-    Staging is safe in a task worktree because that checkout is disposable scratch space
-    with nobody in it -- ``worktree_start`` makes it and ``lifecycle_finalize_task``
-    destroys it. It is not safe in a repository's own checkout, and closeout can be handed
-    one: ``default_series_contract`` records ``code_worktree=code.repo_path`` for a
-    ``kind: "series"`` contract, and nothing else on the apply path would stop it.
-    The guard tests git's own definition of a linked worktree -- ``--git-dir`` differing
-    from ``--git-common-dir`` -- rather than the contract's ``kind``, because that is the
-    property the safety argument actually rests on. ``kind`` is a label beside the path;
-    the git-dir comparison constrains the path that is about to be written.
+    A task worktree is disposable scratch space nobody works in, but a ``series``
+    contract records the repository's own checkout. The guard proves through git
+    itself (``--git-dir`` differing from ``--git-common-dir``) that the path to be
+    written is a linked worktree, not a checkout a person works in.
     """
 
     def test_the_repositorys_own_checkout_is_refused_before_anything_is_staged(self) -> None:
         """Asserted as the damage that does not happen, not merely as a message.
-        Measured on git 2.43 with this guard removed: ``git add -A`` here rewrites the
-        staged ``t.txt`` from the ``add -p`` selection (``one\\ntwo``) to the working-tree
-        version, and stages ``secret.env`` -- writing a durable blob for a file the person
-        deliberately left untracked. Both are unrecoverable from git alone.
+        Without the guard, ``git add -A`` rewrites the ``add -p`` selection and stages
+        the deliberately untracked ``secret.env`` -- both unrecoverable from git alone.
         """
         with tempfile.TemporaryDirectory() as tmp:
             repo, _worktree = _task_worktree(Path(tmp))
@@ -985,7 +1003,6 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
                 )
 
             # The selection survives, and the untracked secret is still untracked with no
-            # object written for it.
             self.assertEqual(git(repo, "show", ":tracked.txt"), "one\ntwo")
             self.assertEqual(git(repo, "ls-files", "--", "secret.env"), "")
             self.assertEqual(git(repo, "status", "--porcelain"), status_before)
@@ -1049,9 +1066,7 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
 
     def test_a_refused_gate_leaves_the_task_worktree_staged(self) -> None:
         """No rollback, stated as a test rather than left to be discovered.
-        An earlier attempt saved the index file aside and copied it back. That machinery is
-        gone: there is no snapshot to orphan, no ``index.lock`` to leave stale, and nothing
-        that has to run at exit for the checkout to be in a sane state.
+        There is no index snapshot to restore and nothing that must run at exit.
         """
         with tempfile.TemporaryDirectory() as tmp:
             _repo, worktree = _task_worktree(Path(tmp))
@@ -1071,10 +1086,8 @@ class TaskWorktreePreconditionTests(unittest.TestCase):
 
 class ConflictedIndexTests(unittest.TestCase):
     """A conflicted worktree fails cleanly instead of committing the markers.
-    ``git add -A`` over an unmerged index does not refuse -- it resolves every conflict to
-    whatever the working tree holds, markers included, and closeout then commits that. The
-    refusal is deliberate, is checked before anything is staged, and says what state the
-    checkout is in rather than reporting plumbing from a command nobody ran.
+    ``git add -A`` over an unmerged index resolves conflicts to the working tree,
+    markers included; the refusal is deliberate, pre-staging, and names the state.
     """
 
     def test_a_conflicted_worktree_is_refused_before_anything_is_staged(self) -> None:
@@ -1104,12 +1117,8 @@ class ConflictedIndexTests(unittest.TestCase):
 
     def test_the_reset_runs_after_the_conflict_check_not_before_it(self) -> None:
         """Order, asserted through what survives rather than through call bookkeeping.
-        A mixed reset drops the unmerged index entries and removes ``MERGE_HEAD``. Run
-        before the check, it would leave ``diff --diff-filter=U`` with nothing to report,
-        the refusal would never fire again, and ``add -A`` would go on to stage the
-        ``<<<<<<<`` markers. So the merge being intact after the refusal is the property
-        that says the reset has not run yet -- and it is the property that keeps the
-        refusal above from quietly becoming unreachable.
+        A mixed reset drops the unmerged entries and removes ``MERGE_HEAD``; run too
+        early, it would silence the refusal, so the intact merge proves no reset ran.
         """
         with tempfile.TemporaryDirectory() as tmp:
             worktree = _conflicted_task_worktree(Path(tmp))
@@ -1135,18 +1144,10 @@ DROPPED_TOOL_ARTEFACT = ".dmypy.json"
 
 class RetryStagesWhatAFirstRunWouldTests(unittest.TestCase):
     """A refused attempt must not decide what the next attempt commits.
-
-    ``git add -A`` applies ignore rules only to paths git does not already track or hold
-    staged. A file staged by a refused gate therefore stays staged after the leaf adds it to
-    ``.gitignore``, and the retry commits it -- which is exactly how a ``.dmypy.json`` a type
-    checker had dropped in the worktree got into this leaf's own first commit. The mixed
-    reset is what removes that path dependence.
-
-    The property is asserted as an equality of committed trees rather than as the presence
-    of a ``reset`` call: what has to hold is that a retry commits what a worktree that never
-    saw the refusal commits. Both sides run the same closeout steps against the same end
-    state on disk, so the only thing that can make the trees differ is history the index
-    carried across attempts.
+    A file staged by a refused gate stays staged after the leaf ignores it, so the
+    retry would commit it; the mixed reset removes that path dependence. The
+    property is asserted as an equality of committed trees against a worktree that
+    never saw the refusal.
     """
 
     @staticmethod
@@ -1188,7 +1189,6 @@ class RetryStagesWhatAFirstRunWouldTests(unittest.TestCase):
             # The leaf adds the ignore rule and retries, against a worktree still staged.
             self._end_state(retried)
             retried_tree = self._gate_then_commit(retried, "Closeout on the retry")
-            # The same end state, closed out once, in a worktree that never saw the refusal.
             self._end_state(fresh)
             fresh_tree = self._gate_then_commit(fresh, "Closeout on a first run")
 

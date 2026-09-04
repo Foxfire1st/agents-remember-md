@@ -17,15 +17,11 @@ from unittest.mock import patch
 import pytest
 from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles import (
-    RepositorySelectionDraft,
-    RepositorySelectionReason,
-    build_repository_selection_result,
     canonicalize_repository_profile,
     compile_repository_profile_plan,
     load_repository_profile,
     repository_profile_digest,
 )
-from agents_remember.certification.repository_profiles.models import ProfileMode
 from agents_remember_test_support.testing.dagger_admission import (
     DAGGER_TEST_ATTESTATION_ENV,
     DaggerAdmissionError,
@@ -36,6 +32,11 @@ from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
     NODE_FIXTURE,
     RUST_FIXTURE,
+    FakeContainer,
+    FakeDag,
+    FakeFile,
+    FakeSource,
+    _fake_selector_result,
     fixture_execution_manifest,
 )
 
@@ -83,199 +84,40 @@ def load_e2e_module(filename: str, module_id: str) -> ModuleType:
     return module
 
 
-class FakeContainer:
-    def __init__(self, exit_codes: list[int]) -> None:
-        self.exit_codes = exit_codes
-        self.commands: list[list[str]] = []
-        self.files: dict[str, str] = {}
-        self.environment: list[tuple[object, ...]] = []
-        self.operations: list[tuple[object, ...]] = []
-        self.image: str | None = None
-
-    def from_(self, image: str) -> FakeContainer:
-        self.image = image
-        self.operations.append(("from", image))
-        return self
-
-    def with_mounted_cache(self, *args: object, **kwargs: object) -> FakeContainer:
-        self.operations.append(("cache", *args, kwargs))
-        return self
-
-    def with_env_variable(self, *args: object) -> FakeContainer:
-        self.environment.append(args)
-        self.operations.append(("env", *args))
-        return self
-
-    def with_exec(self, command: list[str], **_kwargs: object) -> FakeContainer:
-        self.commands.append(command)
-        self.operations.append(("exec", *command))
-        if "agents_remember_test_support.code_quality.profile_selection" in command:
-            output = command[command.index("--output") + 1]
-            self.files[output] = json.dumps(
-                _fake_selector_result(
-                    command,
-                    {
-                        "changed-files": ["mcp/src/fixture.py"],
-                        "coverage-paths": ["mcp/src/agents_remember"],
-                        "coverage-roots": ["agents_remember"],
-                        "dashboard-tests": ["dashboard/src/fixture.test.ts"],
-                        "lint-paths": ["mcp/src/fixture.py"],
-                        "selected-tests": ["mcp/tests/test_fixture.py"],
-                        "size-paths": ["mcp/src/fixture.py"],
-                        "type-closure": ["mcp/src/fixture.py"],
-                    },
-                )
-            )
-        if "scripts/select-tests.sh" in command:
-            script_index = command.index("scripts/select-tests.sh")
-            output = command[script_index + 1]
-            selected = (
-                ["unit"]
-                if self.image and self.image.startswith("rust:")
-                else ["test/unit.test.mjs"]
-            )
-            self.files[output] = json.dumps(
-                _fake_selector_result(command, {"selected-tests": selected})
-            )
-        for script, output_offsets in (
-            ("scripts/run-suite.mjs", (1, 2)),
-            ("scripts/run-suite.sh", (1, 2)),
-            ("scripts/run-e2e.mjs", (1,)),
-            ("scripts/run-e2e.sh", (1,)),
-        ):
-            if script not in command:
-                continue
-            script_index = command.index(script)
-            for offset in output_offsets:
-                self.files[command[script_index + offset]] = '{"status":"passed"}\n'
-        return self
-
-    def with_directory(self, *args: object) -> FakeContainer:
-        self.operations.append(("directory", *args))
-        return self
-
-    def with_file(self, *args: object) -> FakeContainer:
-        self.operations.append(("file", *args))
-        return self
-
-    def with_workdir(self, *args: object) -> FakeContainer:
-        self.operations.append(("workdir", *args))
-        return self
-
-    def with_new_file(self, path: str, *, contents: str) -> FakeContainer:
-        self.files[path] = contents
-        return self
-
-    def directory(self, path: str) -> str:
-        return path
-
-    def file(self, path: str) -> FakeFile:
-        return FakeFile(self.files[path])
-
-    async def env_variable(self, name: str) -> str | None:
-        return next(
-            (str(values[1]) for values in reversed(self.environment) if values[0] == name),
-            None,
-        )
-
-    async def exists(self, path: str, **_kwargs: object) -> bool:
-        return path in self.files
-
-    async def sync(self) -> FakeContainer:
-        return self
-
-    async def exit_code(self) -> int:
-        return self.exit_codes.pop(0) if self.exit_codes else 0
+GATE1_RAILS = [
+    "causal-preflight",
+    "dashboard-build",
+    "dashboard-codegen",
+    "dashboard-lint",
+    "dashboard-prerequisites",
+    "dashboard-typecheck",
+    "dependency-prerequisites",
+    "evidence-lifecycle",
+    "file-size",
+    "generated-harness",
+    "generated-projection-types",
+    "generated-runtime",
+    "generated-skills",
+    "layering",
+    "pyright",
+    "quality-config-scope",
+    "radon-cc",
+    "radon-mi",
+    "ruff",
+    "ruff-format",
+    "runtime-capability",
+    "test-selection-ownership",
+]
+TEST_RUNTIME_AUTHORITY_DIGEST = "a" * 64
 
 
-class FakeFile:
-    def __init__(self, contents: str) -> None:
-        self.value = contents
-
-    async def contents(self) -> str:
-        return self.value
-
-    async def size(self) -> int:
-        return len(self.value.encode("utf-8"))
-
-
-def _fake_selector_result(
-    command: list[str],
-    outputs: dict[str, list[str]],
-    *,
-    complete: bool = True,
-) -> dict[str, object]:
-    def value(flag: str, fixture_index: int) -> str:
-        return command[command.index(flag) + 1] if flag in command else command[fixture_index]
-
-    raw_mode = value("--mode", 3)
-    mode: ProfileMode = "full" if raw_mode == "full" else "targeted"
-    base = value("--diff-base", 4)
-    candidate_kind = value("--candidate-kind", 5)
-    candidate_value = value("--candidate-value", 6)
-    selector_id = value("--selector-id", 7)
-    selector_version = value("--selector-version", 8)
-    configuration_digest = value("--selector-configuration-digest", 9)
-    reasons = (
-        tuple(
-            RepositorySelectionReason(
-                input="fixture://selector",
-                kind="declared-consumer",
-                effect="select",
-                outputArtifact=artifact,
-                outputValue=selected,
-                detail="fake-container-owned-output",
-            )
-            for artifact, values in outputs.items()
-            for selected in values
-        )
-        if complete
-        else ()
-    )
-    unresolved = (
-        ()
-        if complete
-        else (
-            RepositorySelectionReason(
-                input="fixture://unknown-input",
-                kind="unresolved",
-                effect="unresolved",
-                detail="fixture-ownership-missing",
-            ),
-        )
-    )
-    return build_repository_selection_result(
-        RepositorySelectionDraft(
-            selector_id=selector_id,
-            selector_version=selector_version,
-            configuration_digest=configuration_digest,
-            candidate_identity=CandidateIdentity(kind=candidate_kind, value=candidate_value),
-            mode=mode,
-            base_revision=base,
-            population="full" if mode == "full" else "targeted",
-            complete=complete,
-            global_invalidators=("declared-full-mode",) if mode == "full" else (),
-            dependency_reasons=reasons,
-            unresolved_inputs=unresolved,
-            outputs=outputs,
-        )
-    ).model_dump(mode="json")
-
-
-class FakeDag:
-    def __init__(self, exit_codes: list[int]) -> None:
-        self.container_value = FakeContainer(exit_codes)
-
-    def container(self) -> FakeContainer:
-        return self.container_value
-
-    def cache_volume(self, name: str) -> str:
-        return name
-
-
-class FakeSource:
-    def file(self, path: str) -> str:
-        return path
+def runtime_authority_manifest() -> dict[str, object]:
+    return {
+        "schemaVersion": "dagger-runtime-authority/v1",
+        "snapshotDigest": TEST_RUNTIME_AUTHORITY_DIGEST,
+        "endpoint": "container://test-dagger-engine",
+        "layerStore": "/var/lib/dagger",
+    }
 
 
 def execution_manifest(*, mode: str, candidate: str = "c" * 40) -> FakeFile:
@@ -303,6 +145,7 @@ def execution_manifest(*, mode: str, candidate: str = "c" * 40) -> FakeFile:
                 "publishedArtifacts": [
                     artifact.model_dump(mode="json") for artifact in profile.publishedArtifacts
                 ],
+                "runtimeAuthority": runtime_authority_manifest(),
             }
         )
     )
@@ -875,7 +718,8 @@ def test_portable_dagger_function_interprets_one_frozen_fixture_plan(fixture) ->
 def test_profile_selector_shape_failure_is_a_typed_terminal_step() -> None:
     module = load_dagger_module()
     manifest = fixture_execution_manifest(NODE_FIXTURE, candidate_tree="d" * 40)
-    plan = module.load_execution_manifest(json.dumps(manifest))
+    loader = sys.modules["agents_remember_quality.profile_plan"]
+    plan = loader.load_execution_manifest(json.dumps(manifest))
 
     class IncompleteSelectorContainer(FakeContainer):
         def with_exec(self, command: list[str], **kwargs: object) -> FakeContainer:
@@ -979,6 +823,7 @@ def test_dagger_quality_refuses_a_rail_runtime_outside_the_admitted_adapter() ->
                 "publishedArtifacts": [
                     artifact.model_dump(mode="json") for artifact in profile.publishedArtifacts
                 ],
+                "runtimeAuthority": runtime_authority_manifest(),
             }
         )
     )
@@ -1108,7 +953,8 @@ def test_dagger_quality_full_uses_explicit_diff_base_without_targeted_flags() ->
     assert ("CI", "1") in fake_dag.container_value.environment
 
 
-def test_dagger_quality_stops_before_later_gates_after_a_profile_rail_failure() -> None:
+def test_dagger_quality_red_gate_one_still_terminalizes_every_gate_one_sibling() -> None:
+    """Exhaustive within Gate 1: a red rail never suppresses its same-gate siblings."""
     module = load_dagger_module()
     fake_dag = FakeDag([0, 0, 7])
 
@@ -1124,43 +970,68 @@ def test_dagger_quality_stops_before_later_gates_after_a_profile_rail_failure() 
 
     payload = json.loads(fake_dag.container_value.files["/reports/clean-quality-results.json"])
     assert result.exit_code == 7
-    assert payload["completedSteps"] == [
+    attempted = payload["attemptedSteps"]
+    assert attempted[:3] == [
         "environment",
         "selector:agents-remember-test-selection",
+        "causal-preflight",
     ]
-    assert payload["attemptedSteps"][-1] == "causal-preflight"
+    # Every applicable Gate-1 sibling reached a terminal state after causal-preflight.
+    assert set(attempted[2:]) == set(GATE1_RAILS)
     assert payload["failedStep"] == "causal-preflight"
+    # Fail-fast is only between gates: Gate 2 never started, so no suite command ran.
+    # Gate-1 siblings keep running after the red rail, including their npm rails.
     assert not any("python-suite" in command for command in fake_dag.container_value.commands)
+    assert any("npm" in command for command in fake_dag.container_value.commands)
+    gates = payload["gates"]
+    assert gates[0]["gate"] == 1 and gates[0]["started"] is True
+    assert gates[0]["disposition"] == "red"
+    assert gates[0]["laterGatesZeroStart"] is True
+    assert {rail["key"] for rail in gates[0]["rails"]} == {f"{rail}@1.0.0" for rail in GATE1_RAILS}
+    red_rail = next(rail for rail in gates[0]["rails"] if rail["identity"] == "causal-preflight")
+    assert red_rail["status"] == "fail" and red_rail["exitCode"] == 7
+    siblings = {
+        rail["status"] for rail in gates[0]["rails"] if rail["identity"] != "causal-preflight"
+    }
+    assert siblings == {"pass"}
+    for gate in gates[1:]:
+        assert gate["started"] is False
+        assert gate["zeroStart"] is True
+        assert gate["laterGatesZeroStart"] is False
+        assert gate["rails"] == []
+    assert payload["runtimeAuthorityDigest"] == TEST_RUNTIME_AUTHORITY_DIGEST
 
 
 @pytest.mark.parametrize(
-    ("exit_codes", "attempted", "completed", "failed"),
+    ("exit_codes", "expected_failed", "expected_exit", "gate_one_expected"),
     [
-        ([9], ["environment"], [], "environment"),
+        (
+            [9],
+            "environment",
+            9,
+            {"started": False, "disposition": "not-run", "zeroStart": True},
+        ),
         (
             [0, 7],
-            ["environment", "selector:agents-remember-test-selection"],
-            ["environment"],
-            "selector:agents-remember-test-selection",
+            "blocked:test-selection-ownership",
+            125,
+            {"started": True, "disposition": "red", "laterGatesZeroStart": True},
         ),
         (
             [0, 0, 7],
-            [
-                "environment",
-                "selector:agents-remember-test-selection",
-                "causal-preflight",
-            ],
-            ["environment", "selector:agents-remember-test-selection"],
             "causal-preflight",
+            7,
+            {"started": True, "disposition": "red", "laterGatesZeroStart": True},
         ),
     ],
 )
 def test_dagger_quality_exports_failure_at_the_exact_completed_boundary(
     exit_codes: list[int],
-    attempted: list[str],
-    completed: list[str],
-    failed: str,
+    expected_failed: str,
+    expected_exit: int,
+    gate_one_expected: dict[str, object],
 ) -> None:
+    """Failure facts preserve the complete within-gate catalog and later-gate zero starts."""
     module = load_dagger_module()
     fake_dag = FakeDag(exit_codes)
 
@@ -1175,11 +1046,18 @@ def test_dagger_quality_exports_failure_at_the_exact_completed_boundary(
         )
 
     payload = json.loads(fake_dag.container_value.files["/reports/clean-quality-results.json"])
-    assert result.exit_code != 0
+    assert result.exit_code == expected_exit
     assert payload["status"] == "failed"
-    assert payload["attemptedSteps"] == attempted
-    assert payload["completedSteps"] == completed
-    assert payload["failedStep"] == failed
+    assert payload["failedStep"] == expected_failed
+    gate_one = payload["gates"][0]
+    for key, value in gate_one_expected.items():
+        assert gate_one[key] == value
+    if gate_one_expected["started"]:
+        assert len(gate_one["rails"]) == 22
+    for gate in payload["gates"][1:]:
+        assert gate["started"] is False and gate["zeroStart"] is True
     assert payload["promptSubmitted"] is False
-    assert "causalFailureReport" not in payload
-    assert "causalFailureSummary" not in payload
+    if expected_exit == 9:
+        assert "causalFailureReport" not in payload
+        assert "causalFailureSummary" not in payload
+    assert payload["runtimeAuthorityDigest"] == TEST_RUNTIME_AUTHORITY_DIGEST

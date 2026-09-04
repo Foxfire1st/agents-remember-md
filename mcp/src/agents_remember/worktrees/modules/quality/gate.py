@@ -85,6 +85,7 @@ class _QualityGateReport:
     profile_digest: str
     profile_plan_digest: str
     profile_selection_id: str
+    runtime_authority_digest: str | None
     diff_base: str
     started_at: datetime
     finished_at: datetime
@@ -173,6 +174,7 @@ def code_quality_gate_preview(
         "executorAdapterId": selection.executorAdapterId,
         "profileDigest": admitted.canonical.profileDigest,
         "profileSelectionId": selection.selectionId,
+        "runtimeAuthorityDigest": None,
         **memory_cap_payload,
         "reason": (
             "closeout stages the whole task worktree, admits its exact repository-owned "
@@ -249,6 +251,9 @@ def run_strict_code_quality_gate(
                 result.manifest.profile_selection_id
                 if result.manifest is not None
                 else "unpublished"
+            ),
+            runtime_authority_digest=(
+                result.manifest.runtime_authority_digest if result.manifest is not None else None
             ),
             diff_base=diff_base,
             started_at=started_at,
@@ -385,6 +390,7 @@ def _strict_quality_success_payload(
         "profileDigest": manifest.profile_digest,
         "profilePlanDigest": manifest.profile_plan_digest,
         "profileSelectionId": manifest.profile_selection_id,
+        "runtimeAuthorityDigest": manifest.runtime_authority_digest,
         "resultArtifact": manifest.result_decoder.artifactPath,
         "certifyingTestEvidence": evidence_payload(evidence),
         "reportPath": test_results_report_path(target.worktree_group).as_posix(),
@@ -429,6 +435,7 @@ def _write_test_results_report(report: _QualityGateReport) -> None:
         f"- Repository profile digest: `{report.profile_digest}`",
         f"- Repository profile plan digest: `{report.profile_plan_digest}`",
         f"- Repository profile selection: `{report.profile_selection_id}`",
+        f"- Runtime authority digest: `{report.runtime_authority_digest}`",
         f"- Diff base: `{report.diff_base or '(none)'}`",
         f"- Exit code: `{report.result.returncode}`",
         f"- Started: `{report.started_at.replace(microsecond=0).isoformat()}`",

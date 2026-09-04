@@ -144,6 +144,7 @@ def test_strict_gate_refuses_success_without_a_manifest_before_and_after_reporti
         profile_digest="a" * 64,
         profile_plan_digest="b" * 64,
         profile_selection_id="closeout-targeted",
+        runtime_authority_digest=None,
     )
     flapping = SimpleNamespace(returncode=0, manifest=visible, evidence=None)
 
@@ -184,7 +185,9 @@ def test_recovery_refuses_a_typed_published_failed_terminal_result(tmp_path: Pat
             mode="targeted",
             repository_root=worktree,
         ),
-        attestation=attestation,
+        bindings=clean_executor.ReportBindings(
+            attestation=attestation, runtime_authority_digest=None
+        ),
     )
 
     recovered = gate_mod.recover_strict_code_quality_gate(

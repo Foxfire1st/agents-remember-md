@@ -989,7 +989,9 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                     reports,
                     candidate_tree="c" * 40,
                     profile_execution=agents_remember_profile_execution(candidate_tree="c" * 40),
-                    attestation={"id": "one"},
+                    bindings=clean_quality_executor.ReportBindings(
+                        attestation={"id": "one"}, runtime_authority_digest=None
+                    ),
                 )
             target = code_quality_gate.QualityGateTarget(
                 code_worktree=REPOSITORY_ROOT,
@@ -1008,7 +1010,9 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                 reports,
                 candidate_tree="c" * 40,
                 profile_execution=agents_remember_profile_execution(candidate_tree="c" * 40),
-                attestation={"id": "one"},
+                bindings=clean_quality_executor.ReportBindings(
+                    attestation={"id": "one"}, runtime_authority_digest=None
+                ),
             )
             self.assertIsNone(
                 code_quality_gate.recover_strict_code_quality_gate(
@@ -1086,7 +1090,9 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                 reports,
                 candidate_tree=candidate_tree,
                 profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
-                attestation={"id": "one"},
+                bindings=clean_quality_executor.ReportBindings(
+                    attestation={"id": "one"}, runtime_authority_digest=None
+                ),
             )
             target = code_quality_gate.QualityGateTarget(
                 code_worktree=REPOSITORY_ROOT,
@@ -1134,7 +1140,9 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                     profile_execution=agents_remember_profile_execution(
                         candidate_tree=candidate_tree
                     ),
-                    attestation={"id": "two"},
+                    bindings=clean_quality_executor.ReportBindings(
+                        attestation={"id": "two"}, runtime_authority_digest=None
+                    ),
                 )
 
     def test_organizational_gate_returns_a_certificate_without_a_sink(self) -> None:

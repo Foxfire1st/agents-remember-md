@@ -101,7 +101,9 @@ class QualityGatePublicContractTests(unittest.TestCase):
                 reports,
                 candidate_tree=candidate_tree,
                 profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
-                attestation={"id": "decoder-drift"},
+                bindings=clean_quality_executor.ReportBindings(
+                    attestation={"id": "decoder-drift"}, runtime_authority_digest=None
+                ),
             )
             pointer = reports / clean_quality_executor.REPORT_SET_MANIFEST
             manifest = json.loads(pointer.read_text(encoding="utf-8"))
@@ -145,7 +147,9 @@ class QualityGatePublicContractTests(unittest.TestCase):
                 reports,
                 candidate_tree=candidate_tree,
                 profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
-                attestation={"id": "a"},
+                bindings=clean_quality_executor.ReportBindings(
+                    attestation={"id": "a"}, runtime_authority_digest=None
+                ),
             )["generation"]
             real_loader = code_quality_gate.load_published_quality_manifest
 
@@ -162,7 +166,9 @@ class QualityGatePublicContractTests(unittest.TestCase):
                     profile_execution=agents_remember_profile_execution(
                         candidate_tree=candidate_tree
                     ),
-                    attestation={"id": "b"},
+                    bindings=clean_quality_executor.ReportBindings(
+                        attestation={"id": "b"}, runtime_authority_digest=None
+                    ),
                 )
                 return snapshot
 

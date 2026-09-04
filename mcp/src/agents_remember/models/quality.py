@@ -50,6 +50,7 @@ class QualityGateResult(StrictResponseModel):
     profileDigest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     profilePlanDigest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     profileSelectionId: str | None = None
+    runtimeAuthorityDigest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     resultArtifact: str | None = None
     reportPath: str | None = Field(default=None, max_length=16384)
     publishedResultPath: str | None = Field(default=None, max_length=16384)

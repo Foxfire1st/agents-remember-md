@@ -17,6 +17,11 @@ from agents_remember.certification.models import (
     RailIdentity,
     RailRuntimeInputs,
 )
+from agents_remember.certification.repository_profiles import (
+    RepositorySelectionDraft,
+    RepositorySelectionReason,
+    build_repository_selection_result,
+)
 from agents_remember.certification.repository_profiles.authority import (
     load_repository_profile,
 )
@@ -423,6 +428,9 @@ def _require_complete_fixture_source(fixture: FixtureRepository) -> None:
         )
 
 
+FIXTURE_RUNTIME_AUTHORITY_DIGEST = "e" * 64
+
+
 def fixture_execution_manifest(
     fixture: FixtureRepository,
     *,
@@ -449,6 +457,12 @@ def fixture_execution_manifest(
         "publishedArtifacts": [
             artifact.model_dump(mode="json") for artifact in profile.publishedArtifacts
         ],
+        "runtimeAuthority": {
+            "schemaVersion": "dagger-runtime-authority/v1",
+            "snapshotDigest": FIXTURE_RUNTIME_AUTHORITY_DIGEST,
+            "endpoint": "container://test-dagger-engine",
+            "layerStore": "/var/lib/dagger",
+        },
     }
 
 
@@ -547,3 +561,198 @@ __all__ = [
     "fixture_execution_manifest",
     "fixture_profile",
 ]
+
+
+class FakeContainer:
+    def __init__(self, exit_codes: list[int]) -> None:
+        self.exit_codes = exit_codes
+        self.commands: list[list[str]] = []
+        self.files: dict[str, str] = {}
+        self.environment: list[tuple[object, ...]] = []
+        self.operations: list[tuple[object, ...]] = []
+        self.image: str | None = None
+
+    def from_(self, image: str) -> FakeContainer:
+        self.image = image
+        self.operations.append(("from", image))
+        return self
+
+    def with_mounted_cache(self, *args: object, **kwargs: object) -> FakeContainer:
+        self.operations.append(("cache", *args, kwargs))
+        return self
+
+    def with_env_variable(self, *args: object) -> FakeContainer:
+        self.environment.append(args)
+        self.operations.append(("env", *args))
+        return self
+
+    def with_exec(self, command: list[str], **_kwargs: object) -> FakeContainer:
+        self.commands.append(command)
+        self.operations.append(("exec", *command))
+        if "agents_remember_test_support.code_quality.profile_selection" in command:
+            output = command[command.index("--output") + 1]
+            self.files[output] = json.dumps(
+                _fake_selector_result(
+                    command,
+                    {
+                        "changed-files": ["mcp/src/fixture.py"],
+                        "coverage-paths": ["mcp/src/agents_remember"],
+                        "coverage-roots": ["agents_remember"],
+                        "dashboard-tests": ["dashboard/src/fixture.test.ts"],
+                        "lint-paths": ["mcp/src/fixture.py"],
+                        "selected-tests": ["mcp/tests/test_fixture.py"],
+                        "size-paths": ["mcp/src/fixture.py"],
+                        "type-closure": ["mcp/src/fixture.py"],
+                    },
+                )
+            )
+        if "scripts/select-tests.sh" in command:
+            script_index = command.index("scripts/select-tests.sh")
+            output = command[script_index + 1]
+            selected = (
+                ["unit"]
+                if self.image and self.image.startswith("rust:")
+                else ["test/unit.test.mjs"]
+            )
+            self.files[output] = json.dumps(
+                _fake_selector_result(command, {"selected-tests": selected})
+            )
+        for script, output_offsets in (
+            ("scripts/run-suite.mjs", (1, 2)),
+            ("scripts/run-suite.sh", (1, 2)),
+            ("scripts/run-e2e.mjs", (1,)),
+            ("scripts/run-e2e.sh", (1,)),
+        ):
+            if script not in command:
+                continue
+            script_index = command.index(script)
+            for offset in output_offsets:
+                self.files[command[script_index + offset]] = '{"status":"passed"}\n'
+        return self
+
+    def with_directory(self, *args: object) -> FakeContainer:
+        self.operations.append(("directory", *args))
+        return self
+
+    def with_file(self, *args: object) -> FakeContainer:
+        self.operations.append(("file", *args))
+        return self
+
+    def with_workdir(self, *args: object) -> FakeContainer:
+        self.operations.append(("workdir", *args))
+        return self
+
+    def with_new_file(self, path: str, *, contents: str) -> FakeContainer:
+        self.files[path] = contents
+        return self
+
+    def directory(self, path: str) -> str:
+        return path
+
+    def file(self, path: str) -> FakeFile:
+        return FakeFile(self.files[path])
+
+    async def env_variable(self, name: str) -> str | None:
+        return next(
+            (str(values[1]) for values in reversed(self.environment) if values[0] == name),
+            None,
+        )
+
+    async def exists(self, path: str, **_kwargs: object) -> bool:
+        return path in self.files
+
+    async def sync(self) -> FakeContainer:
+        return self
+
+    async def exit_code(self) -> int:
+        return self.exit_codes.pop(0) if self.exit_codes else 0
+
+
+class FakeFile:
+    def __init__(self, contents: str) -> None:
+        self.value = contents
+
+    async def contents(self) -> str:
+        return self.value
+
+    async def size(self) -> int:
+        return len(self.value.encode("utf-8"))
+
+
+def _fake_selector_result(
+    command: list[str],
+    outputs: dict[str, list[str]],
+    *,
+    complete: bool = True,
+) -> dict[str, object]:
+    def value(flag: str, fixture_index: int) -> str:
+        return command[command.index(flag) + 1] if flag in command else command[fixture_index]
+
+    raw_mode = value("--mode", 3)
+    mode: ProfileMode = "full" if raw_mode == "full" else "targeted"
+    base = value("--diff-base", 4)
+    candidate_kind = value("--candidate-kind", 5)
+    candidate_value = value("--candidate-value", 6)
+    selector_id = value("--selector-id", 7)
+    selector_version = value("--selector-version", 8)
+    configuration_digest = value("--selector-configuration-digest", 9)
+    reasons = (
+        tuple(
+            RepositorySelectionReason(
+                input="fixture://selector",
+                kind="declared-consumer",
+                effect="select",
+                outputArtifact=artifact,
+                outputValue=selected,
+                detail="fake-container-owned-output",
+            )
+            for artifact, values in outputs.items()
+            for selected in values
+        )
+        if complete
+        else ()
+    )
+    unresolved = (
+        ()
+        if complete
+        else (
+            RepositorySelectionReason(
+                input="fixture://unknown-input",
+                kind="unresolved",
+                effect="unresolved",
+                detail="fixture-ownership-missing",
+            ),
+        )
+    )
+    return build_repository_selection_result(
+        RepositorySelectionDraft(
+            selector_id=selector_id,
+            selector_version=selector_version,
+            configuration_digest=configuration_digest,
+            candidate_identity=CandidateIdentity(kind=candidate_kind, value=candidate_value),
+            mode=mode,
+            base_revision=base,
+            population="full" if mode == "full" else "targeted",
+            complete=complete,
+            global_invalidators=("declared-full-mode",) if mode == "full" else (),
+            dependency_reasons=reasons,
+            unresolved_inputs=unresolved,
+            outputs=outputs,
+        )
+    ).model_dump(mode="json")
+
+
+class FakeDag:
+    def __init__(self, exit_codes: list[int]) -> None:
+        self.container_value = FakeContainer(exit_codes)
+
+    def container(self) -> FakeContainer:
+        return self.container_value
+
+    def cache_volume(self, name: str) -> str:
+        return name
+
+
+class FakeSource:
+    def file(self, path: str) -> str:
+        return path

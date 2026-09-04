@@ -17,6 +17,9 @@ from agents_remember.certification.repository_profiles.execution import (
 from agents_remember.certification.repository_profiles.models import ProfileMode
 from agents_remember.errors import CertificationExecutorPrerequisiteError
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
+from agents_remember.worktrees.modules.quality import (
+    dagger_authority as authority_module,
+)
 from agents_remember.worktrees.modules.quality.clean_executor import (
     CleanQualityRequest,
     run_clean_quality,
@@ -46,6 +49,32 @@ def quality_request(
         mode=cast(ProfileMode, mode),
         diff_base=diff_base,
         memory_cap_bytes=memory_cap_bytes,
+    )
+
+
+class _AuthorityProbe:
+    """Connection-only engine probe standing in for DockerEngineInspector."""
+
+    def inspect(self, declaration):
+        return authority_module.InspectedRuntime(
+            engine_id="clean-quality-test-engine",
+            engine_running=True,
+            store_mounted_path=declaration.layer_store,
+            store_source="/var/lib/docker/volumes/clean-quality-test-engine/_data",
+            observed_version="dagger 0.21.8",
+        )
+
+
+def _test_authority() -> authority_module.AdmittedDaggerAuthority:
+    declaration = {
+        "schemaVersion": "dagger-host-declaration/v1",
+        "endpoint": "container://clean-quality-test-engine",
+        "layerStore": "/var/lib/dagger",
+        "engineVersion": "v0.21.8",
+    }
+    return authority_module.admit_dagger_authority(
+        environ={authority_module.HOST_DECLARATION_ENV: json.dumps(declaration)},
+        inspector=_AuthorityProbe(),
     )
 
 
@@ -204,6 +233,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 ),
                 runner=runner,
                 executor_resolver=lambda _env: "/usr/local/bin/dagger",
+                authority=_test_authority(),
             )
 
             sandbox = group / "reports/test-sandbox"
@@ -214,6 +244,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 quality_request(repo, group, "full"),
                 runner=runner,
                 executor_resolver=lambda _env: "/usr/local/bin/dagger",
+                authority=_test_authority(),
             )
             self.assertFalse((sandbox / "obsolete").exists())
 
@@ -243,6 +274,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 quality_request(repo, root / "group", "full"),
                 runner=runner,
                 executor_resolver=lambda _env: "dagger",
+                authority=_test_authority(),
             )
 
             self.assertEqual(result.returncode, 8)
@@ -252,6 +284,89 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 (root / "group/reports/quality-progress.json").read_text(encoding="utf-8")
             )
             self.assertEqual(progress["status"], "failed")
+
+    def test_declared_host_authority_is_admitted_registered_and_released_without_docker(
+        self,
+    ) -> None:
+        """No explicit authority admits the host declaration and releases its owner."""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            repo = repository(root)
+            group = root / "group"
+            authority_root = root / "authority-root"
+            declaration = {
+                "schemaVersion": "dagger-host-declaration/v1",
+                "endpoint": "container://clean-quality-test-engine",
+                "layerStore": "/var/lib/dagger",
+                "engineVersion": "v0.21.8",
+            }
+            calls: list[list[str]] = []
+            registered: list[authority_module.DaggerOwner] = []
+            released: list[authority_module.DaggerOwner] = []
+            real_register = authority_module.AuthorityRegistry.register_owner
+            real_release = authority_module.AuthorityRegistry.release_owner
+
+            def runner(
+                command: list[str], cwd: Path, env: Mapping[str, str]
+            ) -> subprocess.CompletedProcess[str]:
+                del cwd
+                calls.append(command)
+                self.assertIn(authority_module.RUNTIME_AUTHORITY_DIGEST_ENV, env)
+                return subprocess.CompletedProcess(command, 8, stdout="", stderr="engine red")
+
+            def recording_register(
+                self: authority_module.AuthorityRegistry,
+                owner: authority_module.DaggerOwner,
+            ) -> None:
+                registered.append(owner)
+                real_register(self, owner)
+
+            def recording_release(
+                self: authority_module.AuthorityRegistry,
+                owner: authority_module.DaggerOwner,
+            ) -> None:
+                released.append(owner)
+                real_release(self, owner)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        authority_module.HOST_DECLARATION_ENV: json.dumps(declaration),
+                        authority_module.HOST_REGISTRY_ROOT_ENV: authority_root.as_posix(),
+                        authority_module.DAGGER_HOST_ENV: declaration["endpoint"],
+                    },
+                ),
+                mock.patch.object(authority_module, "DockerEngineInspector", _AuthorityProbe),
+                mock.patch.object(
+                    authority_module.AuthorityRegistry,
+                    "register_owner",
+                    recording_register,
+                ),
+                mock.patch.object(
+                    authority_module.AuthorityRegistry,
+                    "release_owner",
+                    recording_release,
+                ),
+            ):
+                result = run_clean_quality(
+                    quality_request(repo, group, "full"),
+                    runner=runner,
+                    executor_resolver=lambda _env: "/usr/local/bin/dagger",
+                )
+
+            self.assertEqual(result.returncode, 8)
+            self.assertIsNone(result.evidence)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(len(registered), 1)
+            self.assertEqual(len(released), 1)
+            registered_owner = registered[0]
+            self.assertEqual(registered_owner.operation_kind, "quality")
+            self.assertEqual(released[0].owner_id, registered_owner.owner_id)
+            state = json.loads((authority_root / "state.json").read_text(encoding="utf-8"))
+            self.assertRegex(state["active"]["snapshotDigest"], r"^[0-9a-f]{64}$")
+            owners = json.loads((authority_root / "owners.json").read_text(encoding="utf-8"))
+            self.assertEqual(owners["owners"], [])
 
     def test_unavailable_admitted_executor_is_a_typed_gate_owned_failure(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
@@ -266,6 +381,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 run_clean_quality(
                     quality_request(repo, group, "full"),
                     executor_resolver=unavailable,
+                    authority=_test_authority(),
                 )
 
             self.assertEqual(
@@ -297,6 +413,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                     quality_request(repo, group, "targeted"),
                     runner=cannot_start,
                     executor_resolver=lambda _env: "dagger",
+                    authority=_test_authority(),
                 )
 
             finding = caught.exception.findings[0]
@@ -331,6 +448,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                     quality_request(repo, root / "group", "full"),
                     runner=runner,
                     executor_resolver=lambda _env: "dagger",
+                    authority=_test_authority(),
                 )
 
     def test_exported_failure_is_the_authoritative_pipeline_exit(self) -> None:
@@ -355,6 +473,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 quality_request(repo, root / "group", "full", "base"),
                 runner=runner,
                 executor_resolver=lambda _env: "dagger",
+                authority=_test_authority(),
             )
 
             self.assertEqual(result.returncode, 8)
@@ -432,6 +551,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                     quality_request(repo, root / "group", "full", "base"),
                     runner=contradictory,
                     executor_resolver=lambda _env: "dagger",
+                    authority=_test_authority(),
                 )
             self.assertEqual(
                 durable.read_text(encoding="utf-8"), '{"status":"passed","exitCode":0}\n'
@@ -636,17 +756,18 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 },
             }
             dependencies = clean_quality_executor.quality_report_dependencies(
-                CANDIDATE_TREE, files, None, profile_identity
+                CANDIDATE_TREE, files, None, profile_identity, "d" * 64
             ).model_dump(mode="json")
             manifest_fields: dict[str, object] = {
                 "candidateTree": CANDIDATE_TREE,
                 **profile_identity,
                 "files": files,
                 "dependencies": dependencies,
+                "runtimeAuthorityDigest": "d" * 64,
             }
             generation = clean_quality_executor.quality_generation_digest(manifest_fields)
             manifest = {
-                "schemaVersion": "3.0",
+                "schemaVersion": "3.1",
                 "generation": generation,
                 **manifest_fields,
             }
