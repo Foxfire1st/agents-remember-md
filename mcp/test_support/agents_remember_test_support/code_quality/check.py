@@ -837,6 +837,7 @@ def main(argv: list[str] | None = None) -> int:
     # ``tempfile`` caches its chosen directory process-wide. Reset it after sanitising the
     # environment so a module imported before ``main`` cannot preserve a Windows/long-path root.
     tempfile.tempdir = QUALITY_TEMP_ROOT.as_posix()
+    QUALITY_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
     if args.memory_cap_bytes is not None and args.memory_cap_bytes <= 0:
         print_line(
             "--memory-cap-bytes must be a positive integer "
