@@ -556,7 +556,15 @@ class WorktreeSupport2(WorktreeSupportTests):
             )
             write_passing_route_review(contract)
 
-            with self.assertRaisesRegex(RuntimeError, "citation_anchor_absent_from_range"):
+            def code_gate_probe(target, *, diff_base, candidate_tree=None) -> dict[str, object]:
+                return {"status": "enforced", "passed": True, "diffBase": diff_base}
+
+            with (
+                mock.patch.object(
+                    closeout_module, "_gate_staged_code", side_effect=code_gate_probe
+                ),
+                self.assertRaisesRegex(RuntimeError, "citation_anchor_absent_from_range"),
+            ):
                 run_authorized_closeout_mechanics(closeout_args(contract))
 
             self.assertEqual(git(contract.code_worktree, "rev-parse", "HEAD"), baseline)

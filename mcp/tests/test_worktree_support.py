@@ -121,7 +121,9 @@ def publish_passing_closeout_quality(
             target.worktree_group / "reports",
             candidate_tree=candidate_tree,
             profile_execution=profile_execution,
-            attestation=attestation,
+            bindings=clean_quality_executor.ReportBindings(
+                attestation=attestation, runtime_authority_digest=None
+            ),
         )
     return {
         "required": True,

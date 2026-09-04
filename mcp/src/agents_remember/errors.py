@@ -49,6 +49,20 @@ class CloseoutReadinessContractError(CertificationContractError):
     status = "closeout-readiness-contract-failed"
 
 
+class DaggerRuntimeAuthorityError(CertificationContractError):
+    """The host-level shared Dagger runner/layer-store authority refused admission.
+
+    Raised before any Dagger command starts when the declared authority is missing,
+    malformed, unsupported, provisioning-capable, worktree-local, ambiguous, not
+    inspectable as a live engine with the exact layer store mounted, contradicted by
+    ambient or per-worktree configuration, or blocked by an active authority-transition
+    barrier with live owners. The findings carry the typed defect code plus both
+    authority digests and the live-owner census where relevant.
+    """
+
+    status = "dagger-runtime-authority-invalid"
+
+
 def _freeze_contract_finding(finding: Mapping[str, object]) -> Mapping[str, object]:
     return MappingProxyType({key: _freeze_contract_value(value) for key, value in finding.items()})
 

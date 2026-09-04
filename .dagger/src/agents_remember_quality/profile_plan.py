@@ -62,8 +62,11 @@ def _safe_relative(value: object, path: str, *, file: bool = False) -> str:
 @dataclass(frozen=True)
 class FrozenRail:
     identity: str
+    identity_key: str
     gate: int
     posture: str
+    order_key: str
+    prerequisites: tuple[str, ...]
     execution: dict[str, Any]
     runtime: dict[str, Any]
 
@@ -76,6 +79,21 @@ class FrozenSelector:
 
 
 @dataclass(frozen=True)
+class FrozenGatePlan:
+    """One executable gate: its rail catalog, dependency waves, and selectors."""
+
+    gate: int
+    applicability: str
+    rails: tuple[FrozenRail, ...]
+    waves: tuple[tuple[str, ...], ...]
+    selectors: tuple[FrozenSelector, ...]
+
+    @property
+    def rail_keys(self) -> frozenset[str]:
+        return frozenset(rail.identity_key for rail in self.rails)
+
+
+@dataclass(frozen=True)
 class FrozenProfilePlan:
     profile_digest: str
     plan_digest: str
@@ -83,11 +101,17 @@ class FrozenProfilePlan:
     candidate_value: str
     selection_id: str
     mode: str
-    rails: tuple[FrozenRail, ...]
+    gate_plans: tuple[FrozenGatePlan, ...]
     selectors: tuple[FrozenSelector, ...]
     executor: dict[str, Any]
     decoder: dict[str, Any]
     published_artifacts: tuple[dict[str, Any], ...]
+    runtime_authority_digest: str | None
+
+    @property
+    def rails(self) -> tuple[FrozenRail, ...]:
+        """The canonical flattened rail population, already in gate/wave order."""
+        return tuple(rail for gate_plan in self.gate_plans for rail in gate_plan.rails)
 
 
 @dataclass(frozen=True)
@@ -110,7 +134,7 @@ def load_execution_manifest(raw: str) -> FrozenProfilePlan:
         raise ValueError("execution manifest schema is not supported")
     identity = _read_plan_identity(manifest)
     nodes: dict[tuple[str, str], tuple[dict[str, Any], tuple[int, ...]]] = {}
-    rails = _read_plan_gates(identity, nodes)
+    gate_plans = _read_plan_gates(identity, nodes)
     executor, decoder, published = _read_shared_contracts(manifest, nodes)
     selectors = _read_selectors(nodes)
     return FrozenProfilePlan(
@@ -123,11 +147,12 @@ def load_execution_manifest(raw: str) -> FrozenProfilePlan:
             "manifest.profilePlan.selectionId",
         ),
         mode=identity.mode,
-        rails=tuple(rails),
+        gate_plans=tuple(gate_plans),
         selectors=selectors,
         executor=executor,
         decoder=decoder,
         published_artifacts=published,
+        runtime_authority_digest=_read_runtime_authority(manifest),
     )
 
 
@@ -156,19 +181,66 @@ def _read_plan_identity(manifest: dict[str, Any]) -> _PlanIdentity:
 def _read_plan_gates(
     identity: _PlanIdentity,
     nodes: dict[tuple[str, str], tuple[dict[str, Any], tuple[int, ...]]],
-) -> list[FrozenRail]:
+) -> list[FrozenGatePlan]:
     gates = _array(identity.plan.get("gates"), "manifest.profilePlan.gates")
     observed = [gate.get("gate") if isinstance(gate, dict) else None for gate in gates]
     if observed != [1, 2, 3, 4]:
         raise ValueError("execution profile plan must contain exact ordered Gates 1-4")
-    rails: list[FrozenRail] = []
+    gate_plans: list[FrozenGatePlan] = []
     for gate_id, raw_gate in enumerate(gates, start=1):
         gate = _object(raw_gate, f"manifest.profilePlan.gates.{gate_id}")
         _verify_gate_digest(gate, gate_id)
         if gate.get("profileDigest") != identity.profile_digest:
             raise ValueError(f"Gate {gate_id} names another admitted profile")
-        rails.extend(_read_gate_rails(gate, gate_id, _read_gate_nodes(gate, gate_id, nodes)))
-    return rails
+        gate_plans.append(_freeze_gate_plan(gate, gate_id, _read_gate_nodes(gate, gate_id, nodes)))
+    return gate_plans
+
+
+def _freeze_gate_plan(
+    gate: dict[str, Any],
+    gate_id: int,
+    nodes: dict[tuple[str, str], dict[str, Any]],
+) -> FrozenGatePlan:
+    """Preserve one executable gate: rails, dependency waves, and gate selectors."""
+    applicability = _string(gate.get("applicability"), f"gate.{gate_id}.applicability")
+    if applicability not in {"applicable", "not-applicable"}:
+        raise ValueError(f"gate.{gate_id}.applicability is invalid")
+    rails = _read_gate_rails(gate, gate_id, nodes)
+    waves = _read_gate_waves(gate, gate_id)
+    selectors = tuple(
+        FrozenSelector(
+            selector_id=node_id,
+            consuming_gates=tuple(
+                _integer(item, f"selector.{node_id}.consumingGates")
+                for item in _array(node.get("consumingGates"), f"selector.{node_id}.consumingGates")
+            ),
+            definition=_object(node["content"], f"selector.{node_id}"),
+        )
+        for (kind, node_id), node in sorted(nodes.items())
+        if kind == "selector"
+    )
+    available_selectors = {
+        selector.selector_id for selector in selectors if gate_id in selector.consuming_gates
+    }
+    referenced: set[str] = set()
+    for rail in rails:
+        provider = rail.execution.get("scopeProviderId")
+        if isinstance(provider, str):
+            referenced.add(provider)
+    if referenced - available_selectors:
+        missing = ", ".join(sorted(referenced - available_selectors))
+        raise ValueError(f"gate {gate_id} rails reference selectors outside this gate: {missing}")
+    return FrozenGatePlan(
+        gate=gate_id,
+        applicability=applicability,
+        rails=tuple(rails),
+        waves=waves,
+        selectors=tuple(
+            selector
+            for selector in selectors
+            if selector.selector_id in referenced and gate_id in selector.consuming_gates
+        ),
+    )
 
 
 def _read_shared_contracts(
@@ -331,13 +403,59 @@ def _freeze_rail(
     command = _array(execution.get("command"), f"rail.{key}.command")
     if not command or any(not isinstance(item, str) or not item for item in command):
         raise ValueError(f"rail {key} command must be a nonempty string array")
+    prerequisites = _read_rail_prerequisites(rail, key)
+    identity = key.split("@", 1)[0]
     return FrozenRail(
-        identity=key.split("@", 1)[0],
+        identity=identity,
+        identity_key=key,
         gate=gate_id,
         posture=_string(rail.get("posture"), f"rail.{key}.posture"),
+        order_key=_string(rail.get("orderKey"), f"rail.{key}.orderKey"),
+        prerequisites=prerequisites,
         execution=execution,
         runtime=runtime,
     )
+
+
+def _read_rail_prerequisites(rail: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Read same-gate and cross-gate prerequisites as canonical rail identity keys."""
+    raw = _array(rail.get("prerequisites"), f"rail.{key}.prerequisites")
+    resolved: list[str] = []
+    for index, item in enumerate(raw):
+        identity = _object(item, f"rail.{key}.prerequisites.{index}")
+        identity_key = (
+            f"{_string(identity.get('railId'), 'prerequisite.railId')}@"
+            f"{_string(identity.get('version'), 'prerequisite.version')}"
+        )
+        if identity_key in resolved:
+            raise ValueError(f"rail {key} prerequisites are duplicated")
+        resolved.append(identity_key)
+    return tuple(resolved)
+
+
+def _read_gate_waves(gate: dict[str, Any], gate_id: int) -> tuple[tuple[str, ...], ...]:
+    """Read the exact planned dependency waves as rail identity-key tuples."""
+    waves: list[tuple[str, ...]] = []
+    seen: list[str] = []
+    for wave_index, wave in enumerate(_array(gate.get("waves"), f"gate.{gate_id}.waves")):
+        wave_keys: list[str] = []
+        for identity_index, raw_identity in enumerate(wave):
+            identity = _object(
+                raw_identity,
+                f"gate.{gate_id}.waves.{wave_index}.{identity_index}",
+            )
+            identity_key = (
+                f"{_string(identity.get('railId'), 'wave.railId')}@"
+                f"{_string(identity.get('version'), 'wave.version')}"
+            )
+            if identity_key in seen or identity_key in wave_keys:
+                raise ValueError("gate wave rail identity is duplicated")
+            seen.append(identity_key)
+            wave_keys.append(identity_key)
+        if not wave_keys:
+            raise ValueError(f"gate.{gate_id} wave must not be empty")
+        waves.append(tuple(wave_keys))
+    return tuple(waves)
 
 
 def _require_shared_node(
@@ -409,7 +527,22 @@ def pinned_image_digest(reference: object) -> str:
     return digest
 
 
+def _read_runtime_authority(manifest: dict[str, Any]) -> str | None:
+    """Read the frozen host authority digest bound into the admission manifest."""
+    raw = manifest.get("runtimeAuthority")
+    if raw is None:
+        return None
+    authority = _object(raw, "manifest.runtimeAuthority")
+    if authority.get("schemaVersion") != "dagger-runtime-authority/v1":
+        raise ValueError("manifest runtime authority schema is not supported")
+    digest = _string(authority.get("snapshotDigest"), "manifest.runtimeAuthority.snapshotDigest")
+    if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ValueError("manifest runtime authority digest is invalid")
+    return digest
+
+
 __all__ = [
+    "FrozenGatePlan",
     "FrozenProfilePlan",
     "FrozenRail",
     "FrozenSelector",

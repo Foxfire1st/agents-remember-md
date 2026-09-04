@@ -800,16 +800,18 @@ def _closed_result_payload(updated, facts: _CloseoutResultFacts) -> dict[str, An
 def _closeout_quality_preflight(
     contract, args: WorktreeArgs, *, code_would_commit: bool
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
-    """Run the reversible memory and code gates before approval is consumed."""
+    """Run the reversible code and memory gates in Gate-5 order before approval.
+
+    CCR-R12 orders the closeout gates: the Dagger-backed code gate (Gates 1-4 rails)
+    runs first and its red verdict blocks everything after it; the memory-quality
+    preflight is Gate-5-domain work and is neither started nor prefetched before the
+    code gate is green or not required.
+    """
     code_quality_gate = _closeout_quality_gate_preview(
         contract,
         args,
         code_would_commit=code_would_commit,
     )
-    report_operation_progress(
-        args, "memory-preflight", current_command="run pre-refresh memory quality"
-    )
-    memory_quality = _memory_quality_before_refresh(contract)
     strict_required = contract.kind == "leaf" and requires_strict_code_quality(
         _quality_gate_target(contract, args),
         code_would_commit=code_would_commit,
@@ -823,6 +825,17 @@ def _closeout_quality_preflight(
             diff_base=contract.code_base_commit,
             candidate_tree=args.candidate_tree,
         )
+        if not code_quality_gate.get("passed", False):
+            raise RuntimeError(
+                "closeout code-quality gate is red; Gate-5 memory preflight is blocked "
+                "and no later gate may start"
+            )
+    memory_quality: dict[str, Any] = {}
+    if contract.kind == "leaf" and contract.memory_mode == "external":
+        report_operation_progress(
+            args, "memory-preflight", current_command="run pre-refresh memory quality"
+        )
+        memory_quality = _memory_quality_before_refresh(contract)
     return code_quality_gate, memory_quality, strict_required
 
 

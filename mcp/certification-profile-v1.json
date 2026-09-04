@@ -3,7 +3,7 @@
   "semanticRevision": "1.0.0",
   "repositoryId": "agents-remember",
   "profileId": "agents-remember-certification",
-  "profileDigest": "87142fc28363382c9f92696206efa2f2ceebdeb20e125eaff3dba1c7abf93879",
+  "profileDigest": "34858daacfc39b6c392e8c8caa208232c70f1e406378118dce846fa883ae11cf",
   "selections": [
     {
       "selectionId": "closeout-full",
@@ -580,8 +580,13 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 3600,
         "resourcePolicyId": "clean-room-bounded",
-        "successExitCodes": [0, 78],
-        "skippedExitCodes": [78],
+        "successExitCodes": [
+          0,
+          78
+        ],
+        "skippedExitCodes": [
+          78
+        ],
         "cleanRoom": true,
         "teardownPolicy": "always",
         "executionEvidence": "profile://agents-remember/rails/ambient-role-chat-e2e"
@@ -641,6 +646,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/causal-preflight"
@@ -722,6 +731,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "clean-room-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": true,
         "teardownPolicy": "always",
         "executionEvidence": "profile://agents-remember/rails/codex-read-only-probe"
@@ -799,6 +812,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 3600,
         "resourcePolicyId": "clean-room-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": true,
         "teardownPolicy": "always",
         "executionEvidence": "profile://agents-remember/rails/dashboard-browser-e2e"
@@ -859,6 +876,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dashboard-build"
@@ -919,6 +940,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dashboard-codegen"
@@ -981,6 +1006,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dashboard-diff-coverage"
@@ -1041,6 +1070,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dashboard-lint"
@@ -1095,6 +1128,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dashboard-prerequisites"
@@ -1171,6 +1208,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dashboard-suite"
@@ -1231,6 +1272,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dashboard-typecheck"
@@ -1288,6 +1333,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/dependency-prerequisites"
@@ -1345,6 +1394,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/evidence-lifecycle"
@@ -1399,10 +1452,16 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["size-paths"],
+        "inputSelectors": [
+          "size-paths"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/file-size"
@@ -1458,6 +1517,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/generated-harness"
@@ -1513,6 +1576,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/generated-projection-types"
@@ -1568,6 +1635,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/generated-runtime"
@@ -1623,6 +1694,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/generated-skills"
@@ -1680,6 +1755,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/layering"
@@ -1758,6 +1837,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 3600,
         "resourcePolicyId": "clean-room-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": true,
         "teardownPolicy": "always",
         "executionEvidence": "profile://agents-remember/rails/provider-runtime-integration"
@@ -1814,10 +1897,16 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["type-closure"],
+        "inputSelectors": [
+          "type-closure"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/pyright"
@@ -1878,10 +1967,17 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["configuration", "tracked-input-census"],
+        "inputSelectors": [
+          "configuration",
+          "tracked-input-census"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/quality-config-scope"
@@ -1953,10 +2049,17 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["coverage-paths", "tracked-input-census"],
+        "inputSelectors": [
+          "coverage-paths",
+          "tracked-input-census"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/python-crap"
@@ -2028,10 +2131,17 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["changed-files", "coverage-paths"],
+        "inputSelectors": [
+          "changed-files",
+          "coverage-paths"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/python-diff-coverage"
@@ -2123,6 +2233,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/python-suite"
@@ -2181,10 +2295,16 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["coverage-paths"],
+        "inputSelectors": [
+          "coverage-paths"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/radon-cc"
@@ -2241,10 +2361,16 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["coverage-paths"],
+        "inputSelectors": [
+          "coverage-paths"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/radon-mi"
@@ -2298,10 +2424,16 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["lint-paths"],
+        "inputSelectors": [
+          "lint-paths"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/ruff"
@@ -2356,10 +2488,16 @@
           "TMPDIR"
         ],
         "scopeProviderId": "agents-remember-test-selection",
-        "inputSelectors": ["lint-paths"],
+        "inputSelectors": [
+          "lint-paths"
+        ],
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/ruff-format"
@@ -2419,6 +2557,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/runtime-capability"
@@ -2487,6 +2629,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": false,
         "teardownPolicy": "not-required",
         "executionEvidence": "profile://agents-remember/rails/test-selection-ownership"
@@ -2569,6 +2715,10 @@
         "resultDecoderId": "quality-terminal-result",
         "timeoutSeconds": 600,
         "resourcePolicyId": "clean-room-bounded",
+        "successExitCodes": [
+          0
+        ],
+        "skippedExitCodes": [],
         "cleanRoom": true,
         "teardownPolicy": "always",
         "executionEvidence": "profile://agents-remember/rails/teardown-process-cleanliness"
@@ -2638,10 +2788,15 @@
       "diffBaseArgument": "diff-base",
       "memoryCapArgument": "memory-cap-bytes",
       "planArgument": "execution-manifest",
-    "reportsField": "reports",
-    "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-    "runtimeDigest": "32b57c7905b507d6e4e5a87dc542f839af5b4f3c75309daff84b6acadbadc858",
-      "consumingGates": [1, 2, 3, 4]
+      "reportsField": "reports",
+      "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+      "runtimeDigest": "4cf0e133934d6a92c4625663a976b15dabb325d3200b35d261c2f0316be5b5fa",
+      "consumingGates": [
+        1,
+        2,
+        3,
+        4
+      ]
     }
   ],
   "resultDecoders": [
@@ -2661,7 +2816,8 @@
             ]
           },
           "cardinality": "single",
-          "nullPolicy": "ignore-reference"
+          "nullPolicy": "ignore-reference",
+          "nullParentPolicy": "invalid"
         },
         {
           "fieldPath": {
@@ -2670,7 +2826,8 @@
             ]
           },
           "cardinality": "single",
-          "nullPolicy": "ignore-reference"
+          "nullPolicy": "ignore-reference",
+          "nullParentPolicy": "invalid"
         },
         {
           "fieldPath": {
@@ -2691,6 +2848,7 @@
             ]
           },
           "cardinality": "list",
+          "nullPolicy": "invalid",
           "nullParentPolicy": "ignore-reference"
         }
       ],
@@ -2717,7 +2875,12 @@
           ]
         }
       ],
-      "consumingGates": [1, 2, 3, 4]
+      "consumingGates": [
+        1,
+        2,
+        3,
+        4
+      ]
     }
   ],
   "publishedArtifacts": [
@@ -2726,98 +2889,132 @@
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [4]
+      "publisherGates": [
+        4
+      ]
     },
     {
       "path": "ambient-role-chat-e2e/run-2.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [4]
+      "publisherGates": [
+        4
+      ]
     },
     {
       "path": "ambient-role-chat-e2e/summary.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [4]
+      "publisherGates": [
+        4
+      ]
     },
     {
       "path": "causal-failures.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [1]
+      "publisherGates": [
+        1
+      ]
     },
     {
       "path": "causal-failures.md",
       "mediaType": "text/markdown",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [1]
+      "publisherGates": [
+        1
+      ]
     },
     {
       "path": "clean-quality-results.json",
       "mediaType": "application/json",
       "required": true,
       "maxBytes": 134217728,
-      "publisherGates": [1, 2, 3, 4]
+      "publisherGates": [
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "path": "codex-probe.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [4]
+      "publisherGates": [
+        4
+      ]
     },
     {
       "path": "coverage.data",
       "mediaType": "application/octet-stream",
       "required": false,
       "maxBytes": 536870912,
-      "publisherGates": [2]
+      "publisherGates": [
+        2
+      ]
     },
     {
       "path": "coverage.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [2]
+      "publisherGates": [
+        2
+      ]
     },
     {
       "path": "pytest-events.jsonl",
       "mediaType": "application/x-ndjson",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [2]
+      "publisherGates": [
+        2
+      ]
     },
     {
       "path": "pytest-phases.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [2]
+      "publisherGates": [
+        2
+      ]
     },
     {
       "path": "python-runtime.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [1]
+      "publisherGates": [
+        1
+      ]
     },
     {
       "path": "python-venv-runtime.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [1]
+      "publisherGates": [
+        1
+      ]
     },
     {
       "path": "quality-progress.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
-      "publisherGates": [1, 2, 3, 4]
+      "publisherGates": [
+        1,
+        2,
+        3,
+        4
+      ]
     }
   ]
 }

@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
@@ -48,6 +49,17 @@ from agents_remember.models.test_evidence import (
     EvidenceConsumer,
     _certifying_evidence_from_verified_dagger,
     require_certifying_evidence,
+)
+from agents_remember.worktrees.modules.quality.dagger_authority import (
+    AdmittedDaggerAuthority,
+    AuthorityRegistry,
+    DaggerOwner,
+    admit_dagger_authority,
+    authority_environment,
+    current_process_fingerprint,
+    default_registry_root,
+    owner_identity,
+    release_dagger_authority,
 )
 from agents_remember.worktrees.modules.quality.published_manifest import (
     QUALITY_MANIFEST_SCHEMA_VERSION,
@@ -130,23 +142,41 @@ def run_clean_quality(
     *,
     runner: CommandRunner | None = None,
     executor_resolver: ExecutorResolver | None = None,
+    authority: AdmittedDaggerAuthority | None = None,
 ) -> CleanQualityOutcome:
-    """Run the exact profile-declared Dagger adapter; never fall back to host rails."""
+    """Run the exact profile-declared Dagger adapter; never fall back to host rails.
+
+    Every launch crosses the one host-level shared Dagger authority boundary: the
+    declared connection-only runner and reusable layer store are admitted and inspected
+    before any Dagger command starts, and the immutable authority digest is bound into
+    the candidate sandbox manifest and the published quality manifest. Pass an
+    authority explicitly to reuse one frozen snapshot (retry/recovery); otherwise
+    the host declaration is admitted and the exact live owner is released when the run
+    terminalizes.
+    """
     if request.mode not in {"targeted", "full"}:
         raise ValueError(f"unknown clean quality mode: {request.mode}")
     for path in (request.code_worktree, request.worktree_group):
         if reason := windows_interop_reason(path):
             raise RuntimeError(f"clean quality refuses {path}: {reason}")
+    admitted = authority
+    registry: AuthorityRegistry | None = None
+    if admitted is None:
+        registry = AuthorityRegistry(default_registry_root())
+        admitted = admit_dagger_authority(
+            registry=registry,
+            owner_factory=lambda snapshot: _quality_owner(request, snapshot),
+        )
     prepared = _prepare_sandbox(request)
     source = prepared.root / "source"
-    export_root = prepared.root / "export"
     profile_execution = _admit_prepared_profile(request, prepared)
-    _write_sandbox_manifest(request, prepared, profile_execution)
+    _write_sandbox_manifest(request, prepared, profile_execution, admitted)
     env, command = _executor_command(
         request,
         prepared,
         profile_execution,
         executor_resolver=executor_resolver,
+        authority=admitted,
     )
     execute = runner or (
         lambda command, cwd, command_env: _stream_dagger(
@@ -163,31 +193,38 @@ def run_clean_quality(
         f"start admitted repository adapter {profile_execution.executor.adapterId}",
     )
     try:
-        exported = execute(
-            command,
-            source,
-            env,
+        try:
+            exported = execute(
+                command,
+                source,
+                env,
+            )
+        except OSError as error:
+            _write_current(
+                request.worktree_group,
+                "failed",
+                "admitted repository executor could not start",
+                status="failed",
+            )
+            raise _executor_prerequisite_failure(profile_execution) from error
+        if exported.returncode != 0:
+            _write_current(
+                request.worktree_group, "failed", "Dagger pipeline/export failed", status="failed"
+            )
+            return CleanQualityOutcome(exported, None, None)
+        return _publish_executor_outcome(
+            request,
+            prepared,
+            profile_execution,
+            exported,
+            _ReportBindings(
+                attestation=request.attestation,
+                runtime_authority_digest=admitted.snapshot_digest,
+            ),
         )
-    except OSError as error:
-        _write_current(
-            request.worktree_group,
-            "failed",
-            "admitted repository executor could not start",
-            status="failed",
-        )
-        raise _executor_prerequisite_failure(profile_execution) from error
-    if exported.returncode != 0:
-        _write_current(
-            request.worktree_group, "failed", "Dagger pipeline/export failed", status="failed"
-        )
-        return CleanQualityOutcome(exported, None, None)
-    return _publish_executor_outcome(
-        request,
-        prepared,
-        profile_execution,
-        exported,
-        export_root=export_root,
-    )
+    finally:
+        if registry is not None and admitted.owner is not None:
+            release_dagger_authority(admitted, registry=registry)
 
 
 def _admit_prepared_profile(
@@ -213,9 +250,11 @@ def _executor_command(
     execution: AdmittedRepositoryProfileExecution,
     *,
     executor_resolver: ExecutorResolver | None,
+    authority: AdmittedDaggerAuthority,
 ) -> tuple[dict[str, str], list[str]]:
     try:
-        env = native_path_environment(os.environ)
+        native = native_path_environment(os.environ)
+        env = authority_environment(authority.snapshot, base=native)
         executable = (
             executor_resolver(env)
             if executor_resolver is not None
@@ -244,15 +283,15 @@ def _publish_executor_outcome(
     prepared: _PreparedSandbox,
     profile_execution: AdmittedRepositoryProfileExecution,
     exported: subprocess.CompletedProcess[str],
-    *,
-    export_root: Path,
+    bindings: _ReportBindings,
 ) -> CleanQualityOutcome:
+    export_root = prepared.root / "export"
     _publish_reports(
         export_root,
         request.worktree_group / "reports",
         candidate_tree=prepared.candidate_tree,
         profile_execution=profile_execution,
-        attestation=request.attestation,
+        bindings=bindings,
     )
     manifest = load_published_quality_manifest(request.worktree_group / "reports")
     published_report_path_from_manifest(
@@ -340,6 +379,7 @@ def _write_sandbox_manifest(
     request: CleanQualityRequest,
     prepared: _PreparedSandbox,
     execution: AdmittedRepositoryProfileExecution,
+    authority: AdmittedDaggerAuthority,
 ) -> None:
     source = prepared.root / "source"
     manifest = {
@@ -360,6 +400,7 @@ def _write_sandbox_manifest(
         "profilePlan": execution.plan.model_dump(mode="json"),
         "executorAdapter": execution.executor.model_dump(mode="json"),
         "resultDecoder": execution.decoder.model_dump(mode="json"),
+        "runtimeAuthority": authority.snapshot.as_manifest(),
         "publishedArtifacts": [
             artifact.model_dump(mode="json") for artifact in execution.published_artifacts
         ],
@@ -390,13 +431,29 @@ def _exported_pipeline_exit(
     )
 
 
+class ReportBindings:
+    """Optional admission-order bindings packed behind one argument."""
+
+    def __init__(
+        self,
+        *,
+        attestation: Mapping[str, str] | None,
+        runtime_authority_digest: str | None,
+    ) -> None:
+        self.attestation = attestation
+        self.runtime_authority_digest = runtime_authority_digest
+
+
+_ReportBindings = ReportBindings
+
+
 def _publish_reports(
     source: Path,
     destination: Path,
     *,
     candidate_tree: str,
     profile_execution: AdmittedRepositoryProfileExecution,
-    attestation: Mapping[str, str] | None = None,
+    bindings: _ReportBindings | None = None,
 ) -> dict[str, object]:
     """Publish one immutable evidence generation, then atomically point readers at it.
 
@@ -421,16 +478,22 @@ def _publish_reports(
         _require_pass_publications(exported_names, published_artifacts)
     managed_files = frozenset(item.path for item in managed_artifacts)
     managed_directories = _declared_report_directories(managed_artifacts)
+    preflight_kwargs = {
+        "exported_files": managed_files,
+        "exported_directories": managed_directories,
+    }
     require_real_directory_or_missing(destination, purpose="quality report destination")
     destination.mkdir(parents=True, exist_ok=True)
     require_real_directory_or_missing(destination, purpose="quality report destination")
     files = _report_file_records(source, exported_names)
     profile_identity = _profile_identity(profile_execution)
+    bound_digest = None if bindings is None else bindings.runtime_authority_digest
     dependencies = quality_report_dependencies(
         candidate_tree,
         files,
-        attestation,
+        None if bindings is None else bindings.attestation,
         profile_identity,
+        bound_digest,
     )
     dependencies_value = dependencies.model_dump(mode="json")
     generation = _generation_digest(
@@ -438,18 +501,14 @@ def _publish_reports(
         files,
         profile_identity,
         dependencies_value,
+        bound_digest,
     )
     generations = destination / REPORT_GENERATIONS_DIRECTORY
     require_real_directory_or_missing(generations, purpose="quality generation directory")
     generations.mkdir(parents=True, exist_ok=True)
     generation_root = generations / generation
     previous_generation = _published_generation_or_none(destination)
-    _preflight_report_destination(
-        destination,
-        generation_root,
-        exported_files=managed_files,
-        exported_directories=managed_directories,
-    )
+    _preflight_report_destination(destination, generation_root, **preflight_kwargs)
     _ensure_generation(source, generation_root, files)
     manifest: dict[str, object] = {
         "schemaVersion": QUALITY_MANIFEST_SCHEMA_VERSION,
@@ -459,14 +518,11 @@ def _publish_reports(
         "files": files,
         "dependencies": dependencies_value,
     }
-    if attestation is not None:
-        manifest["attestation"] = dict(attestation)
-    _preflight_report_destination(
-        destination,
-        generation_root,
-        exported_files=managed_files,
-        exported_directories=managed_directories,
-    )
+    if bound_digest is not None:
+        manifest["runtimeAuthorityDigest"] = bound_digest
+    if bindings is not None and bindings.attestation is not None:
+        manifest["attestation"] = dict(bindings.attestation)
+    _preflight_report_destination(destination, generation_root, **preflight_kwargs)
     _prune_report_generations(
         generations,
         generation,
@@ -477,12 +533,7 @@ def _publish_reports(
         exported_files=managed_files,
         exported_directories=managed_directories,
     )
-    _preflight_report_destination(
-        destination,
-        generation_root,
-        exported_files=managed_files,
-        exported_directories=managed_directories,
-    )
+    _preflight_report_destination(destination, generation_root, **preflight_kwargs)
     atomic_write_text(
         destination / REPORT_SET_MANIFEST,
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
@@ -556,6 +607,7 @@ def _generation_digest(
     files: Mapping[str, object],
     profile_identity: Mapping[str, object],
     dependencies: object,
+    runtime_authority_digest: str | None = None,
 ) -> str:
     return quality_generation_digest(
         {
@@ -563,6 +615,7 @@ def _generation_digest(
             **profile_identity,
             "files": files,
             "dependencies": dependencies,
+            "runtimeAuthorityDigest": runtime_authority_digest,
         }
     )
 
@@ -791,6 +844,35 @@ def _prune_report_generations(
     for path in completed:
         if path.name not in keep:
             shutil.rmtree(path)
+
+
+def _quality_owner(
+    request: CleanQualityRequest,
+    snapshot,
+) -> DaggerOwner:
+    """One exact live owner: operation-kind, task scope, generation, and PID-safe liveness."""
+    digest = snapshot.snapshot_digest
+    scope = f"{request.repository_id}:{request.worktree_group}:{request.mode}"
+    generation = f"quality-run:{request.diff_base or 'no-base'}"
+    return DaggerOwner(
+        owner_id=owner_identity(
+            operation_kind="quality",
+            scope=scope,
+            generation=generation,
+            authority_digest=digest,
+        ),
+        authority_digest=digest,
+        operation_kind="quality",
+        scope=scope,
+        generation=generation,
+        pid=os.getpid(),
+        process_fingerprint=current_process_fingerprint(),
+        started_at=_now_iso(),
+    )
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _git_ok(

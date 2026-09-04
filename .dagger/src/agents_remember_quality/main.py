@@ -12,13 +12,20 @@ import dagger
 from dagger import Doc, ReturnType, dag, field, function, object_type
 
 from agents_remember_quality import profile_results
+from agents_remember_quality.engine_helpers import (
+    _admitted_profile_plan,
+    _first_gate_failure_code,
+    _require_adapter_runtime,
+    _require_plan_authority,
+    _selector_result_failure,
+    _selector_result_path,
+    _verify_required_profile_publications,
+    _workspace_path,
+)
 from agents_remember_quality.profile_plan import (
     FrozenProfilePlan,
     FrozenSelector,
     expand_command,
-    load_execution_manifest,
-    module_runtime_digest,
-    pinned_image_digest,
 )
 from agents_remember_quality.quality_command import (
     ExpectedCommand,
@@ -40,6 +47,8 @@ BASELINE_CODEX_PROTOCOL = profile_results.BASELINE_CODEX_PROTOCOL
 _QualityProgress = profile_results.QualityProgress
 _profile_result_payload = profile_results.profile_result_payload
 _quality_result_payload = profile_results.quality_result_payload
+_gate_catalog_payload = profile_results.gate_catalog_payload
+_GateOutcomes = profile_results.GateOutcomes
 
 PLAYWRIGHT_IMAGE = (
     "mcr.microsoft.com/playwright:v1.60.0-noble@"
@@ -312,35 +321,6 @@ class _ProfileRunInputs:
     memory_cap_bytes: int
 
 
-async def _admitted_profile_plan(
-    execution_manifest: dagger.File,
-    *,
-    function_name: str,
-) -> FrozenProfilePlan:
-    plan = load_execution_manifest(await execution_manifest.contents())
-    if plan.executor.get("runtimeDigest") != module_runtime_digest():
-        raise ValueError("execution manifest names another Dagger adapter runtime")
-    if plan.executor.get("functionName") != function_name:
-        raise ValueError("execution manifest names another Dagger adapter function")
-    return plan
-
-
-def _require_adapter_runtime(plan: FrozenProfilePlan) -> str:
-    """Require every rail to consume the admitted single-image adapter runtime."""
-
-    image_reference = str(plan.executor["imageReference"])
-    image_digest = pinned_image_digest(image_reference)
-    mismatched = sorted(
-        rail.identity for rail in plan.rails if rail.runtime.get("imageDigest") != image_digest
-    )
-    if mismatched:
-        raise ValueError(
-            "repository profile rails name runtime images outside the admitted adapter: "
-            + ", ".join(mismatched)
-        )
-    return image_reference
-
-
 def _portable_candidate_container(
     source: dagger.Directory,
     repository_bundle: dagger.File,
@@ -379,8 +359,14 @@ async def _run_profile_acceptance(
     container: dagger.Container,
     inputs: _ProfileRunInputs,
 ) -> _QualityProgress:
-    """Execute only commands recovered from the exact admitted semantic closure."""
+    """Execute the admitted five-gate profile: exhaustive within, fail-fast between.
 
+    Every independent applicable sibling rail inside a started gate runs to a terminal
+    pass/skipped/fail/blocked result; a failed same-gate prerequisite blocks only its
+    dependants. The aggregate gate verdict is published with the complete rail catalog
+    and a red gate stops exactly the next gate -- later gates record zero starts and
+    never begin a command.
+    """
     environment_exit = await container.exit_code()
     progress = _QualityProgress(
         container=container,
@@ -399,31 +385,168 @@ async def _run_profile_acceptance(
         "clean-room": "/workspace",
     }
     selector_results: dict[str, tuple[str, dict[str, tuple[str, ...]]]] = {}
-    for selector in inputs.plan.selectors:
-        if progress.exit_code != 0:
-            break
-        result_path, values = await _run_profile_selector(
+    executed_selectors: set[str] = set()
+    gates_catalog: list[dict[str, object]] = []
+    gate_failure_code: int | None = None
+    for gate_plan in inputs.plan.gate_plans:
+        if gate_failure_code is not None:
+            gates_catalog.append(
+                _gate_catalog_payload(
+                    gate_plan.gate,
+                    _GateOutcomes(
+                        applicability=gate_plan.applicability,
+                        started=False,
+                        disposition="not-run",
+                        rails=gate_plan.rails,
+                        rail_outcomes={},
+                        selector_outcomes={},
+                    ),
+                )
+            )
+            continue
+        if gate_plan.applicability != "applicable":
+            gates_catalog.append(
+                _gate_catalog_payload(
+                    gate_plan.gate,
+                    _GateOutcomes(
+                        applicability=gate_plan.applicability,
+                        started=False,
+                        disposition="not-applicable",
+                        rails=(),
+                        rail_outcomes={},
+                        selector_outcomes={},
+                    ),
+                )
+            )
+            continue
+        if environment_exit != 0:
+            gates_catalog.append(
+                _gate_catalog_payload(
+                    gate_plan.gate,
+                    _GateOutcomes(
+                        applicability=gate_plan.applicability,
+                        started=False,
+                        disposition="not-run",
+                        rails=gate_plan.rails,
+                        rail_outcomes={},
+                        selector_outcomes={},
+                    ),
+                )
+            )
+            continue
+        selector_outcomes: dict[str, dict[str, object]] = {}
+        for selector in gate_plan.selectors:
+            name = f"selector:{selector.selector_id}"
+            if selector.selector_id in executed_selectors:
+                selector_outcomes[selector.selector_id] = {
+                    "status": "reused",
+                    "exitCode": 0,
+                }
+                continue
+            result_path, values = await _run_profile_selector(
+                progress,
+                selector,
+                scalar_values=scalar_values,
+            )
+            executed_selectors.add(selector.selector_id)
+            code = progress.step_exit_codes.get(name, 0)
+            if code != 0:
+                selector_outcomes[selector.selector_id] = {
+                    "status": "fail",
+                    "exitCode": code,
+                    "failureCode": str(progress.failure_details.get(name, "selector-failed")),
+                }
+            else:
+                selector_results[selector.selector_id] = (result_path, values)
+                selector_outcomes[selector.selector_id] = {"status": "pass", "exitCode": 0}
+        rail_outcomes = await _execute_gate_rails(
             progress,
-            selector,
+            gate_plan,
             scalar_values=scalar_values,
+            selector_results=selector_results,
+            selector_outcomes=selector_outcomes,
         )
-        if progress.exit_code == 0:
-            selector_results[selector.selector_id] = (result_path, values)
-    for rail in inputs.plan.rails:
-        if progress.exit_code != 0:
-            break
+        red = any(
+            outcome["status"] in {"fail", "blocked"} for outcome in rail_outcomes.values()
+        ) or any(outcome["status"] == "fail" for outcome in selector_outcomes.values())
+        disposition = "red" if red else "green"
+        gates_catalog.append(
+            _gate_catalog_payload(
+                gate_plan.gate,
+                _GateOutcomes(
+                    applicability=gate_plan.applicability,
+                    started=True,
+                    disposition=disposition,
+                    rails=gate_plan.rails,
+                    rail_outcomes=rail_outcomes,
+                    selector_outcomes=selector_outcomes,
+                ),
+            )
+        )
+        if red:
+            gate_failure_code = _first_gate_failure_code(progress, gate_plan, rail_outcomes)
+            progress.exit_code = gate_failure_code or progress.exit_code
+    progress.gate_catalog = gates_catalog
+    return progress
+
+
+async def _execute_gate_rails(
+    progress: _QualityProgress,
+    gate_plan,
+    *,
+    scalar_values: dict[str, str],
+    selector_results: dict[str, tuple[str, dict[str, tuple[str, ...]]]],
+    selector_outcomes: dict[str, dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    """Terminalize every runnable sibling rail; failed prerequisites block dependants."""
+    rail_outcomes: dict[str, dict[str, object]] = {}
+    failed_same_gate: set[str] = set()
+    skipped_gate: set[str] = set()
+    for rail in gate_plan.rails:
         execution = rail.execution
         if execution.get("adapterKind") != "container-command":
             raise ValueError(
-                f"rail {rail.identity} names unsupported sandbox adapter "
+                f"rail {rail.identity_key} names unsupported sandbox adapter "
                 f"{execution.get('adapterKind')!r}"
             )
+        blockers = [
+            key
+            for key in rail.prerequisites
+            if key in gate_plan.rail_keys and key in failed_same_gate
+        ]
+        blocked_step = f"blocked:{rail.identity}"
+        if blockers:
+            progress.attempted.append(blocked_step)
+            progress.step_exit_codes[blocked_step] = 125
+            progress.failure_details[blocked_step] = "same-gate prerequisite failed: " + ", ".join(
+                blockers
+            )
+            rail_outcomes[rail.identity_key] = {
+                "status": "blocked",
+                "exitCode": None,
+                "blockedBy": list(blockers),
+                "failureCode": "same-gate-prerequisite-failed",
+            }
+            continue
         provider = execution.get("scopeProviderId")
+        if provider is not None:
+            selector_status = selector_outcomes.get(provider, {}).get("status")
+            if selector_status == "fail":
+                progress.attempted.append(blocked_step)
+                progress.step_exit_codes[blocked_step] = 125
+                progress.failure_details[blocked_step] = f"selector {provider} failed"
+                rail_outcomes[rail.identity_key] = {
+                    "status": "blocked",
+                    "exitCode": None,
+                    "blockedBy": [provider],
+                    "failureCode": "selector-failed",
+                }
+                continue
+            if not isinstance(provider, str) or provider not in selector_results:
+                raise ValueError(f"rail {rail.identity_key} lacks its admitted selector result")
         rail_scalars = dict(scalar_values)
         rail_lists: dict[str, tuple[str, ...]] = {}
         if provider is not None:
-            if not isinstance(provider, str) or provider not in selector_results:
-                raise ValueError(f"rail {rail.identity} lacks its admitted selector result")
             selector_path, rail_lists = selector_results[provider]
             rail_scalars["selector-output"] = selector_path
         command = expand_command(
@@ -432,7 +555,28 @@ async def _run_profile_acceptance(
             list_values=rail_lists,
         )
         await _run_profile_rail(progress, rail.identity, execution, command)
-    return progress
+        code = progress.step_exit_codes.get(rail.identity, 0)
+        if rail.identity in progress.skipped:
+            skipped_gate.add(rail.identity_key)
+            rail_outcomes[rail.identity_key] = {
+                "status": "skipped",
+                "exitCode": code,
+            }
+        elif code in execution.get("successExitCodes", []):
+            rail_outcomes[rail.identity_key] = {
+                "status": "pass",
+                "exitCode": code,
+            }
+        else:
+            failed_same_gate.add(rail.identity_key)
+            rail_outcomes[rail.identity_key] = {
+                "status": "fail",
+                "exitCode": code or 1,
+                "failureCode": str(
+                    progress.failure_details.get(rail.identity, f"rail-exit-{code or 1}")
+                ),
+            }
+    return rail_outcomes
 
 
 async def _run_profile_selector(
@@ -521,18 +665,6 @@ async def _run_profile_selector(
     return result_path, parsed.values
 
 
-def _selector_result_failure(
-    progress: _QualityProgress,
-    name: str,
-    result_path: str,
-    detail: str,
-) -> tuple[str, dict[str, tuple[str, ...]]]:
-    progress.exit_code = 65
-    progress.step_exit_codes[name] = progress.exit_code
-    progress.failure_details[name] = detail
-    return result_path, {}
-
-
 async def _run_profile_rail(
     progress: _QualityProgress,
     name: str,
@@ -596,70 +728,6 @@ async def _run_profile_rail(
         progress.exit_code = 0
     else:
         progress.exit_code = code or 1
-
-
-def _workspace_path(relative: str, *, directory: bool = False) -> str:
-    if relative == "." and directory:
-        return "/workspace"
-    if (
-        not relative
-        or relative.startswith(("/", "\\"))
-        or "\\" in relative
-        or any(part in {"", ".", ".."} for part in relative.split("/"))
-    ):
-        raise ValueError("profile execution path is not confined to the candidate")
-    return f"/workspace/{relative}"
-
-
-def _selector_result_path(relative: str) -> str:
-    if (
-        not relative
-        or relative.startswith(("/", "\\"))
-        or "\\" in relative
-        or any(part in {"", ".", ".."} for part in relative.split("/"))
-    ):
-        raise ValueError("profile selector result path is not confined")
-    return f"/tmp/ar-profile/{relative}"
-
-
-async def _verify_required_profile_publications(
-    progress: _QualityProgress,
-    plan: FrozenProfilePlan,
-    *,
-    reports: str,
-) -> None:
-    """Consume the admitted publication policies before terminal publication."""
-
-    if progress.exit_code != 0:
-        return
-    terminal_path = str(plan.decoder["artifactPath"])
-    for publication in plan.published_artifacts:
-        if publication.get("required") is not True:
-            continue
-        relative = str(publication["path"])
-        if relative == terminal_path:
-            continue
-        name = f"publication:{relative}"
-        progress.attempted.append(name)
-        path = f"{reports}/{relative}"
-        exists = await progress.container.exists(
-            path,
-            expected_type=dagger.ExistsType.REGULAR_TYPE,
-            do_not_follow_symlinks=True,
-        )
-        maximum = publication.get("maxBytes")
-        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum <= 0:
-            raise ValueError(f"publication {relative} has an invalid size contract")
-        size = await progress.container.file(path).size() if exists else None
-        if size is None or size > maximum:
-            progress.exit_code = 66
-            progress.step_exit_codes[name] = progress.exit_code
-            progress.failure_details[name] = (
-                "required publication is missing, unsafe, or exceeds its admitted maximum"
-            )
-            return
-        progress.completed.append(name)
-        progress.step_exit_codes[name] = 0
 
 
 @object_type
@@ -747,6 +815,7 @@ class AgentsRememberQuality:
             started_at=started_at,
             mode=mode,
             attempt_nonce=attempt_nonce,
+            gates=tuple(progress.gate_catalog),
         )
         result[plan.decoder["statusField"]] = (
             plan.decoder["passedValue"] if progress.exit_code == 0 else plan.decoder["failedValue"]
@@ -754,6 +823,7 @@ class AgentsRememberQuality:
         result[plan.decoder["exitCodeField"]] = progress.exit_code
         result["profileDigest"] = plan.profile_digest
         result["profilePlanDigest"] = plan.plan_digest
+        result["runtimeAuthorityDigest"] = _require_plan_authority(plan)
         container = progress.container.with_new_file(
             f"{reports}/{plan.decoder['artifactPath']}",
             contents=json.dumps(result, indent=2, sort_keys=True) + "\n",
@@ -833,6 +903,7 @@ class AgentsRememberQuality:
             started_at=started_at,
             mode=mode,
             attempt_nonce=attempt_nonce,
+            gates=tuple(progress.gate_catalog),
         )
         result[plan.decoder["statusField"]] = (
             plan.decoder["passedValue"] if progress.exit_code == 0 else plan.decoder["failedValue"]
@@ -840,6 +911,7 @@ class AgentsRememberQuality:
         result[plan.decoder["exitCodeField"]] = progress.exit_code
         result["profileDigest"] = plan.profile_digest
         result["profilePlanDigest"] = plan.plan_digest
+        result["runtimeAuthorityDigest"] = _require_plan_authority(plan)
         container = progress.container.with_new_file(
             f"{reports}/{plan.decoder['artifactPath']}",
             contents=json.dumps(result, indent=2, sort_keys=True) + "\n",

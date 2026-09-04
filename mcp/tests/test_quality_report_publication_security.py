@@ -69,6 +69,23 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
             ):
                 published_manifest.load_published_quality_manifest(reports)
 
+    def test_manifest_rejects_an_invalid_runtime_authority_digest(self) -> None:
+        """A forged or malformed host-authority digest must not parse as a pointer."""
+        with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+            root = Path(temporary)
+            reports = root / "reports"
+            _publish_reports(_source(root, "candidate", attempt="candidate"), reports)
+            pointer = reports / clean_executor.REPORT_SET_MANIFEST
+            manifest = json.loads(pointer.read_text(encoding="utf-8"))
+            manifest["runtimeAuthorityDigest"] = "not-a-64-hex-digest"
+            pointer.write_text(json.dumps(manifest), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                published_manifest.PublishedQualityManifestError,
+                "no complete Dagger report generation",
+            ):
+                published_manifest.load_published_quality_manifest(reports)
+
     def test_failed_terminal_result_publishes_without_pass_only_artifacts(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
             root = Path(temporary)
@@ -155,6 +172,7 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
                     )
                 },
                 attestation=None,
+                runtime_authority_digest=None,
                 dependencies=published_manifest.quality_report_dependencies(
                     CANDIDATE_TREE,
                     file_values,
