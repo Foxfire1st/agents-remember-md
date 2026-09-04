@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import cast
 
 from agents_remember.application.completion_cleanup import auto_complete_seats
+from agents_remember.application.lifecycle.terminal_rail_failure import (
+    terminal_worker_failure_result,
+)
 from agents_remember.application.worktree_services import (
     bind_worktree_services,
     build_default_worktree_services,
@@ -282,6 +285,14 @@ class OperationRuntime:
         if isinstance(error, CloseoutLedgerRecoveryDecision):
             decision = error.classification
             pending = {**decision.decision_payload(), "reason": decision.detail}
+        if pending is None and current is not None:
+            pending = terminal_worker_failure_result(
+                operation_kind=current.operationKind,
+                generation=current.generation,
+                candidate_tree=current.candidateTree,
+                error=error,
+                reports_dir=self.store.path.parent.parent / "reports",
+            )
         self.finish(
             pending
             or {

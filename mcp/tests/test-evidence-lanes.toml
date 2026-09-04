@@ -462,6 +462,7 @@ integration = [
   "mcp/tests/test_terminal_leaf_assignment.py",
   "mcp/tests/test_terminal_liveness.py",
   "mcp/tests/test_terminal_opener.py",
+  "mcp/tests/test_terminal_rail_failure.py",
   "mcp/tests/test_terminal_ws.py",
   "mcp/tests/test_terminal_ws_misc.py",
   "mcp/tests/test_terminal_ws_websocket_1.py",
