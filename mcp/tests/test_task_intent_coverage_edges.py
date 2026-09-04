@@ -159,59 +159,42 @@ def test_operation_projection_split_preserves_each_existing_decision(
     }
     assert overridden[1] == "lifecycle-operation-task-intent-unavailable"
 
-    active_closeout = _value(
-        status="running", operationKind="closeout", irreversibleBoundaryEntered=False
-    )
     assert not operation_projection_module._operation_cancellable(
-        active_closeout,
         contract=None,
         intent_unavailable=True,
         legal_controls=[],
     )
     assert operation_projection_module._operation_cancellable(
-        active_closeout,
         contract=cast(Any, object()),
         intent_unavailable=False,
         legal_controls=[{"action": "cancel"}],
     )
     assert not operation_projection_module._operation_cancellable(
-        active_closeout,
         contract=cast(Any, object()),
         intent_unavailable=False,
         legal_controls=[{"action": "recover"}],
     )
     assert not operation_projection_module._operation_cancellable(
-        _value(status="completed", operationKind="integrate", irreversibleBoundaryEntered=False),
-        contract=None,
-        intent_unavailable=False,
-        legal_controls=[],
-    )
-    monkeypatch.setattr(
-        operation_projection_module, "closeout_generation_retained", lambda _record: False
-    )
-    assert operation_projection_module._operation_cancellable(
-        active_closeout,
-        contract=None,
-        intent_unavailable=False,
-        legal_controls=[],
-    )
-    monkeypatch.setattr(
-        operation_projection_module, "closeout_generation_retained", lambda _record: True
-    )
-    assert not operation_projection_module._operation_cancellable(
-        active_closeout,
-        contract=None,
-        intent_unavailable=False,
-        legal_controls=[],
-    )
-    assert operation_projection_module._operation_cancellable(
-        _value(status="running", operationKind="integrate", irreversibleBoundaryEntered=False),
         contract=None,
         intent_unavailable=False,
         legal_controls=[],
     )
     assert not operation_projection_module._operation_cancellable(
-        _value(status="running", operationKind="integrate", irreversibleBoundaryEntered=True),
+        contract=None,
+        intent_unavailable=False,
+        legal_controls=[],
+    )
+    assert not operation_projection_module._operation_cancellable(
+        contract=None,
+        intent_unavailable=False,
+        legal_controls=[],
+    )
+    assert not operation_projection_module._operation_cancellable(
+        contract=None,
+        intent_unavailable=False,
+        legal_controls=[],
+    )
+    assert not operation_projection_module._operation_cancellable(
         contract=None,
         intent_unavailable=False,
         legal_controls=[],
@@ -227,8 +210,16 @@ def test_operation_projection_rejects_non_mapping_public_results(
         "public_lifecycle_evidence",
         lambda _result: "private result",
     )
-    with pytest.raises(RuntimeError, match="public mapping"):
-        operation_projection_module.operation_projection(record)
+    projected = operation_projection_module.operation_projection(record)
+
+    assert projected.status == "incoherent"
+    assert projected.result is not None
+    assert projected.result["state"] == "lifecycle-projection-incoherent"
+    assert projected.result["expected"] == {"result": "public mapping"}
+    assert projected.result["observed"] == {"resultType": "str"}
+    assert projected.legalControls == []
+    assert projected.recommendedAction is None
+    assert projected.cancellable is False
 
 
 @pytest.mark.parametrize(

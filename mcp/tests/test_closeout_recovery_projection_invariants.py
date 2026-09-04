@@ -135,11 +135,34 @@ def test_store_requires_the_exact_projection_of_valid_commit_proof(tmp_path: Pat
     )
     proven = source.read()
     assert proven is not None and proven.recoveryCommits is not None
+
+    # L18 store discipline: a fresh lifecycle generation must begin at record
+    # revision 1, so a mid-lifecycle snapshot (a later journal revision) can
+    # never be replayed through create(); the revision gate refuses it before
+    # any projection check or write.
     missing_projection = LifecycleOperationRecord.model_validate(
         {**proven.model_dump(), "recoveryCommits": None}
     )
-    with pytest.raises(RuntimeError, match="exact projection"):
+    with pytest.raises(RuntimeError, match="must begin at record revision 1"):
         LifecycleOperationStore(tmp_path / "missing-projection.json").create(missing_projection)
+
+    # The projection guard still refuses a revision-1 candidate whose code
+    # evidence claims commit proof while its durable snapshot carries no
+    # recovery output: durable output must be the exact projection of the
+    # mutation evidence a new generation claims.
+    coherent_identity = LifecycleOperationRecord.model_validate(
+        {
+            **proven.model_dump(),
+            "recordRevision": 1,
+            "attempt": 1,
+            "generation": 1,
+            "predecessorFingerprint": "",
+            "successorFingerprint": "",
+            "recoveryCommits": None,
+        }
+    )
+    with pytest.raises(RuntimeError, match="exact projection"):
+        LifecycleOperationStore(tmp_path / "missing-projection.json").create(coherent_identity)
 
 
 def test_structurally_impossible_proof_is_refused_by_the_model(tmp_path: Path) -> None:

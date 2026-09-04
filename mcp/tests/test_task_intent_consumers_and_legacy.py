@@ -672,6 +672,10 @@ def test_legacy_projection_preserves_worker_termination_until_exact_exit(tmp_pat
                 "finishedAt": "2026-09-01T00:01:00+00:00",
                 "terminationReturnStatus": None,
                 "terminationReturnPhase": None,
+                # The L18 state matrix refuses cancelRequested outside
+                # termination-required/cancelled; mirror release_worker_after_exit
+                # so the failed-after-exit record is a coherent journal revision.
+                "cancelRequested": False,
             }
         ).model_dump(mode="json")
     )

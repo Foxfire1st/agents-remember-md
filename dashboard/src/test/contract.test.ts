@@ -244,6 +244,8 @@ const INDEX_SIGNATURE_SITES: Record<AbsorbingPaths<WorkspaceProjection, 'project
     'the lifecycle operation result is the underlying closeout or integration payload',
   'projection.enclosures[].lifecycleOperation.legalControls[]':
     'each advertised operation control is an opaque tool invocation payload',
+  'projection.enclosures[].lifecycleOperation.recommendedAction.arguments':
+    "the recommended action's task-addressed invocation arguments",
 };
 
 // ── the string vocabularies ──────────────────────────────────────────────────
@@ -332,6 +334,12 @@ const VOCABULARIES: Record<
     'in-flight',
   ],
   'projection.enclosures[].lifecycleOperation.kind': ['closeout', 'integrate', 'direct-landing'],
+  'projection.enclosures[].lifecycleOperation.schemaVersion': [
+    'lifecycle-operation-projection/v1',
+  ],
+  'projection.enclosures[].lifecycleOperation.stateMatrixVersion': [
+    'lifecycle-operation-state-matrix/v1',
+  ],
   'projection.enclosures[].lifecycleOperation.status': [
     'queued',
     'running',
@@ -341,7 +349,20 @@ const VOCABULARIES: Record<
     'failed',
     'cancelled',
     'unreadable',
+    'incoherent',
   ],
+  'projection.enclosures[].lifecycleOperation.identity.operationKind': [
+    'closeout',
+    'integrate',
+    'direct-landing',
+  ],
+  'projection.enclosures[].lifecycleOperation.worker.state': [
+    'live',
+    'termination-requested',
+    'termination-required',
+    'exited',
+  ],
+  'projection.enclosures[].lifecycleOperation.approval.state': ['claimed', 'unclaimed'],
   'projection.enclosures[].lifecycleOperation.phase': [
     'queued',
     'preflight',

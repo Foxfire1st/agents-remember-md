@@ -22,6 +22,7 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationRecord,
 )
 from agents_remember.models.lifecycles.operation_kinds import LifecycleControlAction
+from agents_remember.models.lifecycles.operation_projection import LifecycleRecommendedAction
 from agents_remember.worktrees.closeout_input import (
     CloseoutInputError,
     corrected_closeout_arguments,
@@ -87,6 +88,7 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
     LifecycleOperationLocation,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_projection import (
+    bind_projection_result,
     operation_projection,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_recovery import (
@@ -640,14 +642,12 @@ def _preview_completed_supersede(
             "fresh supersede door evidence is not admissible",
             next_action="supersede",
         ) from exc
-    projection = operation_projection(record, contract=contract)
-    return projection.model_copy(
-        update={
-            "result": {
-                "state": "would-supersede",
-                "doorGeneration": successor.model_dump(mode="json"),
-            }
-        }
+    return bind_projection_result(
+        operation_projection(record, contract=contract),
+        {
+            "state": "would-supersede",
+            "doorGeneration": successor.model_dump(mode="json"),
+        },
     )
 
 
@@ -810,11 +810,18 @@ def _revise_closeout(
         "nextTool": "worktree_closeout_apply",
         "nextArgs": _revision_apply_args(validated),
     }
-    return cancellation_projection.model_copy(
-        update={
-            "result": result,
-            "guidance": str(result["summary"]),
-        }
+    summary = str(result["summary"])
+    return bind_projection_result(
+        cancellation_projection,
+        result,
+        guidance=summary,
+        recommendation=LifecycleRecommendedAction(
+            action="apply-closeout-successor",
+            tool="worktree_closeout_apply",
+            arguments=_revision_apply_args(validated),
+            summary=summary,
+            mutating=True,
+        ),
     )
 
 

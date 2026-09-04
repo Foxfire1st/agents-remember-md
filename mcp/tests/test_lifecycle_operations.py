@@ -41,6 +41,9 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_lease i
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
     publish_new_lifecycle_operation_location,
 )
+from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location_errors import (
+    LifecycleOperationLocationError,
+)
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     LifecycleOperationStore,
     operation_record_path,
@@ -51,6 +54,7 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import
     start_or_observe_operation,
 )
 from agents_remember.worktrees.integration.lifecycle.observation.projection import (
+    _operation_location_decision,
     latest_operation_projection,
     observe_operation,
 )
@@ -1096,3 +1100,31 @@ def test_run_worker_observes_matching_lease_after_waiting(tmp_path: Path) -> Non
             == 0
         )
     runtime.start.assert_called_once_with()
+
+
+def test_operation_location_decision_binds_developer_decision(tmp_path: Path) -> None:
+    contract = _contract(tmp_path)
+    start_closeout_operation(_input(contract), launcher=lambda *_: None)
+    store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
+    record = store.read()
+    assert record is not None
+
+    error = LifecycleOperationLocationError(
+        "operation-location-mismatch",
+        "the readable contract contradicts its immutable enclosure manifest",
+        expected={
+            "contractPath": contract.contract_path.as_posix(),
+            "route": "locator -> root manifest -> root journal",
+        },
+        observed={"state": "manifest-identity-mismatch"},
+    )
+    decision = _operation_location_decision(record, error)
+
+    assert decision.result is not None
+    assert decision.result["state"] == "operation-location-mismatch"
+    assert decision.result["developerDecisionRequired"] is True
+    assert decision.result["nextAction"] == "developer-decision"
+    assert decision.recommendedAction is not None
+    assert decision.recommendedAction.action == "developer-decision"
+    assert decision.legalControls == []
+    assert decision.cancellable is False

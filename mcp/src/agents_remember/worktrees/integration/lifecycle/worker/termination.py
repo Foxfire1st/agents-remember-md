@@ -246,13 +246,13 @@ def worker_termination_required_result(
     """Project current process authority before any historical operation handoff."""
 
     termination = record.workerTermination
-    if not worker_exit_unproven(record) and record.status != "termination-required":
+    if termination is None:
+        # A retained exact worker binding is ordinary live authority until a real
+        # cancellation/termination transition records termination evidence.
         return None
-    observed = (
-        public_worker_termination_evidence(termination)
-        if termination is not None
-        else _public_active_worker_authority(record)
-    )
+    if termination.state == "exited" and record.status != "termination-required":
+        return None
+    observed = public_worker_termination_evidence(termination)
     surface = (
         "Exact worker exit remains unproven; use the advertised task-addressed cancel "
         "action to advance termination authority."
@@ -273,27 +273,6 @@ def worker_exit_unproven(record: LifecycleOperationRecord) -> bool:
     termination = record.workerTermination
     return record.workerPid is not None or (
         termination is not None and termination.state != "exited"
-    )
-
-
-def _public_active_worker_authority(
-    record: LifecycleOperationRecord,
-) -> dict[str, object]:
-    pid = record.workerPid
-    lease = record.workerLease
-    fingerprint = record.workerProcessFingerprint
-    if pid is None or lease is None or fingerprint is None:
-        raise RuntimeError("active worker authority is incomplete")
-    return public_worker_termination_evidence(
-        WorkerTerminationEvidence(
-            state="termination-required",
-            pid=pid,
-            lease=lease,
-            processFingerprint=fingerprint,
-            requestedAt=record.heartbeatAt or record.startedAt or record.queuedAt,
-            signal="none",
-            detail="exact worker exit remains unproven",
-        )
     )
 
 
