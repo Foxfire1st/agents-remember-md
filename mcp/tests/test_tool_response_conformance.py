@@ -44,6 +44,7 @@ from agents_remember.application.lifecycle.direct_landing import DirectLandingRe
 from agents_remember.application.lifecycle.legacy_operation_tool import LegacyOperationRequest
 from agents_remember.application.lifecycle.lifecycle_enclosure_tools import EnclosureAdoptionRequest
 from agents_remember.application.lifecycle.lifecycle_operation_worker import run_worker
+from agents_remember.application.lifecycle.lifecycle_status_wait import LifecycleStatusWaitRequest
 from agents_remember.application.memory_tools import CarryoverSelection, CitationOperationScope
 from agents_remember.application.orchestration_tools import NudgeSubject, NudgeTarget
 from agents_remember.application.provider_tools import (
@@ -613,6 +614,20 @@ def _worktree_payloads(root: Path) -> dict[str, dict]:
     assert payloads["worktree_closeout_apply"]["ok"] is True, payloads["worktree_closeout_apply"]
     closeout_lease = _reserve_conformance_worker(contract_path, "closeout")
     assert run_worker(Path(contract_path), "closeout", closeout_lease) == 0
+    # CCR-R15: the read-only wait tool's representative payload, captured against
+    # the completed closeout generation with a zero timeout and the admission
+    # cursor, deterministically returns the changed outcome with its next cursor.
+    payloads["worktree_status_wait"] = tools.worktree_status_wait_payload(
+        config,
+        LifecycleStatusWaitRequest(
+            contract_path=contract_path,
+            operation_kind="closeout",
+            expected_generation=1,
+            after_revision=1,
+            timeout_seconds=0.0,
+        ),
+    )
+    assert payloads["worktree_status_wait"]["ok"] is True, payloads["worktree_status_wait"]
     payloads["worktree_operation_control"] = tools.worktree_operation_control_payload(
         config,
         OperationControlRequest(

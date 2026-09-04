@@ -367,6 +367,13 @@ class LifecycleOperationProjection(StrictResponseModel):
     recommendedAction: LifecycleRecommendedAction | None = None
     cancellable: bool = False
     generation: int | None = None
+    # CCR-R15: the durable meaningful-state revision of the exact journal snapshot
+    # this envelope projects. recordRevision (inside identity) advances on
+    # every durable write including heartbeats; this cursor advances only when the
+    # meaningful state subset changed, so status-change waiters compare it and never
+    # wake on heartbeat/current-command/log growth. Adapters always populate it for
+    # record-bound envelopes; unreadable journal refusals carry no record and omit it.
+    meaningfulRevision: int | None = Field(default=None, ge=1)
     legalControls: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
     projectionEffects: list[TaskDocProjectionEffect] = Field(default_factory=list, max_length=8)
 

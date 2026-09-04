@@ -217,6 +217,7 @@ def _coherent_operation_projection(
             legal_controls=components.legal_controls,
         ),
         generation=record.generation,
+        meaningfulRevision=record.meaningfulRevision,
         legalControls=components.legal_controls,
     )
 
@@ -515,6 +516,7 @@ def _incoherent_operation_projection(
         guidance=surface,
         cancellable=False,
         generation=record.generation,
+        meaningfulRevision=record.meaningfulRevision,
         legalControls=[],
     )
 

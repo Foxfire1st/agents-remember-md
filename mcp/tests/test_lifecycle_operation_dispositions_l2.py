@@ -66,9 +66,12 @@ def _disposition_preserved_artifacts(contract, record) -> dict[str, object]:
     contract_payload.pop("closeout_door")
     record_payload = record.model_dump(mode="json")
     # recordRevision is journal-mutable under L18 (advanced exactly once per
-    # accepted store mutation); disposition artifacts exclude it.
+    # accepted store mutation) and meaningfulRevision is journal-mutable under
+    # CCR-R15 (advanced exactly once per meaningful state mutation);
+    # disposition artifacts exclude both.
     for mutable in (
         "recordRevision",
+        "meaningfulRevision",
         "generationDisposition",
         "supersedeDeclarationFingerprint",
         "doorPublication",
@@ -157,6 +160,11 @@ def test_completed_unintegrated_disposition_preserves_artifacts(
     # retire is one accepted store mutation, supersede two (door-intent update
     # then door-locked completion): the journal advances exactly once per write.
     assert current.recordRevision == record.recordRevision + (1 if action == "retire" else 2)
+    # CCR-R15: disposition and door-boundary changes are meaningful state, so the
+    # wait cursor advances exactly once per accepted mutation as well.
+    assert current.meaningfulRevision == record.meaningfulRevision + (
+        1 if action == "retire" else 2
+    )
     observed_contract = load_contract(finalized.contract_path)
     assert _disposition_preserved_artifacts(observed_contract, current) == preserved
     if action == "supersede":

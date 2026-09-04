@@ -115,6 +115,7 @@ from agents_remember.models.worktree import (
     WorktreeOperationControlResponse,
     WorktreeStartResponse,
     WorktreeStatusResponse,
+    WorktreeStatusWaitResponse,
     WorktreeSyncResponse,
 )
 
@@ -183,6 +184,7 @@ TOOL_RESPONSE_MODELS: dict[str, type[ResponseEnvelope]] = {
     "worktree_start": WorktreeStartResponse,
     "worktree_attach": WorktreeAttachResponse,
     "worktree_status": WorktreeStatusResponse,
+    "worktree_status_wait": WorktreeStatusWaitResponse,
     "worktree_enclosure_adopt": WorktreeEnclosureAdoptResponse,
     "worktree_sync": WorktreeSyncResponse,
     "worktree_closeout_preview": WorktreeCloseoutPreviewResponse,

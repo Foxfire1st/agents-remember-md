@@ -5,6 +5,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from agents_remember.application.lifecycle.lifecycle_enclosure_tools import EnclosureAdoptionRequest
+from agents_remember.application.lifecycle.lifecycle_status_wait import LifecycleStatusWaitRequest
 from agents_remember.application.task_docs.task_ref import TaskRef
 from agents_remember.application.worktree_tools import (
     StartExecution,
@@ -13,6 +14,7 @@ from agents_remember.application.worktree_tools import (
 )
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
 from agents_remember.models.declared_caller import DeclaredCaller
+from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
 from agents_remember.models.worktree import MemorySyncChoice, SyncResolutionAction
 
 from ..tools import (
@@ -20,6 +22,7 @@ from ..tools import (
     worktree_enclosure_adopt_payload,
     worktree_start_payload,
     worktree_status_payload,
+    worktree_status_wait_payload,
     worktree_sync_payload,
 )
 
@@ -193,6 +196,38 @@ def _register_worktree_observation_tools(server: FastMCP, config: McpRuntimeConf
                 parent_task=parent_task,
             ),
             caller=caller,
+        )
+
+    @server.tool()
+    def worktree_status_wait(
+        contract_path: str,
+        operation_kind: LifecycleOperationKind,
+        *,
+        expected_generation: int,
+        after_revision: int,
+        timeout_seconds: float = 30.0,
+    ) -> dict[str, Any]:
+        """Wait read-only, up to timeout_seconds, for one meaningful lifecycle
+        status change of one exact task operation (CCR-R15). Address the canonical
+        contract, operation kind, expected public generation, and the opaque
+        after_revision cursor from a prior worktree_status snapshot; no
+        operation key or PID is accepted. On change it returns the current compact
+        R18-coherent status plus the next cursor; on timeout it returns the unchanged
+        snapshot and cursor without claiming failure. Heartbeats, unchanged current
+        commands, log growth, and queue changes never wake it. A generation successor
+        wakes an old-generation wait with explicit successor information; wrong
+        contract/generation/cursor and unreadable journals refuse typed. Read-only:
+        never mutates, retries, cancels, or acquires lifecycle/queue/gate/worker
+        authority."""
+        return worktree_status_wait_payload(
+            config,
+            LifecycleStatusWaitRequest(
+                contract_path=contract_path,
+                operation_kind=operation_kind,
+                expected_generation=expected_generation,
+                after_revision=after_revision,
+                timeout_seconds=timeout_seconds,
+            ),
         )
 
     @server.tool()

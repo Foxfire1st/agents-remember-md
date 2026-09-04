@@ -105,6 +105,7 @@ from .worktree import (
     worktree_operation_control_payload,
     worktree_start_payload,
     worktree_status_payload,
+    worktree_status_wait_payload,
     worktree_sync_payload,
 )
 
@@ -197,5 +198,6 @@ __all__ = [
     "worktree_operation_control_payload",
     "worktree_start_payload",
     "worktree_status_payload",
+    "worktree_status_wait_payload",
     "worktree_sync_payload",
 ]

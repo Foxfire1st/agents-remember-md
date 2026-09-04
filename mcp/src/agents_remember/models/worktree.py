@@ -15,6 +15,8 @@ from agents_remember.models.closeout.input import (
 )
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.lifecycles.operation import LifecycleOperationProjection
+from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
+from agents_remember.models.lifecycles.operation_wait import LifecycleWaitOutcome
 from agents_remember.models.quality import QualityGateResult
 
 # Worktree wire vocabulary (moved from worktrees.worktree_contract / modules.guidance).
@@ -252,6 +254,28 @@ class WorktreeEnclosureAdoptResponse(WorktreeCommandResponse):
     manifestSha256: str | None = None
     artifacts: list[dict[str, object]] = Field(default_factory=list)
     removalCondition: str | None = None
+
+
+class WorktreeStatusWaitResponse(WorktreeCommandResponse):
+    """Read-only bounded wait on lifecycle meaningful-state changes (CCR-R15).
+
+    Addressed by canonical contract, operation kind, expected public generation,
+    and an opaque typed after_revision cursor from a prior snapshot.  On
+    change it returns the compact R18-coherent status plus the next cursor; on
+    timeout it returns the unchanged snapshot and cursor without claiming
+    failure.  Never carries an operation key, PID, or worker/queue/gate
+    authority.
+    """
+
+    operation: Literal["worktree_status_wait"] = "worktree_status_wait"
+    outcome: LifecycleWaitOutcome
+    operationKind: LifecycleOperationKind | None = None
+    successorGeneration: int | None = None
+    meaningfulRevision: int | None = None
+    timeoutSeconds: float | None = None
+    elapsedSeconds: float | None = None
+    lifecycleOperation: LifecycleOperationProjection | None = None
+    nextArgs: dict[str, object] | None = None
 
 
 class WorktreeSyncResponse(WorktreeCommandResponse):

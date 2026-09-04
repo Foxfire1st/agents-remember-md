@@ -347,6 +347,8 @@ export interface LifecycleOperationProjection {
   kind: "closeout" | "integrate" | "direct-landing";
   /** JSON Schema refinements: {"maxItems":32} */
   legalControls: Record<string, unknown>[];
+  /** JSON Schema refinements: {"minimum":1} */
+  meaningfulRevision?: number;
   phase: "queued" | "preflight" | "memory-preflight" | "quality" | "approval-claim" | "recovering-after-claim" | "code-commit" | "memory-refresh" | "memory-commit" | "ledger-commit" | "integration-replay" | "integration-quality" | "source-merge" | "contract-finalization" | "door-publication" | "termination-required" | "direct-preflight" | "direct-memory-commit" | "direct-ledger-commit" | "direct-terminal-publication" | "completed" | "failed" | "cancelled";
   /** JSON Schema refinements: {"maxItems":8} */
   projectionEffects: TaskDocProjectionEffect[];

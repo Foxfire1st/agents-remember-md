@@ -1957,6 +1957,19 @@
           "title": "Legalcontrols",
           "type": "array"
         },
+        "meaningfulRevision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Meaningfulrevision"
+        },
         "phase": {
           "enum": [
             "queued",

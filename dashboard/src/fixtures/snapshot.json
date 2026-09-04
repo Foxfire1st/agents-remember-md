@@ -1222,6 +1222,7 @@
             "action": "recover"
           }
         ],
+        "meaningfulRevision": 1,
         "phase": "failed",
         "projectionEffects": [
           {

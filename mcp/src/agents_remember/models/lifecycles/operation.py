@@ -325,6 +325,12 @@ class LifecycleOperationRecord(BaseModel):
     operationKey: str = Field(pattern=r"^[0-9a-f]{64}$")
     generation: int = Field(default=1, ge=1)
     recordRevision: int = Field(default=1, ge=1)
+    # CCR-R15: the durable monotonic meaningful-state revision. The store advances it
+    # only when the meaningful projection subset changes (generation/status/phase/
+    # disposition/approval/irreversible/mutation/typed failure/result/cancel/recovery/
+    # finalization); heartbeat/current-command/log/history writes advance only
+    # recordRevision. Waiters compare this field, never recordRevision.
+    meaningfulRevision: int = Field(default=1, ge=1)
     predecessorFingerprint: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
     successorFingerprint: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
     generationDisposition: Literal["active", "cancelled", "retired", "superseded"] = "active"
@@ -471,6 +477,55 @@ def require_lifecycle_operation_dependencies(
             "lifecycle operation direct dependencies do not match its admitted inputs",
         )
     return observed
+
+
+# CCR-R15 meaningful-state subset: exactly the durable journal fields whose change
+# advances the wait cursor (generation/status/phase/disposition/approval claim/
+# irreversible boundary/mutation evidence/typed failure/result/cancel/recovery/
+# finalization). Heartbeat/current-command timestamps and append-only histories
+# (mutationHistory, workerTerminationHistory, doorPublicationHistory) are
+# deliberately absent: they archive or refresh already-observed state and must
+# never wake a status-change waiter.
+_MEANINGFUL_STATE_FIELDS: tuple[str, ...] = (
+    "generation",
+    "generationDisposition",
+    "status",
+    "phase",
+    "attempt",
+    "approvalClaimed",
+    "irreversibleBoundaryEntered",
+    "cancelRequested",
+    "cancellationEvidence",
+    "workerTermination",
+    "terminationReturnStatus",
+    "terminationReturnPhase",
+    "mutationEvidence",
+    "recoveryCommits",
+    "closeoutFinalizedContractSha256",
+    "qualityCertification",
+    "integrationPublication",
+    "organizationalRepair",
+    "doorPublication",
+    "directLandingLedgerIntent",
+    "legacyMigration",
+    "result",
+    "failure",
+)
+
+
+def meaningful_state_payload(record: LifecycleOperationRecord) -> dict[str, Any]:
+    """One canonical digest input over exactly the meaningful journal subset."""
+
+    return record.model_dump(mode="json", include=set(_MEANINGFUL_STATE_FIELDS))
+
+
+def meaningful_state_changed(
+    current: LifecycleOperationRecord,
+    updated: LifecycleOperationRecord,
+) -> bool:
+    """Whether a store transition must advance the durable CCR-R15 wait cursor."""
+
+    return meaningful_state_payload(current) != meaningful_state_payload(updated)
 
 
 def _require_altitude_authority(record: LifecycleOperationRecord) -> None:

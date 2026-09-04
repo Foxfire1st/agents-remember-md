@@ -18,6 +18,7 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationKind,
     LifecycleOperationRecord,
     LifecycleOperationStatus,
+    meaningful_state_changed,
 )
 from agents_remember.models.lifecycles.termination import WorkerTerminationEvidence
 from agents_remember.models.task_intent import (
@@ -315,6 +316,14 @@ def _validate_identity_and_evidence_transition(
 
     if updated.recordRevision != current.recordRevision + 1:
         raise RuntimeError("lifecycle operation record revision must advance exactly once")
+    expected_meaningful = current.meaningfulRevision + int(
+        meaningful_state_changed(current, updated)
+    )
+    if updated.meaningfulRevision != expected_meaningful:
+        raise RuntimeError(
+            "lifecycle operation meaningful revision must advance exactly on meaningful "
+            "state change and never on heartbeat/log/history writes"
+        )
 
     immutable = (
         "schemaVersion",
@@ -362,14 +371,25 @@ def _advance_record_revision(
     current: LifecycleOperationRecord,
     transformed: LifecycleOperationRecord,
 ) -> LifecycleOperationRecord:
-    """Assign the next revision at the one canonical journal writer boundary."""
+    """Assign the next revisions at the one canonical journal writer boundary.
+
+    recordRevision advances on every durable write; the CCR-R15
+    meaningfulRevision advances only when the meaningful state subset changed,
+    so heartbeat/current-command/log writes never move the wait cursor.
+    """
 
     if transformed.recordRevision != current.recordRevision:
         raise RuntimeError("lifecycle operation transforms cannot assign record revision")
+    if transformed.meaningfulRevision != current.meaningfulRevision:
+        raise RuntimeError("lifecycle operation transforms cannot assign meaningful revision")
+    meaningful = current.meaningfulRevision + int(meaningful_state_changed(current, transformed))
     return LifecycleOperationRecord.model_validate(
-        transformed.model_copy(update={"recordRevision": current.recordRevision + 1}).model_dump(
-            mode="json"
-        )
+        transformed.model_copy(
+            update={
+                "recordRevision": current.recordRevision + 1,
+                "meaningfulRevision": meaningful,
+            }
+        ).model_dump(mode="json")
     )
 
 
@@ -656,6 +676,7 @@ class LifecycleOperationStore:
                     update={
                         "generation": current.generation + 1,
                         "recordRevision": successor_revision,
+                        "meaningfulRevision": current.meaningfulRevision + 1,
                         "predecessorFingerprint": current.fingerprint,
                         "attempt": 1,
                     }
@@ -670,6 +691,7 @@ class LifecycleOperationStore:
                     update={
                         "successorFingerprint": validated.fingerprint,
                         "recordRevision": current.recordRevision + 1,
+                        "meaningfulRevision": current.meaningfulRevision + 1,
                     }
                 ).model_dump(mode="json")
             )

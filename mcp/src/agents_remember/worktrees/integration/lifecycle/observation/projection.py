@@ -257,5 +257,26 @@ def _project_worker_observed_record(
     return project_worker_exit(record)
 
 
+def observed_operation_projection(
+    record: LifecycleOperationRecord,
+    *,
+    contract: WorktreeContract | None = None,
+    context: OperationProjectionContext | None = None,
+) -> LifecycleOperationProjection | None:
+    """Project one exact durable journal read through the shared status pipeline.
+
+    CCR-R18/R15: a status-change wait snapshot must be the same coherent envelope a
+    task status read returns for the exact record whose durable meaningful revision
+    the waiter compared, so the returned cursor and envelope never splice facts from
+    different journal revisions. _project_observed_record performs only read-only
+    reconciliation and never writes the journal.
+    """
+
+    observed = _project_observed_record(record)
+    if observed is None:
+        return None
+    return operation_projection(observed, contract=contract, context=context)
+
+
 def _record_sort_stamp(record: LifecycleOperationRecord) -> str:
     return record.finishedAt or record.heartbeatAt or record.startedAt or record.queuedAt

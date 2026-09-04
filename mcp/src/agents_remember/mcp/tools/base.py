@@ -43,6 +43,7 @@ PUBLIC_TOOLS = (
     "worktree_enclosure_adopt",
     "worktree_attach",
     "worktree_status",
+    "worktree_status_wait",
     "worktree_sync",
     "direct_landing",
     "worktree_closeout_preview",

@@ -12,6 +12,10 @@ from agents_remember.application.lifecycle.lifecycle_enclosure_tools import (
     EnclosureAdoptionRequest,
     worktree_enclosure_adopt_tool,
 )
+from agents_remember.application.lifecycle.lifecycle_status_wait import (
+    LifecycleStatusWaitRequest,
+    worktree_status_wait_tool,
+)
 from agents_remember.application.task_docs.task_ref import TaskRef
 from agents_remember.application.worktree_tools import (
     DEFAULT_START_EXECUTION,
@@ -35,7 +39,9 @@ from agents_remember.application.worktree_tools import (
 )
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
 from agents_remember.models.declared_caller import DeclaredCaller
-from agents_remember.models.lifecycles.operation import IntegrateStrategy
+from agents_remember.models.lifecycles.operation import (
+    IntegrateStrategy,
+)
 from agents_remember.models.worktree import MemorySyncChoice, SyncResolutionAction
 
 from .base import _tool_payload
@@ -95,6 +101,16 @@ def worktree_status_payload(
     return _tool_payload(
         "worktree_status",
         worktree_status_tool(config, task, caller=caller),
+    )
+
+
+def worktree_status_wait_payload(
+    config: McpRuntimeConfig,
+    request: LifecycleStatusWaitRequest,
+) -> dict[str, Any]:
+    return _tool_payload(
+        "worktree_status_wait",
+        worktree_status_wait_tool(config, request),
     )
 
 
