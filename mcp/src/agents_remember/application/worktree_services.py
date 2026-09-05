@@ -8,6 +8,7 @@ from typing import Any
 
 from agents_remember.application import provider_runtime as provider_runtime_api
 from agents_remember.memory_quality import check as memory_quality_check_api
+from agents_remember.memory_quality.gate_five_rails import gate_five_memory_rails
 from agents_remember.memory_quality.style.citations import (
     source_index_cache as citation_cache_api,
 )
@@ -128,6 +129,13 @@ class ProviderLifecycleAdapter:
         return provider_runtime_api.remove_tree(path, dry_run=dry_run)
 
 
+class CertificationMemoryRailsAdapter:
+    """memory_quality-backed implementation of :class:."""
+
+    def memory_rails(self, profile_id: str):
+        return gate_five_memory_rails(profile_id)
+
+
 class MemoryQualityAdapter:
     """memory_quality-backed implementation of :class:`MemoryQualityPort`."""
 
@@ -186,10 +194,12 @@ def build_default_worktree_services() -> WorktreeServices:
         provider_lifecycle=ProviderLifecycleAdapter(),
         memory_quality=MemoryQualityAdapter(),
         citation_guard=CitationGuardAdapter(),
+        certification_memory_rails=CertificationMemoryRailsAdapter(),
     )
 
 
 __all__ = [
+    "CertificationMemoryRailsAdapter",
     "CitationGuardAdapter",
     "MemoryQualityAdapter",
     "ProviderLifecycleAdapter",

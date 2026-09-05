@@ -8,12 +8,13 @@ citation-cache guard) before invoking worktree operations.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from agents_remember.certification.models import RailDefinition
 from agents_remember.worktrees.worktree_contract import WorktreeContract
 
 
@@ -84,6 +85,18 @@ class ProviderLifecyclePort(Protocol):
     def remove_tree(self, path: Path, *, dry_run: bool) -> dict[str, Any]: ...
 
 
+class CertificationMemoryRailsPort(Protocol):
+    """Bound provider of the R11 Gate-5 memory-domain rail population.
+
+    The worktree layer may not import memory_quality; the composition layer
+    (application/MCP/CLI) binds an adapter that derives the memory rails from
+    the memory checker registries.  profile_id is the admitted selection
+    identity the R11 registry profile freezes.
+    """
+
+    def memory_rails(self, profile_id: str) -> Sequence[RailDefinition]: ...
+
+
 class MemoryQualityPort(Protocol):
     def check_groups(self) -> tuple[tuple[str, ...], tuple[str, ...]]: ...
     def drift_context(
@@ -108,6 +121,7 @@ class WorktreeServices:
     provider_lifecycle: ProviderLifecyclePort
     memory_quality: MemoryQualityPort
     citation_guard: CitationGuardPort
+    certification_memory_rails: CertificationMemoryRailsPort | None = None
 
 
 @dataclass(frozen=True)
@@ -158,6 +172,7 @@ def worktree_services() -> WorktreeServices:
 
 
 __all__ = [
+    "CertificationMemoryRailsPort",
     "CitationGuardPort",
     "MemoryQualityPort",
     "ProviderLifecyclePort",

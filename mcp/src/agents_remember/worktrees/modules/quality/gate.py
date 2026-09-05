@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shlex
 import time
 from collections.abc import Mapping
@@ -33,6 +34,7 @@ from agents_remember.models.test_evidence import (
     require_certifying_evidence,
 )
 from agents_remember.worktrees.modules.git import require_git
+from agents_remember.worktrees.modules.quality import certification_records
 from agents_remember.worktrees.modules.quality.clean_executor import (
     CleanQualityOutcome,
     CleanQualityRequest,
@@ -190,6 +192,54 @@ def _validated_quality_gate_plan(plan: QualityGatePlan | None) -> QualityGatePla
     return resolved
 
 
+@dataclass(frozen=True)
+class _GateRunReportInputs:
+    """Run facts one completed strict gate report binds."""
+
+    result: CleanQualityOutcome
+    command: list[str]
+    invocation: str
+    plan: QualityGatePlan
+    diff_base: str
+    started_at: datetime
+    started: float
+
+
+def _publish_gate_test_report(
+    report_path: Path,
+    inputs: _GateRunReportInputs,
+) -> None:
+    """Write the one durable strict-gate report for a completed run."""
+    manifest = inputs.result.manifest
+    _write_test_results_report(
+        _QualityGateReport(
+            path=report_path,
+            result=inputs.result,
+            command=inputs.command,
+            invocation=inputs.invocation,
+            mode=inputs.plan.mode,
+            executor_adapter_id=(
+                manifest.executor_adapter_id if manifest is not None else "unpublished"
+            ),
+            profile_digest=(manifest.profile_digest if manifest is not None else "unpublished"),
+            profile_plan_digest=(
+                manifest.profile_plan_digest if manifest is not None else "unpublished"
+            ),
+            profile_selection_id=(
+                manifest.profile_selection_id if manifest is not None else "unpublished"
+            ),
+            runtime_authority_digest=(
+                manifest.runtime_authority_digest if manifest is not None else None
+            ),
+            diff_base=inputs.diff_base,
+            started_at=inputs.started_at,
+            finished_at=datetime.now(UTC),
+            elapsed_seconds=time.monotonic() - inputs.started,
+            requested_memory_cap_bytes=inputs.plan.memory_cap_bytes,
+        )
+    )
+
+
 def run_strict_code_quality_gate(
     target: QualityGateTarget,
     *,
@@ -209,6 +259,7 @@ def run_strict_code_quality_gate(
     plan = _validated_quality_gate_plan(plan)
     command, invocation = _gate_command_parts(target, plan, diff_base, invocation)
     candidate_tree = require_git(code_worktree, ["write-tree"])
+    _freeze_certification_records(target, plan=plan, candidate_tree=candidate_tree)
     started_at = datetime.now(UTC)
     started = time.monotonic()
     result = run_clean_quality(
@@ -223,44 +274,20 @@ def run_strict_code_quality_gate(
             attestation=attestation,
         )
     )
-    finished_at = datetime.now(UTC)
     if result.manifest is None and result.returncode == 0:
         raise RuntimeError("repository certification passed without a published manifest")
     report_path = test_results_report_path(target.worktree_group)
-    _write_test_results_report(
-        _QualityGateReport(
-            path=report_path,
+    _publish_gate_test_report(
+        report_path,
+        _GateRunReportInputs(
             result=result,
             command=command,
             invocation=invocation,
-            mode=plan.mode,
-            executor_adapter_id=(
-                result.manifest.executor_adapter_id
-                if result.manifest is not None
-                else "unpublished"
-            ),
-            profile_digest=(
-                result.manifest.profile_digest if result.manifest is not None else "unpublished"
-            ),
-            profile_plan_digest=(
-                result.manifest.profile_plan_digest
-                if result.manifest is not None
-                else "unpublished"
-            ),
-            profile_selection_id=(
-                result.manifest.profile_selection_id
-                if result.manifest is not None
-                else "unpublished"
-            ),
-            runtime_authority_digest=(
-                result.manifest.runtime_authority_digest if result.manifest is not None else None
-            ),
+            plan=plan,
             diff_base=diff_base,
             started_at=started_at,
-            finished_at=finished_at,
-            elapsed_seconds=time.monotonic() - started,
-            requested_memory_cap_bytes=plan.memory_cap_bytes,
-        )
+            started=started,
+        ),
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -282,6 +309,12 @@ def run_strict_code_quality_gate(
         raise RuntimeError(
             "quality candidate changed while Dagger certification was being published"
         )
+    _record_certification_generation(
+        target,
+        plan=plan,
+        candidate_tree=candidate_tree,
+        manifest=manifest,
+    )
     return _strict_quality_success_payload(
         target,
         diff_base=diff_base,
@@ -351,6 +384,12 @@ def recover_strict_code_quality_gate(
         candidate_tree=candidate_tree,
     )
     require_certifying_evidence(evidence, consumer=EvidenceConsumer.LIFECYCLE)
+    _record_certification_generation(
+        target,
+        plan=plan,
+        candidate_tree=candidate_tree,
+        manifest=manifest,
+    )
     return _strict_quality_success_payload(
         target,
         diff_base=diff_base,
@@ -420,6 +459,50 @@ def run_local_quality_diagnostic(
     raise RuntimeError(
         "host quality execution is forbidden; run acceptance through the pinned Dagger graph"
     )
+
+
+def _freeze_certification_records(target, *, plan, candidate_tree) -> None:
+    """Freeze the exact R21 admission authority before Gate-1 execution."""
+    certification_records.prepare_certification_records(
+        certification_records.CertificationRunTarget(
+            repository_id=target.repository_id,
+            code_worktree=target.code_worktree,
+            profile_reference=target.profile_reference,
+            worktree_group=target.worktree_group,
+        ),
+        mode=plan.mode,
+        candidate_tree=candidate_tree,
+    )
+
+
+def _record_certification_generation(target, *, plan, candidate_tree, manifest) -> None:
+    """Publish typed gate result/certificate records for one green generation."""
+    prepared = certification_records.prepare_certification_records(
+        certification_records.CertificationRunTarget(
+            repository_id=target.repository_id,
+            code_worktree=target.code_worktree,
+            profile_reference=target.profile_reference,
+            worktree_group=target.worktree_group,
+        ),
+        mode=plan.mode,
+        candidate_tree=candidate_tree,
+    )
+    if prepared is None:
+        return
+    reports = target.worktree_group / REPORT_DIRECTORY_NAME
+    try:
+        artifact = published_report_path_from_manifest(
+            reports,
+            manifest,
+            manifest.result_decoder.artifactPath,
+        )
+        payload = json.loads(artifact.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            "green repository certification generation has no readable decoder artifact"
+        ) from error
+    if isinstance(payload, dict):
+        certification_records.record_published_generation(prepared, manifest, payload)
 
 
 def _write_test_results_report(report: _QualityGateReport) -> None:
