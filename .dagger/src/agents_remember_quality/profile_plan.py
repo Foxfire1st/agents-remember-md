@@ -69,6 +69,8 @@ class FrozenRail:
     prerequisites: tuple[str, ...]
     execution: dict[str, Any]
     runtime: dict[str, Any]
+    evidence_contract: tuple[dict[str, Any], ...]
+    output_artifacts: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -414,7 +416,25 @@ def _freeze_rail(
         prerequisites=prerequisites,
         execution=execution,
         runtime=runtime,
+        evidence_contract=_read_evidence_contract(rail, key),
+        output_artifacts=_read_output_artifacts(rail, key),
     )
+
+
+def _read_evidence_contract(rail: dict[str, Any], key: str) -> tuple[dict[str, Any], ...]:
+    raw = _array(rail.get("evidenceContract"), f"rail.{key}.evidenceContract")
+    entries = tuple(item for item in raw if isinstance(item, dict))
+    if len(entries) != len(raw):
+        raise ValueError(f"rail {key} evidenceContract entries must be objects")
+    return entries
+
+
+def _read_output_artifacts(rail: dict[str, Any], key: str) -> tuple[dict[str, Any], ...]:
+    raw = _array(rail.get("outputArtifacts"), f"rail.{key}.outputArtifacts")
+    entries = tuple(item for item in raw if isinstance(item, dict))
+    if len(entries) != len(raw):
+        raise ValueError(f"rail {key} outputArtifacts entries must be objects")
+    return entries
 
 
 def _read_rail_prerequisites(rail: dict[str, Any], key: str) -> tuple[str, ...]:

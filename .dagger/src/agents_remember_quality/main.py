@@ -11,7 +11,7 @@ from typing import Annotated
 import dagger
 from dagger import Doc, ReturnType, dag, field, function, object_type
 
-from agents_remember_quality import profile_results
+from agents_remember_quality import profile_results, rail_emission
 from agents_remember_quality.engine_helpers import (
     _admitted_profile_plan,
     _first_gate_failure_code,
@@ -71,6 +71,11 @@ VENV_ROOT = "/opt/ar-venv"
 VENV_PYTHON = f"{VENV_ROOT}/bin/python"
 VENV_PROOF = "/opt/agents-remember-venv-runtime.json"
 E2E_NOT_SELECTED_EXIT_CODE = 78
+
+# Report-only complexity rails run over changed python; when the product
+# coverage population is unchanged they must still receive the changed files
+# (lint paths), otherwise radon is invoked with no paths.
+RADON_CHANGED_FILE_RAILS = frozenset({"radon-cc", "radon-mi"})
 
 
 def _canonical_python_base(
@@ -490,6 +495,19 @@ async def _run_profile_acceptance(
     return progress
 
 
+def _rail_scope_lists(rail, rail_lists: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+    """Radon rails receive changed python (lint) when product coverage is empty.
+
+    coverage-paths stays exactly product-derived (the rail-scope equality
+    the suite checks); the radon report-only rails fall back to the changed
+    python files in their own command scope so they are never invoked with an
+    empty path set.
+    """
+    if rail.identity not in RADON_CHANGED_FILE_RAILS or rail_lists.get("coverage-paths"):
+        return rail_lists
+    return {**rail_lists, "coverage-paths": rail_lists.get("lint-paths", ())}
+
+
 async def _execute_gate_rails(
     progress: _QualityProgress,
     gate_plan,
@@ -549,6 +567,7 @@ async def _execute_gate_rails(
         if provider is not None:
             selector_path, rail_lists = selector_results[provider]
             rail_scalars["selector-output"] = selector_path
+        rail_lists = _rail_scope_lists(rail, rail_lists)
         command = expand_command(
             execution.get("command", []),
             scalar_values=rail_scalars,
@@ -566,6 +585,11 @@ async def _execute_gate_rails(
             rail_outcomes[rail.identity_key] = {
                 "status": "pass",
                 "exitCode": code,
+                **await rail_emission.attach_rail_terminal_bindings(
+                    progress,
+                    rail,
+                    reports=scalar_values["reports"],
+                ),
             }
         else:
             failed_same_gate.add(rail.identity_key)

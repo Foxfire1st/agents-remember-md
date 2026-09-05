@@ -151,6 +151,7 @@ unit-regression = [
   "mcp/tests/test_provider_lifecycle_parser_2.py",
   "mcp/tests/test_provider_watcher_actions.py",
   "mcp/tests/test_kernel_pure_regressions.py",
+  "mcp/tests/test_rail_bindings.py",
   "mcp/tests/test_random_order.py",
   "mcp/tests/test_read_ar_files.py",
   "mcp/tests/test_replay_fold_coverage.py",
