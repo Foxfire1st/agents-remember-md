@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage && node scripts/write-suite-result.mjs",
     "coverage:diff": "node scripts/check-diff-coverage.mjs",
     "knip": "knip",
     "test:watch": "vitest",
