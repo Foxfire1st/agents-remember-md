@@ -532,6 +532,7 @@ integration = [
   "mcp/tests/test_git_closeout_publication.py",
   "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_integration_certification_selection.py",
 ]
