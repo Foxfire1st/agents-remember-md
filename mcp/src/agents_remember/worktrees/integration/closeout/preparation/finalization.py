@@ -239,10 +239,21 @@ def _live(bundle: PreparedMemoryOutputs) -> LifecycleOperationRecord:
         PreparedStagedCode(rules.stagedTree, rules.preCommitHookRan), selected.run.provenance,
     ))
     original = selected.authorities.semanticEnvelope
-    edges = tuple(edge.model_copy(update={"descendantTip": code_head if edge.side == "code" else memory_head})
-        if edge.contractPath == contract.contract_path.as_posix() and edge.descendantRef == (
-            bundle.code.intent.logicalRef if edge.side == "code" else bundle.memory.intent.logicalRef
-        ) else edge for edge in original.source.edges)
+    # Only the current contract's two owned refs acquire their published tips.
+    published_tips = {
+        (contract.contract_path.as_posix(), bundle.code.intent.logicalRef, "code"): code_head,
+        (contract.contract_path.as_posix(), bundle.memory.intent.logicalRef, "memory"): memory_head,
+    }
+    edges = tuple(
+        edge.model_copy(
+            update={
+                "descendantTip": published_tips.get(
+                    (edge.contractPath, edge.descendantRef, edge.side), edge.descendantTip
+                )
+            }
+        )
+        for edge in original.source.edges
+    )
     source = original.source.model_copy(update={"edges": edges})
     worktree = rules.model_copy(update={"headCommit": code_head})
     envelope = original.model_copy(update={"source": source, "worktree": worktree})
@@ -316,22 +327,25 @@ def _retain_existing_leg(
     return
 
 
+def _ledger_publication_started(record: LifecycleOperationRecord) -> bool:
+    """Ledger publication supersedes the shared memory ref's intermediate M output."""
+    proof = record.mutationEvidence.get("ledger")
+    return proof is not None and proof.state in {"mutation-intent", "commit-proven"}
+
+
 def _observe_proven_leg(
     bundle: PreparedMemoryOutputs,
     selected: SelectedCloseoutPreparation,
-    leg: CloseoutMutationLeg,
-    record: LifecycleOperationRecord,
     output: PreparedCloseoutOutput,
 ) -> None:
-    """Reobserve a previously published ref, accounting for subsequent ledger publication."""
-    if leg == "memory" and record.mutationEvidence.get("ledger") is not None and record.mutationEvidence["ledger"].state in {"mutation-intent", "commit-proven"}:
-        return
+    """Reobserve one previously published ref through its original authority."""
+
     def authorize_existing(_binding: GitCloseoutPublicationBinding) -> None:
         _live(bundle)
+
     capability = admit_git_closeout_publication(_binding(selected), authorize=authorize_existing)
     if inspect_git_closeout_publication(capability).state != "new":
         refuse("finalization-proven-ref-moved", output.commit, "old ref")
-    return
 
 
 def _publication_intent(
@@ -365,7 +379,9 @@ def _publish_leg(bundle: PreparedMemoryOutputs, selected: SelectedCloseoutPrepar
         return
     record, proof = _publication_intent(bundle, selected, leg, record, output)
     if proof.state == "commit-proven":
-        _observe_proven_leg(bundle, selected, leg, record, output)
+        if leg == "memory" and _ledger_publication_started(record):
+            return
+        _observe_proven_leg(bundle, selected, output)
         return
     if proof.state != "mutation-intent":
         refuse("finalization-original-mutation-unavailable", "original mutation intent", proof)

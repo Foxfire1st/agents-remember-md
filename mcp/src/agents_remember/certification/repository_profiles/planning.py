@@ -367,6 +367,27 @@ def _compile_semantic_inputs(
         for selector in profile.selectors
         if selector.selectorId in referenced_selectors
     )
+    nodes.extend(_compile_adapter_inputs(canonical, selection, gate, rails))
+    catalog = {(node.inputKind, node.inputId): node for node in nodes}
+    if len(catalog) != len(nodes):
+        raise ValueError("repository semantic input compilation produced duplicate identities")
+    return tuple(
+        sorted(
+            catalog.values(),
+            key=lambda item: (item.inputKind, item.inputId, item.contentDigest),
+        )
+    )
+
+
+def _compile_adapter_inputs(
+    canonical: CanonicalRepositoryCertificationProfile,
+    selection: RepositoryProfileSelection,
+    gate: RepositoryGateSelection,
+    rails: tuple[RepositoryRailDefinition, ...],
+) -> list[RepositorySemanticInputNode]:
+    """Compile this gate's executor, result decoders and publication authority."""
+    profile = canonical.profile
+    nodes: list[RepositorySemanticInputNode] = []
     executor = next(
         item for item in profile.executorAdapters if item.adapterId == selection.executorAdapterId
     )
@@ -402,15 +423,7 @@ def _compile_semantic_inputs(
         for artifact in profile.publishedArtifacts
         if gate.gate in artifact.publisherGates
     )
-    catalog = {(node.inputKind, node.inputId): node for node in nodes}
-    if len(catalog) != len(nodes):
-        raise ValueError("repository semantic input compilation produced duplicate identities")
-    return tuple(
-        sorted(
-            catalog.values(),
-            key=lambda item: (item.inputKind, item.inputId, item.contentDigest),
-        )
-    )
+    return nodes
 
 
 def _semantic_node(

@@ -1122,6 +1122,9 @@ def _publish_and_recover_memory_outputs(
     from agents_remember.worktrees.integration.closeout.preparation import (  # noqa: PLC0415
         finalization,
     )
+    from agents_remember.worktrees.integration.closeout.preparation.continuation import (  # noqa: PLC0415
+        PreparedCloseoutContinuation,
+    )
 
     handoff = prepared.handoff
     memory_root = handoff.contract.memory_worktree
@@ -1141,7 +1144,7 @@ def _publish_and_recover_memory_outputs(
         ),
         pytest.raises(RuntimeError, match="interrupt after actual memory ref publication"),
     ):
-        finalization.finalize_prepared_closeout(prepared)
+        PreparedCloseoutContinuation().finalize(handoff)
     interrupted = handoff.store.read()
     assert interrupted is not None
     assert interrupted.mutationEvidence["memory"].state == "mutation-intent"

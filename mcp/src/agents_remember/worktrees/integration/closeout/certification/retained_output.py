@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.models.lifecycles.mutation_evidence import GitMutationEvidence
+from agents_remember.models.lifecycles.mutation_evidence import (
+    GitMutationEvidence,
+    GitMutationSnapshot,
+)
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     closeout_generation_retained,
@@ -100,17 +103,7 @@ def _require_original_code_proof(
         or record.candidateTree != envelope.worktree.stagedTree
     ):
         refuse("selected-candidate-authority-moved", expected, current.candidate)
-    original_head = envelope.worktree.headCommit
-    original_tree = require_git(contract.code_worktree, ["rev-parse", f"{original_head}^{{tree}}"])
-    for before in (proof.acceptedBefore, proof.before):
-        if (
-            before.headRef != envelope.worktree.workRef
-            or before.head != original_head
-            or before.headTree != original_tree
-            or before.indexTree != envelope.worktree.stagedTree
-            or before.candidateTree != envelope.worktree.stagedTree
-        ):
-            refuse("selected-code-output-prestate-mismatch", envelope.worktree, before)
+    _require_original_prestate(contract, selected, (proof.acceptedBefore, proof.before))
     actual = ephemeral_git_mutation_snapshot(contract.code_worktree)
     if actual != proof.observed or not commit_matches_intent(
         contract.code_worktree,
@@ -121,3 +114,23 @@ def _require_original_code_proof(
     ):
         refuse("selected-code-output-proof-mismatch", proof, actual)
     return proof
+
+
+def _require_original_prestate(
+    contract: WorktreeContract,
+    selected: LoadedCertificationSelection,
+    snapshots: tuple[GitMutationSnapshot, GitMutationSnapshot],
+) -> None:
+    """Both accepted and pre-command snapshots must retain the original staged candidate."""
+    envelope = selected.authorities.semanticEnvelope
+    original_head = envelope.worktree.headCommit
+    original_tree = require_git(contract.code_worktree, ["rev-parse", f"{original_head}^{{tree}}"])
+    for before in snapshots:
+        if (
+            before.headRef != envelope.worktree.workRef
+            or before.head != original_head
+            or before.headTree != original_tree
+            or before.indexTree != envelope.worktree.stagedTree
+            or before.candidateTree != envelope.worktree.stagedTree
+        ):
+            refuse("selected-code-output-prestate-mismatch", envelope.worktree, before)

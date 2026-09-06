@@ -14,7 +14,7 @@ remain in the ordinary population even when the product feature concerns certifi
 
 The existing Dagger delivery plan explicitly supplies `--certify -m ""` to run both
 populations together. The combined branch-coverage artifact feeds changed-production
-coverage (90%) and production CRAP (unchanged threshold 30). Coverage.py also measures
+coverage (90%) and production CRAP (unchanged threshold 20). Coverage.py also measures
 real Python subprocesses during that delivery run. No host run can create a
 Dagger admission capability or become certifying by omitting that option.
 

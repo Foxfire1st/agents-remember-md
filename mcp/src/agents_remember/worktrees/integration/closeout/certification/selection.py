@@ -144,20 +144,8 @@ def _load_selection(
         load_typed(store, decision.reference, CertificationRecoveryRecord)
         for decision in selected.recoveryDecisions
     )
+    _require_selection_binding(record, selected, run, lifecycle, prior_red)
     envelope = lifecycle.semanticEnvelope
-    if (
-        run.repositoryPlan.candidateIdentity.value != record.candidateTree
-        or envelope.candidate.contractPath != record.contractPath
-        or envelope.candidate.candidateCodeTree != run.repositoryPlan.candidateIdentity
-        or envelope.certificationAdmissionDigest != run.admission.admissionDigest
-        or envelope.registryDigest != run.registry.registryDigest
-        or envelope.certificationPlanDigest != run.certificationPlan.planDigest
-        or envelope.repositoryProfileDigest != run.repositoryProfile.profileDigest
-        or envelope.repositoryPlanDigest != run.repositoryPlan.planDigest
-        or envelope.priorRedDispositionDigest
-        != (prior_red.dispositionDigest if prior_red is not None else None)
-    ):
-        refuse("certification-selection-binding-mismatch", "one exact admitted candidate", selected)
     candidate = envelope.candidate
     authority = authorities.semanticEnvelope
     if (
@@ -193,6 +181,30 @@ def _load_selection(
     )
     cache[record.generation] = loaded
     return loaded
+
+
+def _require_selection_binding(
+    record: LifecycleOperationRecord,
+    selected: OperationCertificationState,
+    run: FrozenCertificationRun,
+    lifecycle: LifecycleAdmissionManifest,
+    prior_red: PriorRedDispositionManifest | None,
+) -> None:
+    """Require the selected admission to bind this exact candidate, plan and prior disposition."""
+    envelope = lifecycle.semanticEnvelope
+    if (
+        run.repositoryPlan.candidateIdentity.value != record.candidateTree
+        or envelope.candidate.contractPath != record.contractPath
+        or envelope.candidate.candidateCodeTree != run.repositoryPlan.candidateIdentity
+        or envelope.certificationAdmissionDigest != run.admission.admissionDigest
+        or envelope.registryDigest != run.registry.registryDigest
+        or envelope.certificationPlanDigest != run.certificationPlan.planDigest
+        or envelope.repositoryProfileDigest != run.repositoryProfile.profileDigest
+        or envelope.repositoryPlanDigest != run.repositoryPlan.planDigest
+        or envelope.priorRedDispositionDigest
+        != (prior_red.dispositionDigest if prior_red is not None else None)
+    ):
+        refuse("certification-selection-binding-mismatch", "one exact admitted candidate", selected)
 
 
 def _load_predecessor(

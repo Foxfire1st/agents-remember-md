@@ -95,13 +95,17 @@ class SelectedPreparation(FrozenContractModel):
             for item in self.commands[:-1]
         ):
             raise ValueError("unfinished or failed preparation command blocks every later command")
+        self._require_output_command()
+        return self
+
+    def _require_output_command(self) -> None:
+        """Created outputs must retain their original commit observation."""
         if (
             self.output is not None
             and self.commands
             and (len(self.commands) != 3 or self.commands[-1].terminal is None)
         ):
             raise ValueError("created output requires an observed original commit command")
-        return self
 
 
 class OperationPreparationState(FrozenContractModel):
@@ -195,6 +199,17 @@ def _validate_leg_transition(
         ):
             raise RuntimeError("private command start requires its exact current worker owner")
         return
+    _validate_command_observation(before, after, can_start, worker, exited_worker)
+
+
+def _validate_command_observation(
+    before: SelectedPreparation,
+    after: SelectedPreparation,
+    can_start: bool,
+    worker: PreparationWorker,
+    exited_worker: PreparationWorker,
+) -> None:
+    """Append only the original command's terminal, including an authorized late readback."""
     if len(after.commands) != len(before.commands) or not before.commands:
         raise RuntimeError("private commands cannot be removed or restarted")
     original, observed = before.commands[-1], after.commands[-1]

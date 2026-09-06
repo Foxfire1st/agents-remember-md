@@ -19,6 +19,7 @@ from agents_remember.models.lifecycles.preparation_state import (
 )
 from agents_remember.worktrees.integration.closeout.certification.observation import refuse
 from agents_remember.worktrees.integration.closeout.certification.selection import (
+    LoadedCertificationSelection,
     load_typed,
     require_selected_certification,
 )
@@ -65,17 +66,7 @@ def select_preparation_intent(
         certificate_store(contract.worktree_group), reference, CloseoutPreparationIntent
     )
     _require_intent_owner(contract, observed, intent)
-    certificates = tuple(item.certificate for item in selected.terminals[:4])
-    if len(certificates) != 4 or any(item is None for item in certificates):
-        refuse(
-            "preparation-code-prefix-incomplete", "four original code certificates", certificates
-        )
-    prefix = tuple(item.certificate for item in selected.state.terminals[:4])
-    if intent.prefixCertificates != prefix:
-        refuse("preparation-code-prefix-mismatch", prefix, intent.prefixCertificates)
-    gate_five = selected.state.terminals[4].certificate if len(selected.terminals) == 5 else None
-    if intent.leg != "code" and (gate_five is None or gate_five != intent.gateFiveCertificate):
-        refuse("preparation-memory-certificate-missing", gate_five, intent.gateFiveCertificate)
+    _require_preparation_certificates(selected, intent)
     require_preparation_logical_refs(contract, observed, (intent,))
     prior = observed.preparation
     if prior is not None and any(item.intent == reference for item in prior.legs):
@@ -87,6 +78,23 @@ def select_preparation_intent(
         operationKey=observed.operationKey, generation=observed.generation, legs=legs
     )
     return _select(store, observed, state)
+
+
+def _require_preparation_certificates(
+    selected: LoadedCertificationSelection, intent: CloseoutPreparationIntent
+) -> None:
+    """Require the exact code prefix and, for memory legs, the selected fifth certificate."""
+    certificates = tuple(item.certificate for item in selected.terminals[:4])
+    if len(certificates) != 4 or any(item is None for item in certificates):
+        refuse(
+            "preparation-code-prefix-incomplete", "four original code certificates", certificates
+        )
+    prefix = tuple(item.certificate for item in selected.state.terminals[:4])
+    if intent.prefixCertificates != prefix:
+        refuse("preparation-code-prefix-mismatch", prefix, intent.prefixCertificates)
+    gate_five = selected.state.terminals[4].certificate if len(selected.terminals) == 5 else None
+    if intent.leg != "code" and (gate_five is None or gate_five != intent.gateFiveCertificate):
+        refuse("preparation-memory-certificate-missing", gate_five, intent.gateFiveCertificate)
 
 
 def begin_preparation_command(
