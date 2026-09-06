@@ -133,6 +133,16 @@ def observe_source_index(
             "citation source-index generation does not match exact candidate roots",
             snapshot=ready.snapshot_id,
         )
+    if (
+        index.candidate_tree != candidate.code.candidateTree
+        or ready.candidate_tree != candidate.code.candidateTree
+        or manifest.candidate_tree != candidate.code.candidateTree
+    ):
+        _refuse(
+            "source-index-candidate-mismatch",
+            "citation source-index selection does not name the exact Git candidate tree",
+            snapshot=ready.snapshot_id,
+        )
     _require_index_matches_candidate(candidate, manifest)
     return SourceIndexObservation(
         snapshotId=ready.snapshot_id,
@@ -213,7 +223,11 @@ def extract_citation_edges(
 ) -> tuple[ScopeEdge, ...]:
     """Parse existing citation grammar and map each exact source to its citing document."""
 
-    trees = Trees(code_root=Path(candidate.code.root), memory_root=Path(candidate.memory.root))
+    trees = Trees(
+        code_root=Path(candidate.code.root),
+        memory_root=Path(candidate.memory.root),
+        candidate_tree=candidate.code.candidateTree,
+    )
     pairs: set[tuple[str, str]] = set()
     for document in sorted(onboarding_root.rglob("*.md")):
         relative = document.relative_to(Path(candidate.memory.root)).as_posix()
@@ -336,8 +350,19 @@ def _require_index_matches_candidate(
 ) -> None:
     """Cross-check the index owner's file census against the exact Git candidate tree."""
 
-    trees = Trees(code_root=Path(candidate.code.root), memory_root=Path(candidate.memory.root))
-    current = {relative: absolute for absolute, relative in source_index.code_files(trees)}
+    trees = Trees(
+        code_root=Path(candidate.code.root),
+        memory_root=Path(candidate.memory.root),
+        candidate_tree=candidate.code.candidateTree,
+    )
+    try:
+        current = {relative: absolute for absolute, relative in source_index.code_files(trees)}
+    except (OSError, RuntimeError, ValueError) as exc:
+        _refuse(
+            "source-index-candidate-mismatch",
+            f"citation source candidate census is unavailable: {type(exc).__name__}",
+            snapshot=manifest.snapshot_id,
+        )
     indexed = {one.identity.path: one for one in manifest.files}
     if set(current) != set(indexed) or len(indexed) != len(manifest.files):
         _refuse(

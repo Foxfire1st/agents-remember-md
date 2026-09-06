@@ -701,7 +701,7 @@ def test_repository_profile_teardown_adapter_requires_a_passing_cleanup_checkpoi
     detail.write_text(json.dumps({"checkpoints": []}), encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="teardown checkpoint"):
-        profile_rails._verify_teardown(summary)
+        profile_rails._verify_teardown(summary, tmp_path / "proof.json")
 
 
 def test_framework_profile_package_contains_no_repository_specific_plan() -> None:

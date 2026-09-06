@@ -945,7 +945,16 @@ def test_dagger_quality_full_uses_explicit_diff_base_without_targeted_flags() ->
     assert (
         admitted_command_index(
             commands,
-            ["npm", "run", "e2e", "--", "--fail-on-flaky-tests"],
+            [
+                "env",
+                "PLAYWRIGHT_JSON_OUTPUT_FILE=/reports/dashboard-e2e-result.json",
+                "npm",
+                "run",
+                "e2e",
+                "--",
+                "--fail-on-flaky-tests",
+                "--reporter=line,json",
+            ],
         )
         >= 0
     )

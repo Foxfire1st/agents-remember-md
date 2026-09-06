@@ -4,15 +4,30 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 MAX_READINESS_BYTES = 16 * 1024
 MAX_SOURCE_FILES = 100_000
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
+MAX_SOURCE_FILE_BYTES = 4 * 1024 * 1024
 MAX_DATABASE_BYTES = 256 * 1024 * 1024
 HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
+
+
+class SourceIndexError(ValueError):
+    """The requested source snapshot cannot be indexed safely."""
+
+
+def candidate_tree(value: object) -> str | None:
+    """A null filesystem selection or one exact canonical Git tree identity."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+        raise SourceIndexError("citation source candidate tree must be 40 lowercase hex digits")
+    return value
 
 
 class SourceIndexManifestError(ValueError):
@@ -60,6 +75,7 @@ class ReadyGeneration:
     files_indexed: int
     source_bytes: int
     database_bytes: int
+    candidate_tree: str | None = None
 
     @classmethod
     def from_json(cls, path: Path) -> ReadyGeneration:
@@ -78,6 +94,7 @@ class ReadyGeneration:
             "filesIndexed",
             "sourceBytes",
             "databaseBytes",
+            "candidateTree",
         }:
             raise SourceIndexManifestError("citation source-index readiness marker is malformed")
         if type(payload["schemaVersion"]) is not int or payload["schemaVersion"] != SCHEMA_VERSION:
@@ -107,6 +124,7 @@ class ReadyGeneration:
                 maximum=MAX_DATABASE_BYTES,
                 name="database bytes",
             ),
+            candidate_tree=candidate_tree(payload["candidateTree"]),
         )
 
     def to_json(self) -> str:
@@ -122,6 +140,7 @@ class ReadyGeneration:
                     "filesIndexed": self.files_indexed,
                     "sourceBytes": self.source_bytes,
                     "databaseBytes": self.database_bytes,
+                    "candidateTree": self.candidate_tree,
                 },
                 separators=(",", ":"),
                 sort_keys=True,
@@ -182,6 +201,26 @@ class Identity:
         }
 
 
+def check_source_bounds(identities: Sequence[Identity]) -> None:
+    """Enforce the one source-read budget from metadata before reading file bodies."""
+    if len(identities) > MAX_SOURCE_FILES:
+        raise SourceIndexError(
+            f"citation source-index input has {len(identities)} files, above its "
+            f"{MAX_SOURCE_FILES}-file cap"
+        )
+    oversized = [one.path for one in identities if one.size > MAX_SOURCE_FILE_BYTES]
+    if oversized:
+        raise SourceIndexError(
+            f"citation source-index input exceeds the {MAX_SOURCE_FILE_BYTES}-byte per-file "
+            f"cap: {oversized[:3]}"
+        )
+    total = sum(one.size for one in identities)
+    if total > MAX_SOURCE_BYTES:
+        raise SourceIndexError(
+            f"citation source-index input is {total} bytes, above its {MAX_SOURCE_BYTES}-byte cap"
+        )
+
+
 @dataclass(frozen=True)
 class SourceFile:
     """One indexed file's path, current metadata, and authoritative content digest."""
@@ -221,6 +260,7 @@ class Manifest:
     source_bytes: int
     directories: tuple[Identity, ...]
     files: tuple[SourceFile, ...]
+    candidate_tree: str | None = None
 
     @classmethod
     def from_json(cls, path: Path) -> Manifest:
@@ -235,6 +275,7 @@ class Manifest:
             source_bytes=int(payload["sourceBytes"]),
             directories=tuple(Identity.from_dict(one) for one in payload["directories"]),
             files=tuple(SourceFile.from_dict(root, one) for one in payload["files"]),
+            candidate_tree=candidate_tree(payload["candidateTree"]),
         )
 
     def to_json(self) -> str:
@@ -248,6 +289,7 @@ class Manifest:
                     "sourceBytes": self.source_bytes,
                     "directories": [one.to_dict() for one in self.directories],
                     "files": [one.to_dict() for one in self.files],
+                    "candidateTree": self.candidate_tree,
                 },
                 separators=(",", ":"),
                 sort_keys=True,

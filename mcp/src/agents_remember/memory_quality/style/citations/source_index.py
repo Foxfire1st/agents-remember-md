@@ -2,7 +2,8 @@
 
 One immutable SQLite index represents one exact code-tree content snapshot. The snapshot
 identity hashes every indexed relative path and file body, including dirty, added, deleted,
-and renamed files; Git state is deliberately irrelevant. Independent CLI processes share
+and renamed files. Default acquisition is Git-independent; explicit candidate acquisition
+selects one exact Git tree and verifies its working bytes. Independent CLI processes share
 the published index through a deterministic bounded cache outside both worktrees.
 
 Default warm acquisition enumerates and stats the indexed files and directories. A changed
@@ -44,7 +45,7 @@ SCHEMA_VERSION = source_index_state.SCHEMA_VERSION
 CACHE_SLOT_COUNT = 4
 MAX_SOURCE_BYTES = source_index_state.MAX_SOURCE_BYTES
 MAX_SOURCE_FILES = source_index_state.MAX_SOURCE_FILES
-MAX_SOURCE_FILE_BYTES = 4 * 1024 * 1024
+MAX_SOURCE_FILE_BYTES = source_index_state.MAX_SOURCE_FILE_BYTES
 MAX_INDEX_BYTES = source_index_state.MAX_DATABASE_BYTES
 BUILD_ATTEMPTS = 2
 RECLAMATION_LOCK_TIMEOUT_SECONDS = 30.0
@@ -95,8 +96,7 @@ SKIPPED_SUFFIXES = frozenset(
 _UNREADABLE = "unreadable"
 
 
-class SourceIndexError(ValueError):
-    """The requested source snapshot cannot be indexed safely."""
+SourceIndexError = source_index_state.SourceIndexError
 
 
 class SourceTreeChangedError(SourceIndexError):
@@ -165,6 +165,12 @@ class RepositoryIndex:
     source_bytes: int
     metrics: IndexMetrics
     _closed: bool = False
+    _candidate_tree: str | None = None
+
+    @property
+    def candidate_tree(self) -> str | None:
+        """The exact acquisition selection proven by this leased generation's metadata."""
+        return self._candidate_tree
 
     def __enter__(self) -> RepositoryIndex:
         return self
@@ -424,6 +430,7 @@ def _open_expected_generation(trees: Trees, expected_snapshot: str) -> Repositor
             files_indexed=connection.files_indexed,
             source_bytes=connection.source_bytes,
             metrics=metrics,
+            _candidate_tree=readiness.candidate_tree,
         )
     except BaseException as error:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -450,6 +457,7 @@ def _repository_index(
         files_indexed=len(manifest.files),
         source_bytes=manifest.source_bytes,
         metrics=metrics,
+        _candidate_tree=manifest.candidate_tree,
     )
 
 
@@ -482,6 +490,7 @@ def _current_generation(
             readiness.snapshot_id != manifest.snapshot_id
             or readiness.files_indexed != len(manifest.files)
             or readiness.source_bytes != manifest.source_bytes
+            or readiness.candidate_tree != manifest.candidate_tree
         ):
             return None
         validation = _validate(manifest, trees, metrics, check_content=check_content)
@@ -515,8 +524,11 @@ def _ready_generation(paths: CachePaths, trees: Trees) -> ReadyGeneration:
     if (
         readiness.code_root != trees.code_root.resolve().as_posix()
         or readiness.memory_root != trees.memory_root.resolve().as_posix()
+        or readiness.candidate_tree != trees.candidate_tree
     ):
-        raise SourceIndexError("citation source-index readiness belongs to different roots")
+        raise SourceIndexError(
+            "citation source-index readiness belongs to different roots or candidate"
+        )
     return readiness
 
 
@@ -533,6 +545,7 @@ def _validate(
     if (
         manifest.code_root != trees.code_root.resolve().as_posix()
         or manifest.memory_root != trees.memory_root.resolve().as_posix()
+        or manifest.candidate_tree != trees.candidate_tree
     ):
         return Validation(current, stale=True, metadata_changed=False)
     previous_files = {one.identity.path: one for one in manifest.files}
@@ -573,7 +586,7 @@ def _build_and_publish(paths: CachePaths, trees: Trees, metrics: IndexMetrics) -
 def _build_once(paths: CachePaths, trees: Trees, metrics: IndexMetrics) -> Manifest:
     started = time.perf_counter()
     initial = _tree_state(trees, metrics)
-    _check_source_bounds(initial)
+    source_index_state.check_source_bounds(tuple(one.identity for one in initial.files))
     temp = paths.slot / f".index.sqlite3.{os.getpid()}.{uuid4().hex}.tmp"
     hashes: dict[str, str] = {}
     generation_id = hashlib.sha256(uuid4().bytes).hexdigest()
@@ -607,6 +620,7 @@ def _build_once(paths: CachePaths, trees: Trees, metrics: IndexMetrics) -> Manif
                 source_bytes=sum(one.identity.size for one in initial.files),
                 # Replaced with the closed file's authoritative size before validation.
                 database_bytes=1,
+                candidate_tree=trees.candidate_tree,
             )
             database.write_snapshot(readiness)
         finally:
@@ -634,6 +648,7 @@ def _build_once(paths: CachePaths, trees: Trees, metrics: IndexMetrics) -> Manif
             source_bytes=sum(one.identity.size for one in files),
             directories=final.directories,
             files=files,
+            candidate_tree=trees.candidate_tree,
         )
         _publish_generation(
             paths,
@@ -695,6 +710,14 @@ def _publish_generation(
 def _tree_state(trees: Trees, metrics: IndexMetrics | None = None) -> TreeState:
     root = trees.code_root.resolve()
     memory = trees.memory_root.resolve()
+    if trees.source_candidate is not None:
+        state = trees.source_candidate.state(memory, SKIPPED_SUFFIXES)
+        if metrics is not None:
+            metrics.metadata_tree_enumerations += 1
+            metrics.metadata_directories_stat += len(state.directories)
+            metrics.metadata_files_stat += len(state.files)
+            metrics.metadata_entries_enumerated += len(state.directories) + len(state.files)
+        return state
     directories: list[Identity] = []
     files: list[SourceFile] = []
     if metrics is not None:
@@ -716,7 +739,11 @@ def _tree_state(trees: Trees, metrics: IndexMetrics | None = None) -> TreeState:
         ]
         for name in sorted(raw_files):
             path = directory / name
-            if path.suffix.lower() in SKIPPED_SUFFIXES or not path.is_file():
+            if (
+                name in {".git", ".hg", ".svn"}
+                or path.suffix.lower() in SKIPPED_SUFFIXES
+                or not path.is_file()
+            ):
                 continue
             relative = path.relative_to(root).as_posix()
             files.append(SourceFile(path, Identity.read(path, relative)))
@@ -740,27 +767,6 @@ def _stable_read(path: Path, expected: Identity) -> bytes | None:
     if after != before:
         raise SourceTreeChangedError(f"source changed while it was read: {expected.path}")
     return raw
-
-
-def _check_source_bounds(state: TreeState) -> None:
-    if len(state.files) > MAX_SOURCE_FILES:
-        raise SourceIndexError(
-            f"citation source-index input has {len(state.files)} files, above its "
-            f"{MAX_SOURCE_FILES}-file cap"
-        )
-    oversized = [
-        one.identity.path for one in state.files if one.identity.size > MAX_SOURCE_FILE_BYTES
-    ]
-    if oversized:
-        raise SourceIndexError(
-            f"citation source-index input exceeds the {MAX_SOURCE_FILE_BYTES}-byte per-file "
-            f"cap: {oversized[:3]}"
-        )
-    total = sum(one.identity.size for one in state.files)
-    if total > MAX_SOURCE_BYTES:
-        raise SourceIndexError(
-            f"citation source-index input is {total} bytes, above its {MAX_SOURCE_BYTES}-byte cap"
-        )
 
 
 def _snapshot_id(hashes: dict[str, str]) -> str:
@@ -789,6 +795,7 @@ def _refreshed_manifest(manifest: Manifest, state: TreeState) -> Manifest:
         source_bytes=sum(one.identity.size for one in files),
         directories=state.directories,
         files=files,
+        candidate_tree=manifest.candidate_tree,
     )
 
 

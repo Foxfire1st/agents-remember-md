@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from dataclasses import replace
@@ -37,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
         _common_arguments(command, reports=True)
     teardown = commands.add_parser("verify-teardown")
     teardown.add_argument("--summary", type=Path, required=True)
+    teardown.add_argument("--proof", type=Path, required=True)
     return parser
 
 
@@ -239,16 +241,19 @@ def _run_post_coverage(config: check.CheckConfig, *, rail: str) -> int:
     )
 
 
-def _verify_teardown(summary: Path) -> int:
+def _verify_teardown(summary: Path, proof: Path) -> int:
     try:
-        payload = json.loads(summary.read_text(encoding="utf-8"))
+        summary_bytes = summary.read_bytes()
+        payload = json.loads(summary_bytes)
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise RuntimeError("clean-room summary is unavailable or malformed") from error
     if not isinstance(payload, dict) or payload.get("schema") != (
         "ar-ambient-role-chat-e2e-summary/v1"
     ):
         raise RuntimeError("clean-room summary has the wrong schema")
+    observations: list[dict[str, object]] = []
     if payload.get("status") == "skipped":
+        _write_teardown_proof(summary_bytes, proof, "not-applicable", observations)
         print("result: teardown-process-cleanliness PASS (scenario not applicable)")
         return 0
     runs = payload.get("runs")
@@ -261,14 +266,15 @@ def _verify_teardown(summary: Path) -> int:
         reference = run.get("report")
         if not isinstance(reference, str) or Path(reference).name != reference:
             raise RuntimeError("clean-room replication reference is unsafe")
-        detail = json.loads((root / reference).read_text(encoding="utf-8"))
+        report_bytes = (root / reference).read_bytes()
+        detail = json.loads(report_bytes)
         checkpoints = detail.get("checkpoints") if isinstance(detail, dict) else None
         cleanup = (
             next(
                 (
                     item
                     for item in checkpoints
-                    if isinstance(item, dict) and item.get("id") == "C10"
+                    if isinstance(item, dict) and item.get("id") == "L5-C10"
                 ),
                 None,
             )
@@ -277,8 +283,29 @@ def _verify_teardown(summary: Path) -> int:
         )
         if not isinstance(cleanup, dict) or cleanup.get("status") != "passed":
             raise RuntimeError("clean-room replication lacks a passing teardown checkpoint")
+        observations.append(
+            {
+                "report": reference,
+                "sha256": hashlib.sha256(report_bytes).hexdigest(),
+                "checkpoint": cleanup,
+            }
+        )
+    _write_teardown_proof(summary_bytes, proof, "passed", observations)
     print("result: teardown-process-cleanliness PASS")
     return 0
+
+
+def _write_teardown_proof(
+    summary_bytes: bytes, proof: Path, status: str, observations: list[dict[str, object]]
+) -> None:
+    payload = {
+        "schemaVersion": "teardown-proof/v1",
+        "status": status,
+        "summarySha256": hashlib.sha256(summary_bytes).hexdigest(),
+        "replications": observations,
+    }
+    proof.parent.mkdir(parents=True, exist_ok=True)
+    proof.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -286,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         admission = require_dagger_admission(subject="repository certification rail")
         args = build_parser().parse_args(argv)
         if args.rail == "verify-teardown":
-            result = _verify_teardown(args.summary)
+            result = _verify_teardown(args.summary, args.proof)
         elif args.rail == "quality-config":
             quality_scope.validate_quality_config(args.project_root.resolve())
             _require_exact_scope(args)

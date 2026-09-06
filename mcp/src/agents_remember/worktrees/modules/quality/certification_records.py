@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -77,8 +77,17 @@ from agents_remember.certification.results import (
 )
 from agents_remember.errors import CertificationContractError
 from agents_remember.kernel.atomic_write import atomic_write_text
+from agents_remember.worktrees.modules.quality.certification_evidence import (
+    MAX_GATE_RECORD_BYTES,
+    publication_binding,
+    validate_gate_records,
+    verify_result_evidence,
+    verify_selected_publications,
+)
 from agents_remember.worktrees.modules.quality.published_manifest import (
     PublishedQualityManifest,
+    require_real_directory_or_missing,
+    require_real_file_or_missing,
 )
 from agents_remember.worktrees.services import worktree_services
 
@@ -188,8 +197,13 @@ def prepare_certification_records(
         lane=lane,
         provenance=provenance,
     )
-    _persist_admission(prepared)
-    return prepared
+    return _persist_admission(prepared)
+
+
+@dataclass
+class _PublishedGateRun:
+    publication: PublishedQualityManifest
+    certificates: list[GateCertificate]
 
 
 def record_published_generation(
@@ -206,17 +220,13 @@ def record_published_generation(
     without the evidence a green manifest requires is journaled as a typed
     refusal and publishes no certificate.
     """
-    if prepared.candidateTree != manifest.candidate_tree:
-        raise RuntimeError(
-            "published Dagger generation certifies another candidate tree: "
-            f"expected {prepared.candidateTree}, found {manifest.candidate_tree}"
-        )
+    _require_publication_admission(prepared, manifest)
     catalog = payload.get("gates")
     if not isinstance(catalog, list):
         journal_gate_records(prepared.worktree_group, [])
         return {"published": [], "certificates": [], "refused": []}
     gate_records: list[dict[str, object]] = []
-    certificates: list[GateCertificate] = []
+    run = _PublishedGateRun(manifest, [])
     for entry in catalog:
         if not isinstance(entry, dict):
             raise RuntimeError("published gate catalog contains a non-object entry")
@@ -230,16 +240,38 @@ def record_published_generation(
                 if isinstance(outcome, dict):
                     rail_outcomes.append(outcome)
         gate_records.append(
-            _record_gate(prepared, gate, entry.get("disposition"), rail_outcomes, certificates)
+            _record_gate(prepared, gate, entry.get("disposition"), rail_outcomes, run)
         )
-    journal_gate_records(prepared.worktree_group, gate_records)
     published = [item for item in gate_records if item["kind"] == "certificate"]
     refused = [item for item in gate_records if item["kind"] == "refused"]
+    if not any(item["refusalCode"] == "certificate-evidence-binding-mismatch" for item in refused):
+        journal_gate_records(prepared.worktree_group, gate_records)
     return {
         "published": published,
         "certificates": [item["certificate"] for item in published],
         "refused": refused,
     }
+
+
+def _require_publication_admission(
+    prepared: PreparedCertificationRun, manifest: PublishedQualityManifest
+) -> None:
+    if prepared.candidateTree != manifest.candidate_tree:
+        raise RuntimeError(
+            "published Dagger generation certifies another candidate tree: "
+            f"expected {prepared.candidateTree}, found {manifest.candidate_tree}"
+        )
+    repository_plan = prepared.lane.repositoryPlan
+    if (
+        manifest.profile_digest,
+        manifest.profile_plan_digest,
+        manifest.profile_selection_id,
+    ) != (
+        repository_plan.profileDigest,
+        repository_plan.planDigest,
+        repository_plan.selectionId,
+    ):
+        raise RuntimeError("published Dagger generation binds another admitted repository plan")
 
 
 def load_execution_records(worktree_group: Path) -> dict[str, object] | None:
@@ -257,15 +289,22 @@ def load_execution_records(worktree_group: Path) -> dict[str, object] | None:
 def journal_gate_records(worktree_group: Path, records: Sequence[dict[str, object]]) -> Path:
     """Atomically replace the per-gate terminal record journal."""
     path = records_directory(worktree_group) / _GATES_JOURNAL_NAME
-    _atomic_text(
-        path,
+    checked = validate_gate_records(records)
+    verify_selected_publications(checked, store=certificate_store(worktree_group))
+    payload = (
         json.dumps(
-            {"schemaVersion": _RECORD_SCHEMA, "recordKind": "gates", "gates": list(records)},
+            {"schemaVersion": _RECORD_SCHEMA, "recordKind": "gates", "gates": list(checked)},
             indent=2,
             sort_keys=True,
         )
-        + "\n",
+        + "\n"
     )
+    if len(payload.encode("utf-8")) > MAX_GATE_RECORD_BYTES:
+        raise CertificationContractError(
+            "certificate selection journal exceeds its byte bound",
+            ({"code": "certificate-evidence-capacity", "path": str(path)},),
+        )
+    _atomic_text(path, payload)
     return path
 
 
@@ -274,7 +313,7 @@ def _record_gate(
     gate: int,
     disposition: object,
     rail_outcomes: Sequence[Mapping[str, object]],
-    certificates: list[GateCertificate],
+    run: _PublishedGateRun,
 ) -> dict[str, object]:
     if disposition != "green":
         return {
@@ -291,23 +330,35 @@ def _record_gate(
         return _refused(gate, "unplanned-gate")
     try:
         results = _terminal_results(gate_plan, rail_outcomes)
+        return _publish_gate_result(prepared, gate_plan, results, run)
     except _TerminalEvidenceMissing as error:
         return _refused(gate, _REFUSAL_MISSING_RUN_EVIDENCE, detail=str(error))
-    try:
-        manifest = compile_gate_result_manifest(
-            lane.registry,
-            lane.certificationPlan,
-            gate_plan,
-            results,
-            GateResultAdmission(
-                profileId=lane.selectionId,
-                candidateIdentity=lane.candidate,
-                altitude=lane.certificationPlan.profileKind,
-            ),
-        )
     except CertificationContractError as error:
-        code = str(error.findings[0].get("code") or "result-manifest-invalid")
-        return _refused(gate, code)
+        return _refused(
+            gate, str(error.findings[0].get("code") or "result-manifest-invalid"), detail=str(error)
+        )
+
+
+def _publish_gate_result(
+    prepared: PreparedCertificationRun,
+    gate_plan: GatePlan,
+    results: tuple[RailResult, ...],
+    run: _PublishedGateRun,
+) -> dict[str, object]:
+    lane = prepared.lane
+    gate = gate_plan.gate
+    manifest = compile_gate_result_manifest(
+        lane.registry,
+        lane.certificationPlan,
+        gate_plan,
+        results,
+        GateResultAdmission(
+            profileId=lane.selectionId,
+            candidateIdentity=lane.candidate,
+            altitude=lane.certificationPlan.profileKind,
+        ),
+    )
+    verify_result_evidence(prepared.directory.parent, run.publication, manifest.railResults)
     store = prepared.certificate_store()
     store.publish_result_manifest(manifest)
     if manifest.disposition != "green":
@@ -323,17 +374,22 @@ def _record_gate(
         lane.admission,
         gate_plan,
         manifest,
-        certificates,
+        run.certificates,
         GateCertificateIssuanceContext(provenance=prepared.provenance),
     )
+    binding = publication_binding(prepared.directory, certificate, manifest, run.publication)
+    existing_path = store.exact_path("certificate", certificate.certificateDigest)
+    if existing_path.exists() or existing_path.is_symlink():
+        certificate = store.load_certificate(certificate.certificateDigest)
     store.publish_certificate(certificate)
-    certificates.append(certificate)
+    run.certificates.append(certificate)
     return {
         "kind": "certificate",
         "gate": gate,
         "disposition": "green",
         "certificate": certificate.certificateDigest,
         "manifest": manifest.manifestDigest,
+        "publication": binding,
         "refusalCode": None,
     }
 
@@ -476,28 +532,27 @@ def _provenance(producer: str) -> CreationProvenance:
     )
 
 
-def _persist_admission(prepared: PreparedCertificationRun) -> None:
+def _persist_admission(prepared: PreparedCertificationRun) -> PreparedCertificationRun:
+    store = prepared.certificate_store()
+    admission = prepared.lane.admission
+    existing_path = store.exact_path("admission", admission.admissionDigest)
+    if existing_path.exists() or existing_path.is_symlink():
+        original = store.load_admission(admission.admissionDigest)
+        prepared = replace(
+            prepared,
+            lane=replace(prepared.lane, admission=original),
+            provenance=original.provenance,
+        )
+    store.publish_admission(prepared.lane.admission)
     path = prepared.directory / _ADMISSION_JOURNAL_NAME
     _atomic_text(path, json.dumps(prepared.journal(), indent=2, sort_keys=True) + "\n")
-    store = prepared.certificate_store()
-    try:
-        store.publish_admission(prepared.lane.admission)
-    except CertificationContractError as error:
-        # Provenance is excluded from the semantic digest, so an unchanged
-        # rerun publishes the same admission bytes-identically under the same
-        # digest; a second publication of that exact digest is idempotent.
-        if _is_content_address_collision(error):
-            return
-        raise
-
-
-def _is_content_address_collision(error: CertificationContractError) -> bool:
-    return any(
-        str(finding.get("code")) == "content-address-collision" for finding in error.findings
-    )
+    return prepared
 
 
 def _atomic_text(path: Path, text: str) -> None:
+    require_real_directory_or_missing(path.parent.parent, purpose="quality report root")
+    require_real_directory_or_missing(path.parent, purpose="certification record root")
+    require_real_file_or_missing(path, purpose="certification journal")
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, text)
 

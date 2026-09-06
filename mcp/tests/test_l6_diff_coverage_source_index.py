@@ -15,12 +15,11 @@ import pytest
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
-from agents_remember.memory_quality.style.citations import source_index
+from agents_remember.memory_quality.style.citations import source_index, source_index_state
 from agents_remember.memory_quality.style.citations.resolution import Trees
 from agents_remember.memory_quality.style.citations.source_index import (
     SourceIndexError,
     SourceTreeChangedError,
-    _check_source_bounds,
     _publish_generation,
     _reclaim_legacy_cache_roots,
     _reclaim_legacy_root,
@@ -33,8 +32,7 @@ from agents_remember.memory_quality.style.citations.source_index import (
 )
 from agents_remember.memory_quality.style.citations.source_index_state import (
     Identity,
-    SourceFile,
-    TreeState,
+    check_source_bounds,
 )
 
 
@@ -170,22 +168,16 @@ class TestTreeAndBounds:
         trees, _ = env
         path = trees.code_root / "a.py"
         identity = Identity.read(path, "a.py")
-        source = SourceFile(
-            absolute=path,
-            identity=identity,
-            content_sha256="abc",
-        )
-        state = TreeState(directories=(), files=(source,))
         with (
-            mock.patch.object(source_index, "MAX_SOURCE_FILES", 0),
+            mock.patch.object(source_index_state, "MAX_SOURCE_FILES", 0),
             pytest.raises(SourceIndexError, match="file cap"),
         ):
-            _check_source_bounds(state)
+            check_source_bounds((identity,))
         with (
-            mock.patch.object(source_index, "MAX_SOURCE_BYTES", 1),
+            mock.patch.object(source_index_state, "MAX_SOURCE_BYTES", 1),
             pytest.raises(SourceIndexError, match="byte cap"),
         ):
-            _check_source_bounds(state)
+            check_source_bounds((identity,))
 
 
 class TestReclamation:

@@ -38,11 +38,11 @@ from unittest import mock
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
-from agents_remember.controlplane import durable_store
 from agents_remember.controlplane.agent_notifier_signals import AgentNotifierSignalCooldownStore
 from agents_remember.controlplane.expectation_rows import ExpectationRowStore
 from agents_remember.controlplane.operator_inbox_store import OperatorInboxStore
 from agents_remember.errors import HarnessControlError
+from agents_remember.kernel import file_lock
 from agents_remember.models.conversations.control_wire import (
     AdapterSnapshot,
     ControlIdentity,
@@ -223,7 +223,7 @@ class CrossStoreLockOrderTests(unittest.TestCase):
                 finally:
                     state.in_batch = previous
 
-        real_mutex_for = durable_store.thread_mutex_for
+        real_mutex_for = file_lock.thread_mutex_for
 
         def checking_mutex_for(log_path: Path) -> object:
             if getattr(state, "in_batch", False):
@@ -233,7 +233,7 @@ class CrossStoreLockOrderTests(unittest.TestCase):
         observe_calls: list[str] = []
         with (
             mock.patch.object(TerminalCatalog, "batch", flagging_batch),
-            mock.patch.object(durable_store, "thread_mutex_for", checking_mutex_for),
+            mock.patch.object(file_lock, "thread_mutex_for", checking_mutex_for),
             mock.patch(
                 "agents_remember.serving.hosted_interactions.read_control_transcript",
                 _no_transcript,
@@ -267,7 +267,7 @@ class CrossStoreLockOrderTests(unittest.TestCase):
                 finally:
                     state.in_batch = previous
 
-        real_mutex_for = durable_store.thread_mutex_for
+        real_mutex_for = file_lock.thread_mutex_for
 
         def checking_mutex_for(log_path: Path) -> object:
             if getattr(state, "in_batch", False):
@@ -285,7 +285,7 @@ class CrossStoreLockOrderTests(unittest.TestCase):
         sweeper._on_turn_state_change = events.append
         with (
             mock.patch.object(TerminalCatalog, "batch", flagging_batch),
-            mock.patch.object(durable_store, "thread_mutex_for", checking_mutex_for),
+            mock.patch.object(file_lock, "thread_mutex_for", checking_mutex_for),
             mock.patch(
                 "agents_remember.serving.hosted_interactions.read_control_transcript",
                 _no_transcript,

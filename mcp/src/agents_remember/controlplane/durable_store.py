@@ -25,10 +25,8 @@ to strict validation in the same change.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
-import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -37,6 +35,8 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from agents_remember.errors import LockCapabilityError
+from agents_remember.kernel import file_lock
 from agents_remember.kernel.atomic_write import atomic_write_text
 from agents_remember.kernel.primitives import checkout_coordination
 
@@ -316,80 +316,6 @@ def migrate_jsonl_records[RecordT: BaseModel](
         return changed
 
 
-class _LockDepth(threading.local):
-    """Per-thread nesting depth for reentrant :func:`exclusive_access` calls.
-
-    A nested acquisition on the same thread bypasses both locks and remains covered by the outer
-    frame. Other threads retain independent depth and must acquire the mutex and ``flock``.
-    """
-
-    def __init__(self) -> None:
-        self.depth: dict[Path, int] = {}
-
-
-_lock_depth = _LockDepth()
-_verified_lock_paths: set[Path] = set()
-_thread_mutexes: dict[Path, threading.RLock] = {}
-_thread_mutex_registry = threading.Lock()
-
-
-def lock_path_for(log_path: Path) -> Path:
-    """Return the sibling ``<whole-log-name>.lock`` path guarding one log.
-
-    Deployment action for this release: restart the MCP server and dashboard together. Mixed
-    builds can use ``operator-inbox.lock`` and ``operator-inbox.jsonl.lock`` for the same log and
-    therefore do not exclude one another. Do not roll or restart only one process.
-    """
-    return log_path.with_name(f"{log_path.name}.lock")
-
-
-def thread_mutex_for(log_path: Path) -> threading.RLock:
-    """Return the one reentrant in-process mutex paired with this log's ``flock``.
-
-    The mutex preserves thread exclusion independently of file-handle reuse. ``RLock`` is required
-    because :func:`exclusive_access` permits same-thread nesting through :class:`_LockDepth`; a
-    non-reentrant mutex would deadlock before that nesting rule could return. Lock acquisition is
-    always mutex first, then ``flock``.
-    """
-    path = lock_path_for(log_path)
-    mutex = _thread_mutexes.get(path)
-    if mutex is not None:
-        return mutex
-    # Concurrent first access must resolve to the same per-log mutex.
-    with _thread_mutex_registry:
-        return _thread_mutexes.setdefault(path, threading.RLock())
-
-
-def _verify_lock_capability(path: Path, store: str) -> None:
-    """Refuse a filesystem whose ``flock`` does not actually exclude.
-
-    Taken twice from two file descriptions in this one process: POSIX says the second must be
-    denied, so a success proves the lock is decorative -- NFS/SMB emulate ``flock`` with
-    per-process byte-range locks, and WSL's DrvFs ignores it. Probing the capability is
-    stronger than parsing a mount table and works the same on Linux and macOS.
-    """
-    if path in _verified_lock_paths:
-        return
-    with path.open("a+b") as first:
-        fcntl.flock(first.fileno(), fcntl.LOCK_EX)
-        try:
-            with path.open("a+b") as second:
-                try:
-                    fcntl.flock(second.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except OSError:
-                    _verified_lock_paths.add(path)
-                    return
-                fcntl.flock(second.fileno(), fcntl.LOCK_UN)
-        finally:
-            fcntl.flock(first.fileno(), fcntl.LOCK_UN)
-    raise UnsafeLockFilesystemError(
-        f"the {store} log's lock ({path}) is on a filesystem where flock does not exclude "
-        f"(NFS, SMB or WSL DrvFs). The MCP server and the dashboard share a host and serialize "
-        f"through this lock; on this filesystem they would not, and records would be lost "
-        f"silently. Put the coordination root on a local POSIX filesystem."
-    )
-
-
 @contextmanager
 def exclusive_access(log_path: Path, ownership: StoreOwnership) -> Iterator[None]:
     """Serialize appends and rewrites of one log against every other writer of that log.
@@ -404,11 +330,11 @@ def exclusive_access(log_path: Path, ownership: StoreOwnership) -> Iterator[None
 
     Re-entrant within one thread, because ``flock`` treats two file descriptions on one path as
     separate holders and would deadlock a nested acquisition against itself. See
-    :class:`_LockDepth` for why the counter is per-thread and not per-process.
+    :class:`kernel.file_lock._LockDepth` for why the counter is per-thread and not per-process.
 
     TWO locks, taken in ONE order, always: the in-process mutex first and the log's ``flock``
-    inside it. :func:`thread_mutex_for` says what the mutex adds over ``flock`` and what it
-    deliberately does not claim to add. The order is what makes the pair safe -- taking ``flock``
+    inside it. :func:`kernel.file_lock.thread_mutex_for` says what the mutex adds over ``flock``
+    and what it deliberately does not claim to add. The order is what makes the pair safe -- taking ``flock``
     first would leave a thread holding a lock every other PROCESS waits on while it queues behind
     a thread of its own, and it would put the once-per-path capability probe (which takes that
     same ``flock`` twice) behind a hold this process already has. Mutex first, so a thread that
@@ -426,26 +352,12 @@ def exclusive_access(log_path: Path, ownership: StoreOwnership) -> Iterator[None
     deadlocked the serving daemon in production on 2026-08-05 -- an ABBA no single store's own
     ordering rule could see, because each store's order was internally correct.
     """
-    path = _checked_lock_path_for(log_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    depth = _lock_depth.depth.get(path, 0)
-    if depth:
-        _lock_depth.depth[path] = depth + 1
-        try:
+    checkout_coordination.require_durable_write_target(log_path)
+    try:
+        with file_lock.exclusive_file_lock(log_path, ownership.store):
             yield
-        finally:
-            _lock_depth.depth[path] = depth
-        return
-    with thread_mutex_for(log_path):
-        _verify_lock_capability(path, ownership.store)
-        with path.open("a+b") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            _lock_depth.depth[path] = 1
-            try:
-                yield
-            finally:
-                _lock_depth.depth.pop(path, None)
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except LockCapabilityError as error:
+        raise UnsafeLockFilesystemError(str(error)) from error
 
 
 def require_lock_held(log_path: Path, store: str) -> None:
@@ -462,7 +374,7 @@ def require_lock_held(log_path: Path, store: str) -> None:
     thread's own lock rather than about a process-wide declaration, so it is true or false for
     real in every process, test hosts included.
     """
-    if not _lock_depth.depth.get(lock_path_for(log_path), 0):
+    if not file_lock.lock_held(log_path):
         raise DurableStoreError(
             f"{store}: rewrite attempted without holding {log_path.name}'s lock. Hold "
             f"exclusive_access across the read AND the rewrite, or use the store's compact()."
@@ -514,11 +426,6 @@ def rewrite_lines(log_path: Path, lines: list[str], ownership: StoreOwnership) -
     """
     _require_rewrite_access(log_path, ownership.store)
     atomic_write_text(log_path, "".join(f"{line}\n" for line in lines))
-
-
-def _checked_lock_path_for(log_path: Path) -> Path:
-    checkout_coordination.require_durable_write_target(log_path)
-    return lock_path_for(log_path)
 
 
 def _prepare_append_target(log_path: Path) -> None:

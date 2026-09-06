@@ -16,12 +16,15 @@ installation environment.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 from agents_remember.errors import CitationCacheError
+from agents_remember.memory_quality.style.citations.candidate.git_source import GitSourceCandidate
 from agents_remember.memory_quality.style.citations.source_index_cache import (
     ManagedCacheAuthority,
 )
+from agents_remember.memory_quality.style.citations.source_index_state import candidate_tree
 
 
 @dataclass(frozen=True)
@@ -31,10 +34,31 @@ class Trees:
     code_root: Path
     memory_root: Path
     cache_authority: ManagedCacheAuthority | None = None
+    candidate_tree: str | None = None
+
+    def __post_init__(self) -> None:
+        candidate_tree(self.candidate_tree)
+
+    @cached_property
+    def source_candidate(self) -> GitSourceCandidate | None:
+        if self.candidate_tree is None:
+            return None
+        return GitSourceCandidate(self.code_root.resolve(), self.candidate_tree)
 
     def resolve(self, path: str) -> Path | None:
-        for root in (self.code_root, self.memory_root):
+        if self.source_candidate is not None:
+            candidate = self.source_candidate.resolve(path)
+            if candidate is not None:
+                return candidate
+            roots = (self.memory_root,)
+        else:
+            roots = (self.code_root, self.memory_root)
+        for root in roots:
             candidate = root / path
+            if self.candidate_tree is not None and not candidate.resolve().is_relative_to(
+                self.memory_root.resolve()
+            ):
+                continue
             if candidate.is_file():
                 return candidate
         return None

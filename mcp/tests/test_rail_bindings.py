@@ -271,16 +271,6 @@ def test_unbound_required_artifact_refuses_the_manifest_not_a_fake_digest(tmp_pa
         )
 
 
-_DOCUMENTED_ARTIFACT_GAPS = {
-    "dashboard-e2e-result": "dashboard-browser-e2e runs playwright (); no "
-    "persisted result artifact path exists for the executor to read (clean-room Gate-4 rail).",
-    "provider-integration-result": "provider-runtime-integration runs pytest; no persisted "
-    "artifact file is declared or written for the executor to bind (clean-room Gate-4 rail).",
-    "teardown-proof": "teardown-process-cleanliness only reads --summary {reports}/"
-    "ambient-role-chat-e2e/summary.json; it writes no separate proof artifact file.",
-}
-
-
 def test_artifact_map_covers_every_declared_required_on_pass_artifact() -> None:
     rb = _bindings()
     profile = json.loads(_PROFILE.read_text(encoding="utf-8"))
@@ -290,12 +280,9 @@ def test_artifact_map_covers_every_declared_required_on_pass_artifact() -> None:
             if artifact.get("requiredOnPass", True) is not False:
                 declared.add(artifact["artifactId"])
     mapped = set(rb.ARTIFACT_FILE_PATHS)
-    assert mapped <= declared
-    missing = declared - mapped
-    assert missing == set(_DOCUMENTED_ARTIFACT_GAPS)
-    # Sanity: the mapped ids that matter for a real Gate-1..3 run are bound.
-    assert {"python-coverage-data", "python-coverage-json", "python-suite-result"} <= mapped
-    assert mapped <= declared
+    assert mapped == declared
+    publications = {item["path"] for item in profile["publishedArtifacts"]}
+    assert set(rb.ARTIFACT_FILE_PATHS.values()) <= publications
 
 
 def test_mapped_suite_result_binds_the_pytest_phases_file() -> None:
@@ -322,8 +309,9 @@ def test_mapped_suite_result_binds_the_pytest_phases_file() -> None:
 
 def test_dashboard_coverage_map_targets_the_vitest_coverage_json() -> None:
     rb = _bindings()
-    assert rb.ARTIFACT_FILE_PATHS["dashboard-coverage-data"].endswith(
-        "coverage/coverage-final.json"
+    assert rb.ARTIFACT_FILE_PATHS["dashboard-coverage-data"] == "dashboard-coverage.json"
+    assert rb.artifact_source_path("dashboard-coverage-data", reports="/reports") == (
+        "/workspace/dashboard/coverage/coverage-final.json"
     )
     bound, gaps = rb.build_artifact_bindings(
         [{"artifactId": "dashboard-coverage-data", "requiredOnPass": True}],
@@ -358,6 +346,9 @@ class _FakeContainer:
     async def stderr(self) -> str:
         return ""
 
+    async def exists(self, _path: str, **_: object) -> bool:
+        return True
+
     def file(self, _path: str) -> Any:
         return _FakeFile(size=32)
 
@@ -388,13 +379,13 @@ def test_emission_never_mutates_the_shared_execution_container(tmp_path) -> None
     rb = _bindings()
     rail = SimpleNamespace(
         identity_key="python-suite@1.0.0",
-        evidence_contract=[{"evidenceId": "python-suite-evidence"}],
+        evidence_contract=[{"evidenceId": "python-suite-evidence", "maxBytes": 1024}],
         output_artifacts=[
             {"artifactId": "python-coverage-data", "requiredOnPass": True},
             {"artifactId": "python-suite-result", "requiredOnPass": True},
         ],
     )
-    progress = SimpleNamespace()
+    progress = SimpleNamespace(retained_captures={}, retained_files={})
     progress.container = _FakeContainer(output="suite output")
 
     bindings, container = asyncio.run(_run_attach(progress, rail, reports=str(tmp_path)))

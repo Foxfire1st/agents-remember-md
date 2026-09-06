@@ -9,7 +9,11 @@ import threading
 import time
 from unittest import mock
 
-from agents_remember.memory_quality.style.citations import source_index, source_index_database
+from agents_remember.memory_quality.style.citations import (
+    source_index,
+    source_index_database,
+    source_index_state,
+)
 from agents_remember.memory_quality.style.citations.resolution import Trees
 from test_memory_citation_source_index import MCP_SRC, IndexCase
 
@@ -37,7 +41,7 @@ class PublicationAndBoundsTests1(IndexCase):
         self.assertNotIn(self.memory.resolve(), paths.root.parents)
         self.assertLess(int(paths.slot.name.removeprefix("slot-")), source_index.CACHE_SLOT_COUNT)
         with (
-            mock.patch.object(source_index, "MAX_SOURCE_FILE_BYTES", 4),
+            mock.patch.object(source_index_state, "MAX_SOURCE_FILE_BYTES", 4),
             self.assertRaises(source_index.SourceIndexError),
         ):
             source_index.open_repository_index(self.trees)

@@ -130,6 +130,7 @@ async def _verify_required_profile_publications(
     plan: FrozenProfilePlan,
     *,
     reports: str,
+    output: dagger.Container,
 ) -> None:
     """Consume the admitted publication policies before terminal publication."""
 
@@ -145,7 +146,7 @@ async def _verify_required_profile_publications(
         name = f"publication:{relative}"
         progress.attempted.append(name)
         path = f"{reports}/{relative}"
-        exists = await progress.container.exists(
+        exists = await output.exists(
             path,
             expected_type=dagger.ExistsType.REGULAR_TYPE,
             do_not_follow_symlinks=True,
@@ -153,7 +154,7 @@ async def _verify_required_profile_publications(
         maximum = publication.get("maxBytes")
         if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum <= 0:
             raise ValueError(f"publication {relative} has an invalid size contract")
-        size = await progress.container.file(path).size() if exists else None
+        size = await output.file(path).size() if exists else None
         if size is None or size > maximum:
             progress.exit_code = 66
             progress.step_exit_codes[name] = progress.exit_code

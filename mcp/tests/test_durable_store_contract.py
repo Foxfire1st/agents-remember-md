@@ -40,7 +40,6 @@ from unittest.mock import patch
 import pytest
 from agents_remember.application.runtime import startup as server_startup
 from agents_remember.controlplane import attention_dismissals as attention_module
-from agents_remember.controlplane import durable_store
 from agents_remember.controlplane.attention_dismissals import (
     AttentionDismissalRecord,
     AttentionDismissalStore,
@@ -58,10 +57,8 @@ from agents_remember.controlplane.durable_store import (
     declare_process_role,
     declared_process_role,
     exclusive_access,
-    lock_path_for,
     require_lock_held,
     rewrite_lines,
-    thread_mutex_for,
 )
 from agents_remember.controlplane.expectation_rows import (
     Expectation,
@@ -76,7 +73,8 @@ from agents_remember.controlplane.orchestration_nudges import (
 )
 from agents_remember.controlplane.records import GateAnchor, GateRecord, create_gate
 from agents_remember.controlplane.store import GateStore
-from agents_remember.kernel import atomic_write
+from agents_remember.kernel import atomic_write, file_lock
+from agents_remember.kernel.file_lock import lock_path_for, thread_mutex_for
 from agents_remember.mcp import server as server_module
 from agents_remember_test_support.testing.global_state import preserve_owned_mutable_state
 from pydantic import ValidationError
@@ -129,7 +127,7 @@ class _IgnoredFlock:
     filesystem does and no test can mount -- so the substitution is at the one boundary the probe
     talks to, and it reproduces what DrvFs does literally: accept the call, take no lock. Every
     other name (``LOCK_EX``, ``LOCK_NB``, ``LOCK_UN``) forwards untouched, and only
-    ``durable_store``'s own module reference is swapped, so nothing else in the interpreter
+    ``file_lock``'s own module reference is swapped, so nothing else in the interpreter
     silently loses its locks while a test runs.
     """
 
@@ -394,7 +392,7 @@ class UnsafeLockFilesystemTests(_TempRoot):
         entered: list[str] = []
 
         with (
-            patch.object(durable_store, "fcntl", _IgnoredFlock()),
+            patch.object(file_lock, "fcntl", _IgnoredFlock()),
             self.assertRaises(UnsafeLockFilesystemError) as raised,
             exclusive_access(log, GATE_OWNERSHIP),
         ):
@@ -421,7 +419,7 @@ class UnsafeLockFilesystemTests(_TempRoot):
         store = GateStore(self.root)
         gate = create_gate("agent-question", gate_id="G1", now=NOW.isoformat())
 
-        with patch.object(durable_store, "fcntl", _IgnoredFlock()):
+        with patch.object(file_lock, "fcntl", _IgnoredFlock()):
             with self.assertRaises(UnsafeLockFilesystemError):
                 store.append(gate)
             self.assertFalse(self._log().exists())

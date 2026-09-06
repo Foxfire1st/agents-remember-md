@@ -80,7 +80,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from agents_remember.controlplane.durable_store import lock_path_for
+from agents_remember.kernel.file_lock import lock_path_for
 from agents_remember.observer.store import WORKSPACE_CURSOR_FILE, WORKSPACE_LOCK_FILE
 from agents_remember.serving.agent_notifier_heartbeat import agent_notifier_heartbeat_path
 from agents_remember.serving.projections.paths import drift_snapshot_dir, observer_logs_root
@@ -141,7 +141,7 @@ _EXCLUDED_WORKSPACE_NAMES = frozenset(
     }
 )
 
-#: The suffix ``controlplane.durable_store.lock_path_for`` gives a ``.jsonl`` control-plane log,
+#: The suffix ``kernel.file_lock.lock_path_for`` gives a ``.jsonl`` control-plane log,
 #: DERIVED from that function rather than spelled out, because spelling it out is what broke:
 #: this filter carried the literal ``"operator-inbox.lock"`` while ``lock_path_for`` had moved to
 #: ``operator-inbox.jsonl.lock``, so the exclusion silently stopped matching anything.

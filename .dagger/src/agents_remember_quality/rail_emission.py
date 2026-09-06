@@ -1,125 +1,156 @@
-"""Container-side per-rail emission that attaches real bindings to outcomes.
-
-Kept out of main.py so the executor module stays under the file-size limit.
-The bindings themselves are built by :mod:; this module only
-observes the rail's real container output and real artifact files and hands
-them to the binding builders.
-"""
+"""Observe rail evidence without changing the next rail's execution container."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from dataclasses import dataclass
 
+import dagger
 from dagger import ReturnType
 
 from agents_remember_quality import rail_bindings
+from agents_remember_quality.profile_plan import FrozenRail
+from agents_remember_quality.profile_results import QualityProgress
 
-RAIL_EVIDENCE_ROOT = "/tmp/ar-quality/rail-evidence"
+RAIL_EVIDENCE_ROOT = "rail-evidence"
+
+
+@dataclass(frozen=True)
+class RailOutputCapture:
+    """Observed output and explicit unavailable streams; empty is still observed."""
+
+    text: str
+    unavailable: tuple[str, ...]
+
+
+async def terminal_rail_outcome(
+    progress: QualityProgress, rail: FrozenRail, *, reports: str, executed: bool
+) -> dict[str, object]:
+    """Bind only the actual executed terminal handle and preserve its failure status."""
+    code = progress.step_exit_codes.get(rail.identity, 0)
+    status = (
+        "skipped"
+        if rail.identity in progress.skipped
+        else "pass"
+        if code in rail.execution.get("successExitCodes", [])
+        else "fail"
+    )
+    outcome: dict[str, object] = {"status": status, "exitCode": code}
+    if status == "fail":
+        outcome.update(
+            exitCode=code or 1,
+            failureCode=str(progress.failure_details.get(rail.identity, f"rail-exit-{code or 1}")),
+        )
+    if executed:
+        outcome.update(
+            await attach_rail_terminal_bindings(
+                progress, rail, reports=reports, include_artifacts=status != "skipped"
+            )
+        )
+    gaps = outcome.get("unboundRequiredArtifacts")
+    missing_known = isinstance(gaps, list) and any(
+        isinstance(artifact, str) and artifact in rail_bindings.ARTIFACT_FILE_PATHS
+        for artifact in gaps
+    )
+    if (outcome.get("unavailableEvidenceStreams") or missing_known) and status == "pass":
+        outcome.update(status="fail", exitCode=66, failureCode="rail-evidence-unavailable")
+        progress.step_exit_codes[rail.identity] = 66
+        progress.exit_code = 66
+        progress.completed.remove(rail.identity)
+        progress.failure_details[rail.identity] = (
+            "required rail artifact or output capture is unavailable"
+        )
+    return outcome
 
 
 async def attach_rail_terminal_bindings(
-    progress: Any,
-    rail: Any,
-    *,
-    reports: str,
+    progress: QualityProgress, rail: FrozenRail, *, reports: str, include_artifacts: bool = True
 ) -> dict[str, object]:
-    """Attach real per-rail evidence + artifact bindings to a passed rail.
-
-    Evidence is the bounded capture of the rail's own stdout/stderr read from
-    the container; the reference names the canonical executor evidence-log path
-    under RAIL_EVIDENCE_ROOT.  Artifacts bind only files the repository
-    runner verifiably writes into the exported reports directory; any
-    required-on-pass artifact without an observed file is journaled as a gap,
-    never fabricated.
-
-    This function NEVER mutates the execution container: it never reassigns
-    progress.container and every inspection exec runs on a detached handle,
-    so the container the next rail executes on is byte-identical to the one
-    this rail finished on.
-    """
+    """Retain actual bytes/files separately from the shared execution handle."""
     captured = await capture_rail_output(progress.container)
-    log_path = f"{RAIL_EVIDENCE_ROOT}/{rail.identity_key}.log"
+    relative = f"{RAIL_EVIDENCE_ROOT}/{rail.identity_key}.log"
     evidence_ids = tuple(
         str(item["evidenceId"])
         for item in rail.evidence_contract
         if isinstance(item.get("evidenceId"), str)
     )
-    evidence = rail_bindings.build_evidence_bindings(
-        evidence_ids,
-        captured,
-        reference=log_path,
-    )
-    artifacts, gaps = rail_bindings.build_artifact_bindings(
-        rail.output_artifacts,
-        await observed_artifact_files(progress.container, reports, rail.output_artifacts),
-    )
-    bindings: dict[str, object] = {
-        "evidence": evidence,
-        "artifacts": artifacts,
-    }
+    evidence: list[dict[str, object]] = []
+    if evidence_ids:
+        maximum = min(
+            rail_bindings.MAX_CAPTURE_BYTES,
+            *(int(item["maxBytes"]) for item in rail.evidence_contract),
+        )
+        retained = rail_bindings.bounded_capture_bytes(captured.text, max_bytes=maximum)
+        progress.retained_captures[relative] = retained
+        if not captured.unavailable:
+            evidence = rail_bindings.build_evidence_bindings(
+                evidence_ids, retained, reference=relative
+            )
+    output_artifacts = rail.output_artifacts if include_artifacts else ()
+    observed = await observed_artifact_files(progress.container, reports, output_artifacts)
+    for artifact_id, record in observed.items():
+        source = rail_bindings.artifact_source_path(artifact_id, reports=reports)
+        progress.retained_files[record.path] = progress.container.file(source)
+    artifacts, gaps = rail_bindings.build_artifact_bindings(output_artifacts, observed)
+    bindings: dict[str, object] = {"evidence": evidence, "artifacts": artifacts}
     if gaps:
         bindings["unboundRequiredArtifacts"] = gaps
+    if captured.unavailable and evidence_ids:
+        bindings["unavailableEvidenceStreams"] = list(captured.unavailable)
     return bindings
 
 
-async def capture_rail_output(container: Any) -> str:
-    """Read the bounded stdout+stderr of the rail's last exec, if exposed."""
+async def capture_rail_output(container: dagger.Container) -> RailOutputCapture:
+    """Read both streams before any detached artifact-inspection execution."""
     parts: list[str] = []
+    unavailable: list[str] = []
     for stream_name in ("stdout", "stderr"):
         try:
             value = await getattr(container, stream_name)()
-        except Exception:
+        except (dagger.DaggerError, OSError):
+            unavailable.append(stream_name)
             continue
-        if isinstance(value, str) and value:
+        if not isinstance(value, str):
+            unavailable.append(stream_name)
+        elif value:
             parts.append(value)
-    return "\n".join(parts)
+    return RailOutputCapture("\n".join(parts), tuple(unavailable))
 
 
 async def observed_artifact_files(
-    container: Any,
-    reports: str,
-    output_artifacts: Sequence[Mapping[str, object]],
+    container: dagger.Container, reports: str, output_artifacts: Sequence[Mapping[str, object]]
 ) -> dict[str, rail_bindings.ObservedFile]:
-    """Digest the repository-produced artifact files that actually exist.
-
-    File sizes are read with the read-only file API and digests are computed on
-    a detached exec handle; the shared container is never extended.
-    """
+    """Observe regular producer files; retain report-relative semantic locators."""
     observed: dict[str, rail_bindings.ObservedFile] = {}
     for declaration in output_artifacts:
         artifact_id = declaration.get("artifactId")
-        artifact_key = artifact_id if isinstance(artifact_id, str) else None
-        file_name = (
-            rail_bindings.ARTIFACT_FILE_PATHS.get(artifact_key)
-            if artifact_key is not None
-            else None
-        )
-        if file_name is None or artifact_key is None:
+        if not isinstance(artifact_id, str):
             continue
-        path = file_name if file_name.startswith("/") else f"{reports}/{file_name}"
-        try:
-            size = await container.file(path).size()
-        except Exception:
+        relative = rail_bindings.ARTIFACT_FILE_PATHS.get(artifact_id)
+        if relative is None:
             continue
-        digest_handle = await container.with_exec(["sha256sum", path], expect=ReturnType.ANY).sync()
-        digest = await digest_handle.stdout()
-        digest_text = (
-            digest.strip().split()[0] if isinstance(digest, str) and digest.strip() else None
-        )
-        if digest_text is None or len(digest_text) != 64:
-            continue
-        observed[artifact_key] = rail_bindings.ObservedFile(
-            path=path,
-            size=int(size),
-            sha256=digest_text,
-        )
+        path = rail_bindings.artifact_source_path(artifact_id, reports=reports)
+        record = await _observed_file(container, path=path, relative=relative)
+        if record is not None:
+            observed[artifact_id] = record
     return observed
 
 
-__all__ = [
-    "RAIL_EVIDENCE_ROOT",
-    "attach_rail_terminal_bindings",
-    "capture_rail_output",
-    "observed_artifact_files",
-]
+async def _observed_file(
+    container: dagger.Container, *, path: str, relative: str
+) -> rail_bindings.ObservedFile | None:
+    try:
+        exists = await container.exists(
+            path, expected_type=dagger.ExistsType.REGULAR_TYPE, do_not_follow_symlinks=True
+        )
+        if not exists:
+            return None
+        size = await container.file(path).size()
+        handle = await container.with_exec(["sha256sum", path], expect=ReturnType.ANY).sync()
+        output = await handle.stdout()
+    except (dagger.DaggerError, OSError):
+        return None
+    digest = output.strip().split()[0] if isinstance(output, str) and output.strip() else ""
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        return None
+    return rail_bindings.ObservedFile(path=relative, size=int(size), sha256=digest)

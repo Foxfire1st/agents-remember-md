@@ -104,17 +104,41 @@ class PublishedQualityManifest:
             raise PublishedQualityManifestError(_MANIFEST_ERROR) from error
 
 
+def published_manifest_payload(manifest: PublishedQualityManifest) -> dict[str, object]:
+    """Serialize the complete accepted snapshot for an exact retained-generation binding."""
+    payload: dict[str, object] = {
+        "schemaVersion": manifest.schema_version,
+        "generation": manifest.generation,
+        "candidateTree": manifest.candidate_tree,
+        "profileDigest": manifest.profile_digest,
+        "profilePlanDigest": manifest.profile_plan_digest,
+        "profileSelectionId": manifest.profile_selection_id,
+        "executorAdapterId": manifest.executor_adapter_id,
+        "resultDecoder": manifest.result_decoder.model_dump(mode="json"),
+        "files": {
+            name: {"sha256": record.sha256, "size": record.size}
+            for name, record in manifest.files.items()
+        },
+        "dependencies": manifest.dependencies.model_dump(mode="json"),
+    }
+    if manifest.attestation is not None:
+        payload["attestation"] = dict(manifest.attestation)
+    if manifest.runtime_authority_digest is not None:
+        payload["runtimeAuthorityDigest"] = manifest.runtime_authority_digest
+    return payload
+
+
 def load_published_quality_manifest(destination: Path) -> PublishedQualityManifest:
     """Read and validate the sole pointer to the current immutable generation."""
 
     try:
         raw: object = json.loads((destination / REPORT_SET_MANIFEST).read_text(encoding="utf-8"))
-        return _parse_manifest(raw)
+        return parse_published_quality_manifest(raw)
     except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
         raise PublishedQualityManifestError(_MANIFEST_ERROR) from error
 
 
-def _parse_manifest(raw: object) -> PublishedQualityManifest:
+def parse_published_quality_manifest(raw: object) -> PublishedQualityManifest:
     if not isinstance(raw, dict):
         raise ValueError("quality manifest root must be an object")
     if set(raw) - _ALLOWED_ROOT_FIELDS:

@@ -3,7 +3,7 @@
   "semanticRevision": "1.0.0",
   "repositoryId": "agents-remember",
   "profileId": "agents-remember-certification",
-  "profileDigest": "22ff8512d7b7f13f2128e2259d64aa8f5077f931d47d055e6f9f812d55cee50f",
+  "profileDigest": "8a3385ad68a89ebdc1e6ffc64296ad7a2eb7039cd5ba20384790150a60ec498b",
   "selections": [
     {
       "selectionId": "closeout-full",
@@ -542,7 +542,7 @@
       "evidenceContract": [
         {
           "evidenceId": "ambient-role-chat-e2e-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -616,7 +616,7 @@
       "evidenceContract": [
         {
           "evidenceId": "causal-preflight-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -692,7 +692,7 @@
       "evidenceContract": [
         {
           "evidenceId": "codex-read-only-probe-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -777,7 +777,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-browser-e2e-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -794,11 +794,14 @@
         "adapterId": "dashboard-browser-e2e-adapter",
         "workingDirectory": "dashboard",
         "command": [
+          "env",
+          "PLAYWRIGHT_JSON_OUTPUT_FILE={reports}/dashboard-e2e-result.json",
           "npm",
           "run",
           "e2e",
           "--",
-          "--fail-on-flaky-tests"
+          "--fail-on-flaky-tests",
+          "--reporter=line,json"
         ],
         "environmentContract": [
           "AR_QUALITY_INVOCATION",
@@ -850,7 +853,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-build-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -914,7 +917,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-codegen-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -980,7 +983,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-diff-coverage-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1044,7 +1047,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-lint-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1103,7 +1106,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-prerequisites-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1166,7 +1169,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-suite-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1246,7 +1249,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dashboard-typecheck-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1305,7 +1308,7 @@
       "evidenceContract": [
         {
           "evidenceId": "dependency-prerequisites-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1366,7 +1369,7 @@
       "evidenceContract": [
         {
           "evidenceId": "evidence-lifecycle-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1427,7 +1430,7 @@
       "evidenceContract": [
         {
           "evidenceId": "file-size-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1491,7 +1494,7 @@
       "evidenceContract": [
         {
           "evidenceId": "generated-harness-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1550,7 +1553,7 @@
       "evidenceContract": [
         {
           "evidenceId": "generated-projection-types-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1609,7 +1612,7 @@
       "evidenceContract": [
         {
           "evidenceId": "generated-runtime-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1668,7 +1671,7 @@
       "evidenceContract": [
         {
           "evidenceId": "generated-skills-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1727,7 +1730,7 @@
       "evidenceContract": [
         {
           "evidenceId": "layering-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1801,7 +1804,7 @@
       "evidenceContract": [
         {
           "evidenceId": "provider-runtime-integration-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1823,7 +1826,10 @@
           "pytest",
           "-q",
           "-n=0",
-          "mcp/tests/test_provider_workflow_integration.py"
+          "-p",
+          "agents_remember_test_support.testing.pytest_phase_reporter",
+          "mcp/tests/test_provider_workflow_integration.py",
+          "--ar-pytest-phase-report={reports}/provider-integration-result.json"
         ],
         "environmentContract": [
           "AR_QUALITY_INVOCATION",
@@ -1870,7 +1876,7 @@
       "evidenceContract": [
         {
           "evidenceId": "pyright-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -1936,7 +1942,7 @@
       "evidenceContract": [
         {
           "evidenceId": "quality-config-scope-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2014,7 +2020,7 @@
       "evidenceContract": [
         {
           "evidenceId": "python-crap-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2096,7 +2102,7 @@
       "evidenceContract": [
         {
           "evidenceId": "python-diff-coverage-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2171,7 +2177,7 @@
       "evidenceContract": [
         {
           "evidenceId": "python-suite-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2266,7 +2272,7 @@
       "evidenceContract": [
         {
           "evidenceId": "radon-cc-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2334,7 +2340,7 @@
       "evidenceContract": [
         {
           "evidenceId": "radon-mi-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2400,7 +2406,7 @@
       "evidenceContract": [
         {
           "evidenceId": "ruff-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2463,7 +2469,7 @@
       "evidenceContract": [
         {
           "evidenceId": "ruff-format-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2527,7 +2533,7 @@
       "evidenceContract": [
         {
           "evidenceId": "runtime-capability-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2590,7 +2596,7 @@
       "evidenceContract": [
         {
           "evidenceId": "test-selection-ownership-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2679,7 +2685,7 @@
       "evidenceContract": [
         {
           "evidenceId": "teardown-process-cleanliness-evidence",
-          "mediaType": "application/json",
+          "mediaType": "application/octet-stream",
           "maxBytes": 10485760
         }
       ],
@@ -2701,7 +2707,9 @@
           "agents_remember_test_support.code_quality.profile_rails",
           "verify-teardown",
           "--summary",
-          "{reports}/ambient-role-chat-e2e/summary.json"
+          "{reports}/ambient-role-chat-e2e/summary.json",
+          "--proof",
+          "{reports}/teardown-proof.json"
         ],
         "environmentContract": [
           "AR_QUALITY_INVOCATION",
@@ -2730,7 +2738,7 @@
       "selectorId": "agents-remember-test-selection",
       "schemaVersion": "repository-selector-result/v2",
       "version": "2.0.0",
-      "configurationDigest": "c1127132eefacf3ac962f2b438949ba9cbeb4484a1d21dbb82a36570c3130458",
+      "configurationDigest": "c140e8eb3623b81676de126c5d3cf07698c18a3a1519cc464622c7ec2ec8eaaf",
       "inputUniverse": [
         "configuration and generated projections",
         "fixtures support and plugins",
@@ -2790,7 +2798,7 @@
       "planArgument": "execution-manifest",
       "reportsField": "reports",
       "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-      "runtimeDigest": "2b2ffeb5bc68c1f23f0ca5c29dc6cddaaa9a6b6831b340c48c6ffe6d9c1ac77f",
+      "runtimeDigest": "f45228d2bf00df9e4d0894e0cf3b8f4c977f00e5b46931245ba4343f68b205d4",
       "consumingGates": [
         1,
         2,
@@ -2969,12 +2977,39 @@
       ]
     },
     {
+      "path": "dashboard-coverage.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [
+        2
+      ]
+    },
+    {
+      "path": "dashboard-e2e-result.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [
+        4
+      ]
+    },
+    {
       "path": "dashboard-suite-result.json",
       "mediaType": "application/json",
       "required": false,
       "maxBytes": 134217728,
       "publisherGates": [
         2
+      ]
+    },
+    {
+      "path": "provider-integration-result.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [
+        4
       ]
     },
     {
@@ -3022,6 +3057,303 @@
         1,
         2,
         3,
+        4
+      ]
+    },
+    {
+      "path": "rail-evidence/ambient-role-chat-e2e@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        4
+      ]
+    },
+    {
+      "path": "rail-evidence/causal-preflight@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/codex-read-only-probe@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        4
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-browser-e2e@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        4
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-build@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-codegen@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-diff-coverage@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        3
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-lint@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-prerequisites@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-suite@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        2
+      ]
+    },
+    {
+      "path": "rail-evidence/dashboard-typecheck@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/dependency-prerequisites@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/evidence-lifecycle@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/file-size@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/generated-harness@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/generated-projection-types@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/generated-runtime@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/generated-skills@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/layering@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/provider-runtime-integration@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        4
+      ]
+    },
+    {
+      "path": "rail-evidence/pyright@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/python-crap@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        3
+      ]
+    },
+    {
+      "path": "rail-evidence/python-diff-coverage@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        3
+      ]
+    },
+    {
+      "path": "rail-evidence/python-suite@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        2
+      ]
+    },
+    {
+      "path": "rail-evidence/quality-config-scope@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/radon-cc@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/radon-mi@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/ruff-format@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/ruff@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/runtime-capability@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "rail-evidence/teardown-process-cleanliness@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        4
+      ]
+    },
+    {
+      "path": "rail-evidence/test-selection-ownership@1.0.0.log",
+      "mediaType": "application/octet-stream",
+      "required": false,
+      "maxBytes": 4194304,
+      "publisherGates": [
+        1
+      ]
+    },
+    {
+      "path": "teardown-proof.json",
+      "mediaType": "application/json",
+      "required": false,
+      "maxBytes": 134217728,
+      "publisherGates": [
         4
       ]
     }

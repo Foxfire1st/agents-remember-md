@@ -149,7 +149,10 @@ class CleanQualityExecutorTests(unittest.TestCase):
             f"--execution-manifest={(sandbox / 'manifest.json').as_posix()}",
             calls[0],
         )
-        self.assertEqual(len(manifest["publishedArtifacts"]), 15)
+        profile = json.loads(
+            (source / "mcp/certification-profile-v1.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["publishedArtifacts"], profile["publishedArtifacts"])
         self.assertNotIn("--attempt-nonce", " ".join(calls[0]))
         self.assertNotIn("--candidate-head", " ".join(calls[0]))
         self.assertNotIn("docker", " ".join(item for call in calls for item in call).lower())

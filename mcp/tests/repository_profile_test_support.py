@@ -413,6 +413,19 @@ def fixture_profile(fixture: FixtureRepository = NODE_FIXTURE) -> RepositoryCert
             ),
         ),
     )
+    captures = tuple(
+        PublishedArtifactDefinition(
+            path=f"rail-evidence/{rail.identity.key}.log",
+            mediaType="application/octet-stream",
+            required=False,
+            maxBytes=4 * 1024 * 1024,
+            publisherGates=(rail.gate,),
+        )
+        for rail in profile.rails
+    )
+    profile = profile.model_copy(
+        update={"publishedArtifacts": (*profile.publishedArtifacts, *captures)}
+    )
     return profile.model_copy(update={"profileDigest": repository_profile_digest(profile)})
 
 
@@ -525,7 +538,7 @@ def _rail(fixture: FixtureRepository, spec: _RailSpec) -> RepositoryRailDefiniti
         evidenceContract=(
             RailEvidenceContract(
                 evidenceId=f"{spec.rail_id}-evidence",
-                mediaType="application/json",
+                mediaType="application/octet-stream",
                 maxBytes=4096,
             ),
         ),
@@ -571,6 +584,7 @@ class FakeContainer:
         self.environment: list[tuple[object, ...]] = []
         self.operations: list[tuple[object, ...]] = []
         self.image: str | None = None
+        self.stdout_value = ""
 
     def from_(self, image: str) -> FakeContainer:
         self.image = image
@@ -587,8 +601,13 @@ class FakeContainer:
         return self
 
     def with_exec(self, command: list[str], **_kwargs: object) -> FakeContainer:
+        if command[0] == "sha256sum":
+            detached = FakeContainer([])
+            detached.stdout_value = hashlib.sha256(self.files[command[1]].encode()).hexdigest()
+            return detached
         self.commands.append(command)
         self.operations.append(("exec", *command))
+        self._producer_fixture_files(command)
         if "agents_remember_test_support.code_quality.profile_selection" in command:
             output = command[command.index("--output") + 1]
             self.files[output] = json.dumps(
@@ -630,12 +649,48 @@ class FakeContainer:
                 self.files[command[script_index + offset]] = '{"status":"passed"}\n'
         return self
 
+    def _producer_fixture_files(self, command: list[str]) -> None:
+        """Populate known producer outputs for interpreter tests, not acceptance evidence."""
+        paths: list[str] = []
+        if "python-suite" in command:
+            reports = command[command.index("--reports") + 1]
+            paths.extend(
+                f"{reports}/{name}"
+                for name in ("coverage.data", "coverage.json", "pytest-phases.json")
+            )
+        if "test:coverage" in command:
+            paths.extend(
+                (
+                    "/workspace/dashboard/coverage/coverage-final.json",
+                    "/reports/dashboard-suite-result.json",
+                )
+            )
+        if "scripts/e2e_harness/run.py" in command:
+            paths.append(
+                command[command.index("--reports") + 1] + "/ambient-role-chat-e2e/summary.json"
+            )
+        if "--proof" in command:
+            paths.append(command[command.index("--proof") + 1])
+        for token in command:
+            if token.startswith(
+                (
+                    "AR_CODEX_PROBE_REPORT=",
+                    "PLAYWRIGHT_JSON_OUTPUT_FILE=",
+                    "--ar-pytest-phase-report=",
+                )
+            ):
+                paths.append(token.split("=", 1)[1])
+        for path in paths:
+            self.files[path] = '{"fixture":"producer-output"}\n'
+
     def with_directory(self, *args: object) -> FakeContainer:
         self.operations.append(("directory", *args))
         return self
 
     def with_file(self, *args: object) -> FakeContainer:
         self.operations.append(("file", *args))
+        if len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], FakeFile):
+            self.files[args[0]] = args[1].value
         return self
 
     def with_workdir(self, *args: object) -> FakeContainer:
@@ -651,6 +706,12 @@ class FakeContainer:
 
     def file(self, path: str) -> FakeFile:
         return FakeFile(self.files[path])
+
+    async def stdout(self) -> str:
+        return self.stdout_value
+
+    async def stderr(self) -> str:
+        return ""
 
     async def env_variable(self, name: str) -> str | None:
         return next(

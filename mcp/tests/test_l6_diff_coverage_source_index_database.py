@@ -53,6 +53,7 @@ def _metadata(**over: str) -> dict[str, str]:
         "snapshot_id": "b" * 64,
         "code_root": "/code",
         "memory_root": "/memory",
+        "candidate_tree": "",
         "files_indexed": "1",
         "source_bytes": "10",
         "quote_stream_count": "0",
@@ -72,8 +73,13 @@ class TestMetadataValidation:
 
     def test_generation_metadata_errors(self) -> None:
         ready = _ready()
+        _validate_generation_metadata(_metadata(), ready)
         with pytest.raises(SourceIndexDatabaseError, match="metadata is malformed"):
             _validate_generation_metadata({}, ready)
+        missing_candidate = _metadata()
+        del missing_candidate["candidate_tree"]
+        with pytest.raises(SourceIndexDatabaseError, match="metadata is malformed"):
+            _validate_generation_metadata(missing_candidate, ready)
         with pytest.raises(SourceIndexDatabaseError, match="schema is obsolete"):
             _validate_generation_metadata(_metadata(schema_version="0"), ready)
         with pytest.raises(SourceIndexDatabaseError, match="is not ready"):
@@ -82,6 +88,8 @@ class TestMetadataValidation:
             _validate_generation_metadata(_metadata(generation_id="c" * 64), ready)
         with pytest.raises(SourceIndexDatabaseError, match="different source roots"):
             _validate_generation_metadata(_metadata(code_root="/other"), ready)
+        with pytest.raises(SourceIndexDatabaseError, match="different source roots or candidate"):
+            _validate_generation_metadata(_metadata(candidate_tree="c" * 40), ready)
         with pytest.raises(SourceIndexDatabaseError, match="application digest is malformed"):
             _validate_generation_metadata(_metadata(application_sha256="zzz"), ready)
 

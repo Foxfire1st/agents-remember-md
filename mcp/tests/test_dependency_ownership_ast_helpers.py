@@ -206,7 +206,26 @@ def test_ambient_role_runner_has_exact_pytest_consumers() -> None:
 
     assert impact.complete
     assert impact.unresolved_inputs == ()
-    assert impact.tests == (Path("mcp/tests/test_agents_remember_quality.py"),)
+    assert not impact.global_invalidation
+    assert impact.global_invalidators == ()
+    assert impact.tests == (
+        Path("mcp/tests/test_agents_remember_quality.py"),
+        Path("mcp/tests/test_clean_quality_executor.py"),
+        Path("mcp/tests/test_gate_certificate_authority.py"),
+        Path("mcp/tests/test_l5_quality_and_recovery_edges.py"),
+        Path("mcp/tests/test_python_test_evidence_firewall.py"),
+        Path("mcp/tests/test_quality_gate_public_contract.py"),
+        Path("mcp/tests/test_quality_report_publication_security.py"),
+        Path("mcp/tests/test_rail_evidence_publication.py"),
+        Path("mcp/tests/test_repository_certification_profiles.py"),
+        Path("mcp/tests/test_repository_profile_authority.py"),
+        Path("mcp/tests/test_repository_profile_branch_coverage.py"),
+        Path("mcp/tests/test_repository_quality_branch_coverage.py"),
+        Path("mcp/tests/test_worktree_closeout_gate_scope.py"),
+        Path("mcp/tests/test_worktree_closeout_quality_gate.py"),
+        Path("mcp/tests/test_worktree_integrate_quality_gate.py"),
+        Path("mcp/tests/test_worktree_quality_gate_runner.py"),
+    )
     assert all(
         any(
             reason.kind.value == "declared-consumer"

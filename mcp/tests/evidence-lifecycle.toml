@@ -1155,6 +1155,7 @@ permanence_rationale = "The helper is the single test-side composition root for 
 replacement_contract = "node:mcp/tests/test_repository_certification_profiles.py::test_two_language_distinct_repositories_compile_the_same_four_gate_protocol"
 consumer_scope = "exact"
 consumers = [
+  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_clean_quality_executor.py",
   "mcp/tests/test_gate_certificate_authority.py",
@@ -1194,6 +1195,7 @@ consumers = [
   "mcp/tests/test_python_test_evidence_firewall.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_quality_report_publication_security.py",
+  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",
   "mcp/tests/test_repository_profile_authority.py",
   "mcp/tests/test_repository_profile_branch_coverage.py",
@@ -1229,6 +1231,7 @@ consumers = [
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_quality_report_publication_security.py",
   "mcp/tests/test_quality_scope_reporting.py",
+  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",
   "mcp/tests/test_repository_profile_authority.py",
   "mcp/tests/test_repository_profile_branch_coverage.py",
@@ -1402,7 +1405,9 @@ permanence_rationale = "The acceptance route must regenerate candidate-bound che
 replacement_contract = "contract:ambient-role-chat-e2e"
 consumer_scope = "exact-source"
 consumers = [
+  "mcp/tests/repository_profile_test_support.py",
   "mcp/tests/test_agents_remember_quality.py",
+  "mcp/tests/test_rail_evidence_publication.py",
 ]
 
 [[artifact]]
@@ -1501,4 +1506,23 @@ consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "scripts/e2e_harness/run.py",
+]
+
+[[artifact]]
+path = "mcp/tests/gate_certification_test_support.py"
+kind = "shared-support"
+authority = "internal-canonical"
+owner = "repository-gate-certification-test-port"
+category = "public-contract"
+fidelity = "in-process"
+cadence = "affected"
+source_version_or_generator = "exact repository gate admission, publication and retained certificate APIs"
+introduced_by = "260831-CCR-L30"
+lifetime = "permanent"
+permanence_rationale = "One fixture builds isolated Git candidates and real retained report bytes for gate consumer and retention proofs."
+replacement_contract = "node:mcp/tests/test_gate_certification_evidence.py::test_unchanged_certificate_reuses_original_generation_and_provenance"
+consumer_scope = "exact"
+consumers = [
+  "mcp/tests/test_gate_certification_records.py",
+  "mcp/tests/test_gate_certification_evidence.py",
 ]

@@ -16,16 +16,18 @@ from agents_remember_quality.engine_helpers import (
     _admitted_profile_plan,
     _first_gate_failure_code,
     _require_adapter_runtime,
-    _require_plan_authority,
     _selector_result_failure,
     _selector_result_path,
-    _verify_required_profile_publications,
     _workspace_path,
 )
 from agents_remember_quality.profile_plan import (
     FrozenProfilePlan,
     FrozenSelector,
     expand_command,
+)
+from agents_remember_quality.profile_publication import (
+    export_profile_reports,
+    prepare_profile_reports,
 )
 from agents_remember_quality.quality_command import (
     ExpectedCommand,
@@ -519,7 +521,6 @@ async def _execute_gate_rails(
     """Terminalize every runnable sibling rail; failed prerequisites block dependants."""
     rail_outcomes: dict[str, dict[str, object]] = {}
     failed_same_gate: set[str] = set()
-    skipped_gate: set[str] = set()
     for rail in gate_plan.rails:
         execution = rail.execution
         if execution.get("adapterKind") != "container-command":
@@ -573,33 +574,13 @@ async def _execute_gate_rails(
             scalar_values=rail_scalars,
             list_values=rail_lists,
         )
-        await _run_profile_rail(progress, rail.identity, execution, command)
-        code = progress.step_exit_codes.get(rail.identity, 0)
-        if rail.identity in progress.skipped:
-            skipped_gate.add(rail.identity_key)
-            rail_outcomes[rail.identity_key] = {
-                "status": "skipped",
-                "exitCode": code,
-            }
-        elif code in execution.get("successExitCodes", []):
-            rail_outcomes[rail.identity_key] = {
-                "status": "pass",
-                "exitCode": code,
-                **await rail_emission.attach_rail_terminal_bindings(
-                    progress,
-                    rail,
-                    reports=scalar_values["reports"],
-                ),
-            }
-        else:
+        executed = await _run_profile_rail(progress, rail.identity, execution, command)
+        outcome = await rail_emission.terminal_rail_outcome(
+            progress, rail, reports=scalar_values["reports"], executed=executed
+        )
+        rail_outcomes[rail.identity_key] = outcome
+        if outcome["status"] == "fail":
             failed_same_gate.add(rail.identity_key)
-            rail_outcomes[rail.identity_key] = {
-                "status": "fail",
-                "exitCode": code or 1,
-                "failureCode": str(
-                    progress.failure_details.get(rail.identity, f"rail-exit-{code or 1}")
-                ),
-            }
     return rail_outcomes
 
 
@@ -694,7 +675,7 @@ async def _run_profile_rail(
     name: str,
     execution: dict[str, object],
     command: list[str],
-) -> None:
+) -> bool:
     success_codes = execution.get("successExitCodes")
     skipped_codes = execution.get("skippedExitCodes")
     if (
@@ -719,7 +700,7 @@ async def _run_profile_rail(
         progress.failure_details[name] = (
             "executor prerequisite missing declared environment: " + ", ".join(missing_environment)
         )
-        return
+        return False
     timeout_seconds = execution.get("timeoutSeconds")
     if (
         isinstance(timeout_seconds, bool)
@@ -752,6 +733,7 @@ async def _run_profile_rail(
         progress.exit_code = 0
     else:
         progress.exit_code = code or 1
+    return True
 
 
 @object_type
@@ -833,7 +815,7 @@ class AgentsRememberQuality:
                 memory_cap_bytes=memory_cap_bytes,
             ),
         )
-        await _verify_required_profile_publications(progress, plan, reports=reports)
+        output = await prepare_profile_reports(progress, plan, reports=reports)
         result = _quality_result_payload(
             progress,
             started_at=started_at,
@@ -841,19 +823,9 @@ class AgentsRememberQuality:
             attempt_nonce=attempt_nonce,
             gates=tuple(progress.gate_catalog),
         )
-        result[plan.decoder["statusField"]] = (
-            plan.decoder["passedValue"] if progress.exit_code == 0 else plan.decoder["failedValue"]
-        )
-        result[plan.decoder["exitCodeField"]] = progress.exit_code
-        result["profileDigest"] = plan.profile_digest
-        result["profilePlanDigest"] = plan.plan_digest
-        result["runtimeAuthorityDigest"] = _require_plan_authority(plan)
-        container = progress.container.with_new_file(
-            f"{reports}/{plan.decoder['artifactPath']}",
-            contents=json.dumps(result, indent=2, sort_keys=True) + "\n",
-        )
+        exported = export_profile_reports(output, progress, plan, result, reports=reports)
         return QualityResult(
-            reports=container.directory(reports),
+            reports=exported,
             exit_code=progress.exit_code,
         )
 
@@ -921,7 +893,7 @@ class AgentsRememberQuality:
                 memory_cap_bytes=memory_cap_bytes,
             ),
         )
-        await _verify_required_profile_publications(progress, plan, reports=reports)
+        output = await prepare_profile_reports(progress, plan, reports=reports)
         result = _profile_result_payload(
             progress,
             started_at=started_at,
@@ -929,19 +901,9 @@ class AgentsRememberQuality:
             attempt_nonce=attempt_nonce,
             gates=tuple(progress.gate_catalog),
         )
-        result[plan.decoder["statusField"]] = (
-            plan.decoder["passedValue"] if progress.exit_code == 0 else plan.decoder["failedValue"]
-        )
-        result[plan.decoder["exitCodeField"]] = progress.exit_code
-        result["profileDigest"] = plan.profile_digest
-        result["profilePlanDigest"] = plan.plan_digest
-        result["runtimeAuthorityDigest"] = _require_plan_authority(plan)
-        container = progress.container.with_new_file(
-            f"{reports}/{plan.decoder['artifactPath']}",
-            contents=json.dumps(result, indent=2, sort_keys=True) + "\n",
-        )
+        exported = export_profile_reports(output, progress, plan, result, reports=reports)
         return QualityResult(
-            reports=container.directory(reports),
+            reports=exported,
             exit_code=progress.exit_code,
         )
 

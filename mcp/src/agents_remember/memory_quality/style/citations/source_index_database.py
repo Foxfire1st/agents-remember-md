@@ -65,6 +65,7 @@ def _validate_generation_metadata(
         "snapshot_id",
         "code_root",
         "memory_root",
+        "candidate_tree",
         "files_indexed",
         "source_bytes",
         "quote_stream_count",
@@ -86,9 +87,10 @@ def _validate_generation_metadata(
     if (
         metadata.get("code_root") != readiness.code_root
         or metadata.get("memory_root") != readiness.memory_root
+        or metadata.get("candidate_tree") != (readiness.candidate_tree or "")
     ):
         raise SourceIndexDatabaseError(
-            "citation source-index database belongs to different source roots"
+            "citation source-index database belongs to different source roots or candidate"
         )
     if not source_index_state.canonical_hash(metadata.get("application_sha256")):
         raise SourceIndexDatabaseError(
@@ -341,6 +343,7 @@ class Database:
                 ("snapshot_id", readiness.snapshot_id),
                 ("code_root", readiness.code_root),
                 ("memory_root", readiness.memory_root),
+                ("candidate_tree", readiness.candidate_tree or ""),
                 ("files_indexed", str(readiness.files_indexed)),
                 ("source_bytes", str(readiness.source_bytes)),
                 ("quote_stream_count", str(self.quote_stream_count)),

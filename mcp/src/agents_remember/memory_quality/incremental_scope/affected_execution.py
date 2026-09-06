@@ -11,6 +11,7 @@ from typing import NoReturn, Protocol, cast
 from pydantic import JsonValue
 
 from agents_remember.memory_quality.style.citations import range_resolution, source_index
+from agents_remember.memory_quality.style.citations.resolution import Trees
 
 from .affected_models import (
     AffectedClosurePlan,
@@ -81,7 +82,11 @@ class RangeResolutionAffectedExecutor:
         self._validate_context(plan, unit)
         return range_resolution.check_onboarding_root(
             self._context.onboardingRoot,
-            self._context.codeRoot,
+            Trees(
+                code_root=self._context.codeRoot,
+                memory_root=self._context.memoryRoot,
+                candidate_tree=unit.codeTree,
+            ),
             only=unit.document,
             index=self._context.citationIndex,
         )
@@ -113,6 +118,13 @@ class RangeResolutionAffectedExecutor:
             _refuse(
                 "checker-source-index-stale",
                 "incremental checker lease differs from the unit source-index generation",
+                checker=unit.checker,
+                snapshot=unit.sourceIndexSnapshot,
+            )
+        if self._context.citationIndex.candidate_tree != unit.codeTree:
+            _refuse(
+                "checker-source-index-candidate-mismatch",
+                "incremental checker lease does not select the unit Git candidate tree",
                 checker=unit.checker,
                 snapshot=unit.sourceIndexSnapshot,
             )

@@ -502,7 +502,9 @@ def _record_certification_generation(target, *, plan, candidate_tree, manifest) 
             "green repository certification generation has no readable decoder artifact"
         ) from error
     if isinstance(payload, dict):
-        certification_records.record_published_generation(prepared, manifest, payload)
+        recorded = certification_records.record_published_generation(prepared, manifest, payload)
+        if recorded["refused"]:
+            raise RuntimeError(f"repository certificate evidence refused: {recorded['refused']}")
 
 
 def _write_test_results_report(report: _QualityGateReport) -> None:

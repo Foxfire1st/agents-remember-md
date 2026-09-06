@@ -82,7 +82,7 @@ def test_manifest_parser_refuses_each_uncovered_bound_field(
         manifest["profileSelectionId"] = " "
 
     with pytest.raises(ValueError, match=expected):
-        published_manifest._parse_manifest(manifest)
+        published_manifest.parse_published_quality_manifest(manifest)
 
 
 def test_manifest_digest_and_dependency_helpers_require_exact_field_sets(

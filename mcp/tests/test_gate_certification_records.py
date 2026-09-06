@@ -23,12 +23,15 @@ from unittest import mock
 
 import pytest
 from agents_remember.certification.certificate_authority import validate_certificate_chain
-from agents_remember.certification.certificate_models import CreationProvenance
+from agents_remember.certification.certificate_models import (
+    CertificationAdmissionManifest,
+    CreationProvenance,
+    GateCertificate,
+)
 from agents_remember.certification.certificate_store import (
     CertificateStorePolicy,
     ContentAddressedCertificateStore,
 )
-from agents_remember.certification.certification_lane import compile_certification_lane
 from agents_remember.certification.digests import content_digest
 from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles.authority import (
@@ -38,12 +41,7 @@ from agents_remember.certification.repository_profiles.execution import (
     admit_repository_profile_execution,
 )
 from agents_remember.certification.repository_profiles.models import ProfileMode
-from agents_remember.certification.repository_profiles.planning import (
-    compile_repository_profile_plan,
-    resolve_repository_profile_selection,
-)
 from agents_remember.errors import CertificationContractError
-from agents_remember.memory_quality.gate_five_rails import gate_five_memory_rails
 from agents_remember.models.test_evidence import _certifying_evidence_from_verified_dagger
 from agents_remember.worktrees.modules.quality import certification_records, clean_executor
 from agents_remember.worktrees.modules.quality import gate as code_quality_gate
@@ -66,160 +64,14 @@ def _refusals(result):
     return cast(list[dict[str, object]], value)
 
 
-_REPOSITORY_ID = "agents-remember"
-_PROFILE_REFERENCE = Path("mcp/certification-profile-v1.json")
-
-
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.strip()
-
-
-def _checkout_with_profile(root: Path) -> Path:
-    root.mkdir(parents=True, exist_ok=True)
-    _git(root, "init", "-q")
-    _git(root, "config", "user.email", "records@test.invalid")
-    _git(root, "config", "user.name", "records test")
-    target = root / "mcp"
-    target.mkdir(parents=True, exist_ok=True)
-    profile = Path(__file__).resolve().parents[1] / "certification-profile-v1.json"
-    (target / "certification-profile-v1.json").write_bytes(profile.read_bytes())
-    (root / "tracked.txt").write_text("tracked\n", encoding="utf-8")
-    _git(root, "add", "-A")
-    _git(root, "commit", "-qm", "base")
-    return root
-
-
-def _lane_for(root: Path, mode: ProfileMode = "targeted"):
-    admitted = load_repository_profile(_REPOSITORY_ID, root, _PROFILE_REFERENCE.as_posix())
-    candidate_tree = _git(root, "write-tree")
-    candidate = CandidateIdentity(kind="git-tree", value=candidate_tree)
-    selection = resolve_repository_profile_selection(
-        admitted.canonical, purpose="closeout", mode=mode
-    )
-    repository_plan = compile_repository_profile_plan(
-        admitted.canonical, selection_id=selection.selectionId, candidate_identity=candidate
-    )
-    lane = compile_certification_lane(
-        admitted.canonical,
-        repository_plan,
-        provenance=certification_records._provenance("test"),  # type: ignore[attr-defined]
-        memory_rails=gate_five_memory_rails(selection.selectionId),
-    )
-    return admitted, lane, candidate_tree
-
-
-def _gate_catalog(lane) -> list[dict[str, object]]:
-    """Fixture run payload: every planned applicable rail passes and binds the
-    per-rail evidence/artifact records the R11 manifest contract requires."""
-    catalog: list[dict[str, object]] = []
-    for gate_plan in lane.certificationPlan.gates:
-        if gate_plan.gate == 5:
-            continue
-        rails = []
-        for rail in gate_plan.rails:
-            evidence = [
-                {
-                    "evidenceId": item.evidenceId,
-                    "sha256": content_digest(
-                        {"evidence": rail.identity.key, "id": item.evidenceId}
-                    ),
-                    "size": 64,
-                    "reference": (
-                        "quality-result://clean-quality-results.json"
-                        f"#gates.{gate_plan.gate}.{rail.identity.key}"
-                    ),
-                }
-                for item in rail.evidenceContract
-            ]
-            artifacts = [
-                {
-                    "artifactId": item.artifactId,
-                    "sha256": content_digest(
-                        {"artifact": rail.identity.key, "id": item.artifactId}
-                    ),
-                    "size": 64,
-                    "evidenceRef": (
-                        "quality-result://clean-quality-results.json"
-                        f"#gates.{gate_plan.gate}.{rail.identity.key}"
-                    ),
-                }
-                for item in rail.outputArtifacts
-            ]
-            rails.append(
-                {
-                    "identity": {
-                        "railId": rail.identity.railId,
-                        "version": rail.identity.version,
-                    },
-                    "key": rail.identity.key,
-                    "gate": gate_plan.gate,
-                    "posture": rail.posture,
-                    "status": "pass",
-                    "exitCode": 0,
-                    "evidence": evidence,
-                    "artifacts": artifacts,
-                }
-            )
-        catalog.append(
-            {
-                "gate": gate_plan.gate,
-                "applicability": "applicable",
-                "started": True,
-                "disposition": "green",
-                "zeroStart": False,
-                "laterGatesZeroStart": False,
-                "rails": rails,
-                "selectors": [],
-            }
-        )
-    return catalog
-
-
-def _green_outcome_factory(worktree_group: Path, lane, candidate_tree: str):
-    def _outcome(request):
-        with tempfile.TemporaryDirectory() as temporary:
-            exported = Path(temporary)
-            payload = {
-                "status": "passed",
-                "exitCode": 0,
-                "gates": _gate_catalog(lane),
-            }
-            (exported / "clean-quality-results.json").write_text(
-                json.dumps(payload), encoding="utf-8"
-            )
-            admitted = load_repository_profile(
-                request.repository_id, request.code_worktree, _PROFILE_REFERENCE.as_posix()
-            )
-            profile_execution = admit_repository_profile_execution(
-                admitted,
-                purpose="closeout",
-                mode=request.mode,
-                candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
-            )
-            clean_executor._publish_reports(  # type: ignore[attr-defined]
-                exported,
-                request.worktree_group / "reports",
-                candidate_tree=candidate_tree,
-                profile_execution=profile_execution,
-            )
-        manifest = load_published_quality_manifest(request.worktree_group / "reports")
-        evidence = _certifying_evidence_from_verified_dagger(
-            candidate_tree=candidate_tree,
-            result_sha256=manifest.require_file(manifest.result_decoder.artifactPath).sha256,
-        )
-        return CleanQualityOutcome(
-            subprocess.CompletedProcess(["dagger"], 0, stdout="passed\n"),
-            evidence,
-            manifest,
-        )
-
-    return _outcome
+from gate_certification_test_support import (
+    _PROFILE_REFERENCE,
+    _REPOSITORY_ID,
+    _checkout_with_profile,
+    _gate_catalog,
+    _green_outcome_factory,
+    _lane_for,
+)
 
 
 class GateCertificationRecordsTests:
@@ -287,6 +139,46 @@ class GateCertificationRecordsTests:
         assert journal_two["admissionDigest"] == journal_one["admissionDigest"]
         assert certification_records.records_directory(group_two).exists()
         assert first_certs  # content-addressed objects are byte-identical
+
+    @pytest.mark.parametrize("kind", ["admission", "certificate"])
+    @pytest.mark.parametrize("fault", ["invalid-digest", "wrong-address"])
+    def test_corrupt_exact_authority_refuses_reuse(self, tmp_path, kind, fault):
+        _code, group, lane, candidate = self._run_green_gate(tmp_path)
+        prepared = certification_records.PreparedCertificationRun(
+            worktree_group=group,
+            candidateTree=candidate,
+            lane=lane,
+            provenance=lane.admission.provenance,
+        )
+        store = prepared.certificate_store()
+        records = json.loads((prepared.directory / "gates.json").read_text())["gates"]
+        digest = lane.admission.admissionDigest if kind == "admission" else records[0][kind]
+        path = store.exact_path(kind, digest)
+        payload = json.loads(path.read_bytes())
+        payload["semanticEnvelope"]["candidateCodeTree"]["value"] = "0" * 40
+        expected = "certificate-object-invalid"
+        if fault == "wrong-address":
+            payload[f"{kind}Digest"] = content_digest(payload["semanticEnvelope"])
+            model = CertificationAdmissionManifest if kind == "admission" else GateCertificate
+            model.model_validate(payload)
+            expected = "certificate-object-address-mismatch"
+        corrupt = (json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n").encode()
+        path.write_bytes(corrupt)
+        if kind == "admission":
+            with pytest.raises(CertificationContractError) as caught:
+                certification_records._persist_admission(prepared)
+            assert caught.value.findings[0]["code"] == expected
+        else:
+            publication = load_published_quality_manifest(group / "reports")
+            decoder = clean_executor.published_report_path_from_manifest(
+                group / "reports", publication, publication.result_decoder.artifactPath
+            )
+            result = certification_records.record_published_generation(
+                prepared, publication, json.loads(decoder.read_bytes())
+            )
+            assert _published(result) == []
+            assert _refusals(result)[0]["refusalCode"] == expected
+        assert path.read_bytes() == corrupt
 
     def test_gate_seam_without_gate_catalog_records_admission_only(self, tmp_path):
         worktree = _checkout_with_profile(tmp_path / "minimal" / "code")
@@ -508,36 +400,10 @@ class GateCertificationRecordsTests:
         prepared = self._prepared_run(group, lane, candidate_tree)
         gate_plan = next(item for item in lane.certificationPlan.gates if item.gate == 1)
         failing_key = gate_plan.waves[-1][0].key
-        rails = []
-        for rail in gate_plan.rails:
-            rails.append(
-                {
-                    "key": rail.identity.key,
-                    "status": "fail" if rail.identity.key == failing_key else "pass",
-                    "evidence": [
-                        {
-                            "evidenceId": item.evidenceId,
-                            "sha256": content_digest(
-                                {"evidence": rail.identity.key, "id": item.evidenceId}
-                            ),
-                            "size": 64,
-                            "reference": "quality-result://edge",
-                        }
-                        for item in rail.evidenceContract
-                    ],
-                    "artifacts": [
-                        {
-                            "artifactId": item.artifactId,
-                            "sha256": content_digest(
-                                {"artifact": rail.identity.key, "id": item.artifactId}
-                            ),
-                            "size": 64,
-                            "evidenceRef": "quality-result://edge",
-                        }
-                        for item in rail.outputArtifacts
-                    ],
-                }
-            )
+        rails = cast(list[dict[str, object]], _gate_catalog(lane)[0]["rails"])
+        for rail in rails:
+            if rail["key"] == failing_key:
+                rail["status"] = "fail"
         result = certification_records.record_published_generation(
             prepared,
             manifest,

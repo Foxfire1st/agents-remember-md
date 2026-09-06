@@ -50,6 +50,10 @@ from agents_remember.models.test_evidence import (
     _certifying_evidence_from_verified_dagger,
     require_certifying_evidence,
 )
+from agents_remember.worktrees.modules.quality.certification_evidence import (
+    protected_certificate_generations,
+)
+from agents_remember.worktrees.modules.quality.certification_records import certificate_store
 from agents_remember.worktrees.modules.quality.dagger_authority import (
     AdmittedDaggerAuthority,
     AuthorityRegistry,
@@ -72,7 +76,9 @@ from agents_remember.worktrees.modules.quality.published_manifest import (
     require_real_file_or_missing,
 )
 from agents_remember.worktrees.modules.quality.report_publication_paths import (
+    _prune_report_generations,
     preflight_report_destination,
+    published_report_path_from_manifest,
     remove_legacy_report_projection,
     report_tree_inventory,
 )
@@ -508,6 +514,9 @@ def _publish_reports(
     generations.mkdir(parents=True, exist_ok=True)
     generation_root = generations / generation
     previous_generation = _published_generation_or_none(destination)
+    protected = protected_certificate_generations(
+        destination, store=certificate_store(destination.parent)
+    ) | (frozenset() if previous_generation is None else frozenset({previous_generation}))
     _preflight_report_destination(destination, generation_root, **preflight_kwargs)
     _ensure_generation(source, generation_root, files)
     manifest: dict[str, object] = {
@@ -526,7 +535,7 @@ def _publish_reports(
     _prune_report_generations(
         generations,
         generation,
-        protected=(() if previous_generation is None else (previous_generation,)),
+        protected=protected,
     )
     _remove_legacy_report_projection(
         destination,
@@ -710,27 +719,6 @@ def published_report_path(destination: Path, name: str) -> Path:
     )
 
 
-def published_report_path_from_manifest(
-    destination: Path,
-    manifest: PublishedQualityManifest,
-    name: str,
-) -> Path:
-    """Resolve one report against an already accepted immutable generation snapshot."""
-
-    file_record = manifest.require_file(name)
-    report = destination / REPORT_GENERATIONS_DIRECTORY / manifest.generation / name
-    try:
-        payload = report.read_bytes()
-    except OSError as error:
-        raise RuntimeError(f"published Dagger report is incomplete: {name}") from error
-    if (
-        len(payload) != file_record.size
-        or hashlib.sha256(payload).hexdigest() != file_record.sha256
-    ):
-        raise RuntimeError(f"published Dagger report failed generation verification: {name}")
-    return report
-
-
 def published_generation_root(
     destination: Path,
     manifest: PublishedQualityManifest,
@@ -822,28 +810,6 @@ def _validate_generation(root: Path, files: dict[str, dict[str, object]]) -> Non
             or hashlib.sha256(payload).hexdigest() != record["sha256"]
         ):
             raise RuntimeError(f"Dagger report generation copy failed verification: {name}")
-
-
-def _prune_report_generations(
-    generations: Path,
-    current: str,
-    *,
-    protected: Collection[str] = (),
-) -> None:
-    candidates = [
-        path for path in generations.iterdir() if re.fullmatch(r"[0-9a-f]{64}", path.name)
-    ]
-    for path in candidates:
-        require_real_directory_or_missing(path, purpose="published quality generation")
-    completed = sorted(
-        candidates,
-        key=lambda path: path.stat().st_mtime_ns,
-        reverse=True,
-    )
-    keep = {current, *protected, *(path.name for path in completed[:2])}
-    for path in completed:
-        if path.name not in keep:
-            shutil.rmtree(path)
 
 
 def _quality_owner(

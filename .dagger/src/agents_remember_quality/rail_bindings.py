@@ -11,7 +11,7 @@ Rules (kept here, in one place):
 
 * Evidence: every declared evidenceId of the rail binds the same bounded
   capture of the rail's observed output (digest over the exact bytes, size, and
-  an honest container path).  An empty capture is a real empty capture.
+  a stable report-relative locator).  An empty capture is a real empty capture.
 * Artifacts: an outputArtifact is bound only when the caller observed the
   real file the artifact's bytes live in (id -> observed file record).  A
   required-on-pass artifact with no observed file is reported as a gap and is
@@ -25,7 +25,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-_MAX_CAPTURE_BYTES = 4 * 1024 * 1024
+MAX_CAPTURE_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -46,19 +46,19 @@ def observed_file(path: str, contents: bytes) -> ObservedFile:
     )
 
 
-def bounded_capture_bytes(output: str, *, max_bytes: int = _MAX_CAPTURE_BYTES) -> bytes:
+def bounded_capture_bytes(output: str | bytes, *, max_bytes: int = MAX_CAPTURE_BYTES) -> bytes:
     """Deterministic bounded tail of a rail's observed text output."""
     if max_bytes <= 0:
         return b""
-    encoded = output.encode("utf-8", errors="replace")
+    encoded = output if isinstance(output, bytes) else output.encode("utf-8", errors="replace")
     if len(encoded) <= max_bytes:
         return encoded
     return encoded[-max_bytes:]
 
 
 # Declared requiredOnPass output artifacts -> the real container file the
-# repository runner/adapter writes.  Paths relative to {reports} unless they
-# start with / (absolute container path, e.g. a dashboard workdir file).
+# repository runner/adapter writes. These are stable exported report names;
+# artifact_source_path identifies the producer file before the final export copy.
 # Producers verified against in-tree code:
 #   python-suite:      profile_rails passes --coverage-data/--coverage-json/
 #                      --pytest-phase-report into {reports} (argv builder in
@@ -76,17 +76,27 @@ ARTIFACT_FILE_PATHS: dict[str, str] = {
     "python-suite-result": "pytest-phases.json",
     "ambient-role-summary": "ambient-role-chat-e2e/summary.json",
     "codex-probe-result": "codex-probe.json",
-    "dashboard-coverage-data": "/workspace/dashboard/coverage/coverage-final.json",
+    "dashboard-coverage-data": "dashboard-coverage.json",
     "dashboard-suite-result": "dashboard-suite-result.json",
+    "dashboard-e2e-result": "dashboard-e2e-result.json",
+    "provider-integration-result": "provider-integration-result.json",
+    "teardown-proof": "teardown-proof.json",
 }
+
+
+def artifact_source_path(artifact_id: str, *, reports: str) -> str:
+    """The existing Vitest producer stays local; publication retains a separate copy."""
+    if artifact_id == "dashboard-coverage-data":
+        return "/workspace/dashboard/coverage/coverage-final.json"
+    return f"{reports}/{ARTIFACT_FILE_PATHS[artifact_id]}"
 
 
 def build_evidence_bindings(
     evidence_ids: Sequence[str],
-    observed_text: str,
+    observed_text: str | bytes,
     *,
     reference: str,
-    max_bytes: int = _MAX_CAPTURE_BYTES,
+    max_bytes: int = MAX_CAPTURE_BYTES,
 ) -> list[dict[str, object]]:
     """Bind every declared evidence id to the rail's real observed capture."""
     bounded = bounded_capture_bytes(observed_text, max_bytes=max_bytes)
@@ -141,7 +151,9 @@ def payload_json(value: object) -> str:
 
 __all__ = [
     "ARTIFACT_FILE_PATHS",
+    "MAX_CAPTURE_BYTES",
     "ObservedFile",
+    "artifact_source_path",
     "bounded_capture_bytes",
     "build_artifact_bindings",
     "build_evidence_bindings",

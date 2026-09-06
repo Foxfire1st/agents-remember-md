@@ -32,16 +32,17 @@ import os
 import re
 import subprocess
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Never, Protocol
 from urllib.parse import urlparse
 
-from agents_remember.controlplane.durable_store import StoreOwnership, exclusive_access
-from agents_remember.errors import DaggerRuntimeAuthorityError
+from agents_remember.errors import DaggerRuntimeAuthorityError, LockCapabilityError
 from agents_remember.kernel.atomic_write import atomic_write_text
+from agents_remember.kernel.file_lock import exclusive_file_lock
 
 HOST_DECLARATION_ENV = "AR_DAGGER_RUNTIME_AUTHORITY"
 HOST_REGISTRY_ROOT_ENV = "AR_DAGGER_AUTHORITY_ROOT"
@@ -65,7 +66,6 @@ _PROVISIONING_SCHEMES = frozenset(
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 _LOCK_STORE = "dagger-authority-owners"
-_LOCK_WRITERS = ("mcp", "lifecycle-operation")
 
 
 def _sha256(payload: object) -> str:
@@ -599,8 +599,23 @@ class AuthorityRegistry:
         self.owners_path = root / "owners.json"
         self.lock_path = root / "authority.lock"
 
-    def _lock_file_path(self) -> Path:
-        return self.lock_path
+    @contextmanager
+    def exclusive_access(self) -> Iterator[None]:
+        """Serialize host ownership transactions independently of checkout coordination.
+
+        Admission, continuation and release apply this registry's authority policy
+        under the same physical lock. No control-plane process role is conferred.
+        The resource remains authority.lock, so the shared primitive preserves the
+        existing authority.lock.lock inode used by other registry processes.
+        """
+        try:
+            with exclusive_file_lock(self.lock_path, _LOCK_STORE):
+                yield
+        except LockCapabilityError as error:
+            raise DaggerRuntimeAuthorityError(
+                "runtime authority registry cannot provide exclusive access",
+                (_finding("runtime-authority-registry-lock-unsafe", "registry.lock", str(error)),),
+            ) from error
 
     def state(self) -> AuthorityState:
         self._ensure_files()
@@ -993,13 +1008,7 @@ def _admit_with_registry(
     *,
     owner_factory: Callable[[DaggerAuthoritySnapshot], DaggerOwner] | None,
 ) -> DaggerOwner | None:
-    ownership = StoreOwnership(
-        store=_LOCK_STORE,
-        writers=_LOCK_WRITERS,
-        compaction_owner=None,
-        rationale="host-level shared Dagger ownership registry and authority transition barrier",
-    )
-    with exclusive_access(registry._lock_file_path(), ownership):  # pyright: ignore[reportPrivateUsage]
+    with registry.exclusive_access():
         state = registry.state()
         if state.barrier_pending_digest is not None:
             census = registry.census(state.active_digest) if state.active_digest is not None else 0
@@ -1069,13 +1078,7 @@ def reuse_authority_for_continuation(
     silently binds a different engine or store. A changed host declaration with live
     owners on another digest stays behind the typed transition barrier.
     """
-    ownership = StoreOwnership(
-        store=_LOCK_STORE,
-        writers=_LOCK_WRITERS,
-        compaction_owner=None,
-        rationale="host-level shared Dagger ownership registry reuse",
-    )
-    with exclusive_access(registry._lock_file_path(), ownership):  # pyright: ignore[reportPrivateUsage]
+    with registry.exclusive_access():
         state = registry.state()
         if state.active_digest == snapshot.snapshot_digest:
             # The original frozen authority is still the active one: a retry/recovery
@@ -1120,13 +1123,7 @@ def release_dagger_authority(
     """Terminalize one owner; release only the exact owner record."""
     if admitted.owner is None:
         return
-    ownership = StoreOwnership(
-        store=_LOCK_STORE,
-        writers=_LOCK_WRITERS,
-        compaction_owner=None,
-        rationale="host-level shared Dagger ownership registry terminalization",
-    )
-    with exclusive_access(registry._lock_file_path(), ownership):  # pyright: ignore[reportPrivateUsage]
+    with registry.exclusive_access():
         registry.release_owner(admitted.owner)
 
 

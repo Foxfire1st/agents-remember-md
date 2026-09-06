@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from agents_remember.memory_quality.check import AVAILABLE_CHECKS
 from agents_remember.memory_quality.incremental_scope import (
     affected_execution,
     affected_planning,
@@ -21,6 +22,10 @@ from agents_remember.memory_quality.incremental_scope.affected_execution import 
     RangeResolutionExecutionContext,
     execute_affected_closure,
     plan_affected_subresult_reuse,
+)
+from agents_remember.memory_quality.incremental_scope.compiler import (
+    build_dependency_snapshot,
+    compile_scope_manifest,
 )
 from agents_remember.memory_quality.incremental_scope.errors import (
     GateFiveClosureRefusedError,
@@ -39,11 +44,17 @@ from agents_remember.memory_quality.incremental_scope.models import (
     TaskObservationPair,
     canonical_digest,
 )
+from agents_remember.memory_quality.incremental_scope.owners import (
+    extract_citation_edges,
+    observe_git_nodes,
+    observe_source_index,
+)
 from agents_remember.memory_quality.incremental_scope.subresult_store import (
     ContentAddressedSubresultStore,
     SubresultStorePolicy,
 )
 from agents_remember.memory_quality.style.citations import range_resolution, source_index
+from agents_remember.memory_quality.style.citations.resolution import Trees
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity
@@ -51,11 +62,13 @@ from pydantic import ValidationError
 from test_memory_incremental_scope_compiler import (
     R07RecordingExecutor,
     R07StableAuthority,
+    R07StaticDependencies,
     _r07_admission,
     _r07_candidate,
     _r07_plan,
     _r07_scope,
 )
+from test_memory_incremental_scope_owners import _actual_candidate, _git, _linked_candidate
 
 
 def _pair() -> MemoryCandidatePairIdentity:
@@ -422,7 +435,7 @@ def test_r07_range_executor_uses_one_planned_document_and_exact_live_index(
     unit = plan.units[0]
     index = cast(
         source_index.RepositoryIndex,
-        SimpleNamespace(snapshot_id=unit.sourceIndexSnapshot),
+        SimpleNamespace(snapshot_id=unit.sourceIndexSnapshot, candidate_tree=unit.codeTree),
     )
     calls: list[dict[str, object]] = []
 
@@ -450,7 +463,7 @@ def test_r07_range_executor_uses_one_planned_document_and_exact_live_index(
     assert calls == [
         {
             "onboarding": Path(plan.onboardingRoot),
-            "code": Path(plan.codeRoot),
+            "code": Trees(Path(plan.codeRoot), Path(plan.memoryRoot), candidate_tree=unit.codeTree),
             "only": unit.document,
             "index": index,
         }
@@ -481,7 +494,7 @@ def test_r07_range_executor_refuses_wrong_root_or_source_generation(
 
     exact_index = cast(
         source_index.RepositoryIndex,
-        SimpleNamespace(snapshot_id=unit.sourceIndexSnapshot),
+        SimpleNamespace(snapshot_id=unit.sourceIndexSnapshot, candidate_tree=unit.codeTree),
     )
     wrong_root = RangeResolutionAffectedExecutor(
         RangeResolutionExecutionContext(
@@ -494,6 +507,91 @@ def test_r07_range_executor_refuses_wrong_root_or_source_generation(
     with pytest.raises(GateFiveClosureRefusedError) as caught:
         wrong_root.execute(plan, unit)
     assert _r07_store_reason(caught) == "checker-execution-root-mismatch"
+
+
+@pytest.mark.parametrize(
+    ("citation", "expected_code"),
+    (
+        ("src/anchor.py:1-2", None),
+        ("src/old.py:1-1", "citation_anchor_absent_from_range"),
+        ("generated/output.js:1-1", "citation_source_vanished"),
+    ),
+)
+def test_r07_real_range_checker_uses_only_the_candidate_source_population(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    citation: str,
+    expected_code: str | None,
+) -> None:
+    _, trees = _linked_candidate(tmp_path, monkeypatch)
+    code, memory = trees.code_root, trees.memory_root
+    onboarding = memory / "onboarding"
+    (code / "generated/output.js").write_text("function scope_anchor() { return 2; }\n")
+    (onboarding / "claims.md").write_text(f"Claim cit:([`scope_anchor`], {citation}).\n")
+    _git(memory, "add", "onboarding/claims.md")
+    candidate = _actual_candidate(code, memory).model_copy(update={"task": _r07_candidate().task})
+    authority = R07StableAuthority(candidate)
+    with source_index.open_repository_index(trees) as index:
+        nodes = {
+            node.nodeId: node
+            for node in (
+                *observe_git_nodes(code, candidate.code),
+                *observe_git_nodes(memory, candidate.memory),
+            )
+        }
+        snapshot = build_dependency_snapshot(
+            candidate=candidate,
+            source_index=observe_source_index(candidate, index),
+            nodes=nodes.values(),
+            edges=extract_citation_edges(candidate, onboarding, nodes),
+        )
+        scope = compile_scope_manifest(
+            authority, R07StaticDependencies(snapshot), checkers=AVAILABLE_CHECKS
+        )
+        plan = affected_planning.compile_affected_closure_plan(
+            _r07_admission(monkeypatch, candidate), scope
+        )
+        assert len(plan.units) == 1
+        executor = RangeResolutionAffectedExecutor(
+            RangeResolutionExecutionContext(code, memory, onboarding, index)
+        )
+        result = executor.execute(plan, plan.units[0])
+        assert result["filesChecked"] == 1
+        assert result["ok"] is (expected_code is None)
+        findings = cast(list[dict[str, object]], result["findings"])
+        assert [item["code"] for item in findings] == (
+            [] if expected_code is None else [expected_code]
+        )
+        if expected_code == "citation_anchor_absent_from_range":
+            message = str(findings[0]["message"])
+            assert "src/anchor.py" in message
+            assert "generated/output.js" not in message
+
+
+@pytest.mark.parametrize("candidate_tree", (None, "f" * 40))
+def test_r07_range_executor_refuses_another_candidate_before_checker_start(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_tree: str | None,
+) -> None:
+    _, plan = _r07_plan(monkeypatch)
+    unit = plan.units[0]
+    index = cast(
+        source_index.RepositoryIndex,
+        SimpleNamespace(snapshot_id=unit.sourceIndexSnapshot, candidate_tree=candidate_tree),
+    )
+    calls: list[object] = []
+    monkeypatch.setattr(
+        range_resolution, "check_onboarding_root", lambda *args, **kw: calls.append(args)
+    )
+    executor = RangeResolutionAffectedExecutor(
+        RangeResolutionExecutionContext(
+            Path(plan.codeRoot), Path(plan.memoryRoot), Path(plan.onboardingRoot), index
+        )
+    )
+    with pytest.raises(GateFiveClosureRefusedError) as caught:
+        executor.execute(plan, unit)
+    assert _r07_store_reason(caught) == "checker-source-index-candidate-mismatch"
+    assert calls == []
 
 
 def test_r07_invalid_plan_and_checker_exception_refuse_typed(
@@ -562,7 +660,7 @@ def test_r07_checker_executor_and_typed_refusal_edges(
             onboardingRoot=Path(plan.onboardingRoot),
             citationIndex=cast(
                 source_index.RepositoryIndex,
-                SimpleNamespace(snapshot_id=unit.sourceIndexSnapshot),
+                SimpleNamespace(snapshot_id=unit.sourceIndexSnapshot, candidate_tree=unit.codeTree),
             ),
         )
     )

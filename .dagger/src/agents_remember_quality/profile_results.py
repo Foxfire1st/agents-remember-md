@@ -28,6 +28,8 @@ class QualityProgress:
     failure_details: dict[str, str] = dataclass_field(default_factory=dict)
     selection_results: dict[str, dict[str, object]] = dataclass_field(default_factory=dict)
     gate_catalog: list[dict[str, object]] = dataclass_field(default_factory=list)
+    retained_captures: dict[str, bytes] = dataclass_field(default_factory=dict)
+    retained_files: dict[str, dagger.File] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)
