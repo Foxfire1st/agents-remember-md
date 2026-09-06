@@ -475,6 +475,7 @@ def test_recovery_snapshot_refuses_recreated_admission_provenance() -> None:
     )
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     "fault,code",
     [
@@ -564,6 +565,7 @@ def test_selection_recompiles_untrusted_proposals_before_selecting_original_refe
     assert require_selected_certification(fixture.contract, fixture.record).state == original
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("fault", ["malformed-json", "closed-shape", "noncanonical", "wrong-hash"])
 def test_untrusted_retained_memory_inputs_refuse_without_replacing_original_selection(
     tmp_path: Path, fault: str
@@ -624,6 +626,7 @@ def test_untrusted_retained_memory_inputs_refuse_without_replacing_original_sele
     assert require_selected_certification(fixture.contract, fixture.record).state == original
 
 
+@pytest.mark.integration
 def test_retained_memory_codec_roundtrips_compiler_inputs_without_selecting_them(
     tmp_path: Path,
 ) -> None:
@@ -647,6 +650,7 @@ def test_retained_memory_codec_roundtrips_compiler_inputs_without_selecting_them
     assert require_selected_certification(fixture.contract, fixture.record).state == selected
 
 
+@pytest.mark.integration
 def test_recovery_wire_history_preserves_recurrent_observations_and_refuses_adjacent_duplicates(
     tmp_path: Path,
 ) -> None:

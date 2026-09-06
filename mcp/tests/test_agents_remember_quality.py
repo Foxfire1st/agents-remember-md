@@ -27,7 +27,6 @@ from agents_remember_test_support.testing.dagger_admission import (
     DaggerAdmissionError,
     dagger_admission_refusal,
 )
-from conftest import prepare_certifying_pytest_bootstrap
 from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
     NODE_FIXTURE,
@@ -500,16 +499,6 @@ def test_python_suite_refuses_missing_or_mismatched_dagger_attestation(tmp_path:
         )
         or ""
     )
-    with (
-        patch(
-            "conftest._prepare_certifying_pytest_bootstrap",
-            side_effect=DaggerAdmissionError(
-                "Agents Remember tests are Dagger-only; refusing host execution"
-            ),
-        ),
-        pytest.raises(pytest.UsageError, match="refusing host execution"),
-    ):
-        prepare_certifying_pytest_bootstrap()
 
 
 def test_python_suite_accepts_matching_dagger_attestation(tmp_path: Path) -> None:

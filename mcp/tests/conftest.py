@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import tomllib
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -65,6 +66,7 @@ for name in tuple(os.environ):
         os.environ.pop(name, None)
 
 pytest_plugins = ("agents_remember_test_support.testing.pytest_bootstrap",)
+_INTEGRATION_FILES = pytest.StashKey[frozenset[Path]]()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -76,6 +78,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    # Read existing file membership once; no source census, dependency graph, or collection probe.
+    with (REPOSITORY_ROOT / "mcp/tests/test-evidence-lanes.toml").open("rb") as stream:
+        files = tomllib.load(stream)["files"]
+    config.stash[_INTEGRATION_FILES] = frozenset(
+        REPOSITORY_ROOT / path
+        for category in ("integration", "stress-durability")
+        for path in files[category]
+    )
     if config.getoption("certify"):
         from agents_remember_test_support.testing.certifying_bootstrap import (  # noqa: PLC0415
             prepare_certifying_pytest_bootstrap,
@@ -91,6 +101,32 @@ def pytest_configure(config: pytest.Config) -> None:
         config.pluginmanager.import_plugin(
             "agents_remember_test_support.pytest_certifying_bootstrap"
         )
+
+
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    # Pure unit invocations do not import application/transaction test modules at all.
+    if (
+        config.option.markexpr == "not integration"
+        and collection_path in config.stash[_INTEGRATION_FILES]
+    ):
+        return True
+    return None
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    for item in items:
+        if item.path in config.stash[_INTEGRATION_FILES]:
+            item.add_marker(pytest.mark.integration)
+
+
+@pytest.fixture(autouse=True)
+def _integration_composition(request: pytest.FixtureRequest) -> Iterator[None]:
+    if request.node.get_closest_marker("integration") is not None and not request.config.getoption(
+        "certify"
+    ):
+        request.getfixturevalue("worktree_services")
+    yield
 
 
 @pytest.fixture

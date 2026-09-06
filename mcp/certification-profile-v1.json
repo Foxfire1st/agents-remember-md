@@ -50,7 +50,7 @@
       "reportsField": "reports",
       "repositoryBundleArgument": "repository-bundle",
       "retainedReportsArgument": "retained-reports",
-      "runtimeDigest": "c3a5108ddf6c1fc519cf6f52bf570bc956c4ac31a045a543e2e05a2ef4383b63",
+      "runtimeDigest": "1ea0d21043dcc358b6f18de7a0eddaf27418122f95412b479bb066ae0bec299a",
       "sourceArgument": "source",
       "version": "0.21.8"
     }
@@ -179,7 +179,7 @@
       ]
     }
   ],
-  "profileDigest": "da307cd8d609068479ca24c9c0d4c4cadfb6f04f4e215ee5f0170916a7131117",
+  "profileDigest": "308b8f5567c7ac40de8756ee7b71e911bbcab42c0e7a893bba707738438c07a6",
   "profileId": "agents-remember-certification",
   "publishedArtifacts": [
     {
