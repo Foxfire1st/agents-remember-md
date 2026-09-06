@@ -128,21 +128,19 @@ minversion = "9.0"
 testpaths = ["mcp/tests"]
 
 addopts = [
-  # Use every logical CPU by default. pytest-xdist gives each worker its own temp root;
-  # mcp/tests/conftest.py also confines process-global application caches per worker.
-  "-n=auto",
+  # Ordinary edits exercise deterministic tests without delivery-only boundaries.
+  "-m", "not integration",
+  "-n=4",
   # An unregistered marker is a typo that quietly selects nothing. Fail on it.
   "--strict-markers",
   # An unknown or misspelled ini key is a setting that quietly does nothing. Fail on it.
   "--strict-config",
 ]
 
-# The house convention is `<Subject>Tests`, not pytest's default `Test<Subject>`. All
-# 485 such classes currently reach `unittest.TestCase`, which pytest collects whatever
-# `python_classes` says, so this changes nothing today -- 3077 tests collected with and
-# without it on 2026-07-31. It closes the prospective hole: a plain `PlainTests` class
-# that does not subclass TestCase is silently skipped, with no error and no report.
+# Collect the repository's <Subject>Tests convention as well as pytest's Test<Subject>.
 python_classes = ["Test*", "*Tests"]
+# Imported fixture/test classes are exercised in their defining module only.
+collect_imported_tests = false
 
 # An xfail that starts passing is either a bug someone fixed without noticing or a test
 # that stopped testing. Both should be seen rather than absorbed.
@@ -187,30 +185,19 @@ filterwarnings = [
   "ignore:websockets.legacy is deprecated:DeprecationWarning",
 ]
 
-# Environment-gated integration paths. Eight of them, guarding fifteen tests: each is
-# guarded by an `AR_*` variable and skips when it is unset, so nothing exercises them
-# unless something sets it.
-#
-# Registering a marker is not the same as applying one, and for a while this list was
-# only the first. Every entry below was registered and documented while the tests
-# carried no `@pytest.mark.<name>` at all, so `pytest -m ar_run_pi_rpc_smoke` selected
-# *nothing* -- 0 of 3402, reported as a successful run of an empty selection, because
-# `--strict-markers` rejects an unknown marker and has nothing to say about a registered
-# one that decorates no test. All eight are applied now, and
-# `mcp/tests/test_gated_integration_runner.py` fails if any of them selects zero tests
-# again.
-#
-# `scripts/run-gated-integration.py` is the one selector per path. The two
-# credential-free paths can participate in lifecycle-owned Dagger acceptance:
-# `ar_run_pi_rpc_smoke`, which installs its own Pi build and drives it offline against
-# 127.0.0.1, and `agents_remember_real_mcp_config`, which spawns this repository's own
-# MCP server against a generated settings file. The other six need an installed,
-# signed-in vendor CLI and four bill for real model turns. They remain explicit opt-ins,
-# and like every pytest path they refuse execution outside the pinned Dagger graph.
-#
-# `mcp/tests/test_code_quality_check.py` asserts this list and the suite's actual
-# environment gates stay in step in both directions.
+# Optional live boundaries require explicit environment opt-ins and delivery execution.
+# Ordinary pytest defaults to -m 'not integration'; use -m integration for boundary
+# checks or -m '' for the combined population. --certify adds Dagger evidence services.
+# scripts/run-gated-integration.py selects the separately enabled live routes.
 markers = [
+  "integration: real publication, interruption, ownership, application wiring or repository boundary",
+  "evidence_unit: retained delivery evidence category",
+  "evidence_contract: retained delivery evidence category",
+  "evidence_integration: retained delivery evidence category",
+  "evidence_fitness: retained delivery evidence category",
+  "evidence_provider: retained delivery evidence category",
+  "evidence_stress: retained delivery evidence category",
+  "evidence_migration: retained delivery evidence category",
   # Orthogonal to the evidence-category markers: this inherited selector names one reviewed
   # architecture surface. It is explicit here so strict collection never depends on another
   # plugin incidentally registering the same word.

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+import pytest
 from agents_remember_test_support.testing.evidence_governance import LIFECYCLE_CATALOG_PATH
 from agents_remember_test_support.testing.evidence_lifecycle import (
     CATALOG_SCHEMA,
@@ -114,43 +115,18 @@ consumers = [{rendered_consumers}]
             )
 
 
+@pytest.mark.integration
+def test_repository_inventory_is_closed_over_governed_artifacts() -> None:
+    inventory = load_evidence_inventory(REPO_ROOT)
+    assert {item.path for item in inventory.artifacts} == governed_artifact_paths(
+        REPO_ROOT, large_fixture_bytes=inventory.large_fixture_bytes
+    )
+
+
 class EvidenceLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.project = _Project()
         self.addCleanup(self.project.close)
-
-    def test_repository_inventory_is_closed_over_governed_artifacts(self) -> None:
-        inventory = load_evidence_inventory(REPO_ROOT, today=date(2026, 8, 27))
-
-        self.assertEqual(
-            {item.path for item in inventory.artifacts},
-            governed_artifact_paths(
-                REPO_ROOT,
-                large_fixture_bytes=inventory.large_fixture_bytes,
-            ),
-        )
-        self.assertGreaterEqual(len(inventory.artifacts), 47)
-
-    def test_permanent_e2e_support_is_closed_over_source_derived_consumers(self) -> None:
-        inventory = load_evidence_inventory(REPO_ROOT, today=date(2026, 8, 31))
-        e2e = {
-            item.path: item
-            for item in inventory.artifacts
-            if item.path.startswith("scripts/e2e_harness/")
-        }
-        expected = {
-            path.relative_to(REPO_ROOT).as_posix()
-            for path in (REPO_ROOT / "scripts/e2e_harness").glob("*.py")
-        }
-
-        self.assertEqual(set(e2e), expected)
-        self.assertTrue(all(item.consumer_scope.value == "exact-source" for item in e2e.values()))
-        self.assertTrue(
-            all(
-                item.replacement_contract == "contract:ambient-role-chat-e2e"
-                for item in e2e.values()
-            )
-        )
 
     def test_new_fixture_or_ordinary_shared_support_without_metadata_is_refused(self) -> None:
         known = "mcp/tests/fixtures/known.json"

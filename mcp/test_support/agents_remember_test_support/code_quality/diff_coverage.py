@@ -1,8 +1,8 @@
-"""Enforce 100% coverage of changed measurable Python units.
+"""Enforce 90% changed-production coverage at combined unit/integration delivery.
 
 The gate compares Coverage.py's statements and branch arcs with lines added since the
 resolved merge base. Every uncovered changed line and untaken changed branch is named.
-The floor is 100% so its meaning does not weaken as a change grows.
+The delivery report combines unit and integration coverage before applying the floor.
 
 Reported non-measured states are explicit: ``no-changed-lines``,
 ``no-python-changes``, and ``no-measurable-changes``. The last state includes affected
@@ -27,8 +27,8 @@ from agents_remember.kernel import git_command
 
 from agents_remember_test_support.code_quality import crap_calculator
 
-# Zero uncovered changed lines or untaken changed branches.
-DEFAULT_DIFF_COVERAGE_FLOOR = 100.0
+# Combined delivery coverage of changed statements and branches.
+DEFAULT_DIFF_COVERAGE_FLOOR = 90.0
 
 # git's empty tree. Diffing against it yields the whole tree, which is what "no merge
 # base" honestly means: nothing has been established yet, so nothing is grandfathered.

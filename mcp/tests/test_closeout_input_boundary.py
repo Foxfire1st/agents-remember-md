@@ -27,6 +27,7 @@ from agents_remember.worktrees.closeout_input import (
     CloseoutInputError,
     normalize_closeout_input,
     raw_closeout_messages,
+    resolve_closeout_plan,
 )
 from agents_remember.worktrees.integration.closeout import (
     operation_admission as closeout_operation_admission,
@@ -44,7 +45,7 @@ from agents_remember.worktrees.integration.mutation_evidence import (
 from agents_remember.worktrees.modules.args import WorktreeArgs
 from agents_remember.worktrees.modules.models import WorktreeCommandResult
 from agents_remember.worktrees.route_review import code_candidate_tree
-from agents_remember.worktrees.worktree_contract import write_contract
+from agents_remember.worktrees.worktree_contract import WorktreeContract, write_contract
 from closeout_fixture_test_support import selected_fixture as _selected_fixture
 from closeout_input_test_support import (
     closeout_operation_input,
@@ -54,16 +55,40 @@ from test_closeout_queue import MASTER_A
 from test_worktree_support import git
 
 
+def _input_contract() -> WorktreeContract:
+    """Normalization needs contract values, not repositories or a coordinated master."""
+    root = Path("/normalization")
+    return WorktreeContract(
+        task_id="TASK",
+        task_name="normalize",
+        repo_name="example",
+        workflow_kind="light-task",
+        memory_mode="external",
+        coordination_root=root / "coordination",
+        task_root=root / "task",
+        contract_path=root / "task/series-contract.md",
+        task_artifact=root / "task/task.md",
+        worktree_group=root / "group",
+        code_repo_path=root / "code-repo",
+        code_source_branch="main",
+        code_work_branch="leaf",
+        code_base_commit="a" * 40,
+        code_worktree=root / "group/code",
+        memory_repo_path=root / "memory-repo",
+        memory_worktree=root / "group/memory",
+        ledger_path=root / "group/memory/memory.md",
+    )
+
+
 @pytest.mark.parametrize(
     ("value", "observation"),
     [(None, "omitted"), ("", "empty"), (" \n ", "whitespace-only")],
 )
 @pytest.mark.parametrize("leg", ["code", "memory", "ledger"])
 def test_enabled_message_observations_refuse_with_exact_correction(
-    tmp_path: Path, value: str | None, observation: str, leg: str
+    value: str | None, observation: str, leg: str
 ) -> None:
-    fixture = _selected_fixture(tmp_path / f"{leg}-{observation}", memory_mode="external")
-    contract = fixture.contracts[MASTER_A]
+    contract = _input_contract()
     messages: dict[str, str | None] = {
         "code": "code",
         "memory": "memory",
@@ -80,6 +105,11 @@ def test_enabled_message_observations_refuse_with_exact_correction(
                 ledger=messages["ledger"],
             ),
             route="worktree",
+            resolved_plan=resolve_closeout_plan(
+                contract,
+                route="worktree",
+                candidate=CloseoutCandidateSnapshot("b" * 40, "a" * 40, "a" * 40),
+            ),
             corrected_call=CloseoutCorrectedCall(
                 tool="worktree_closeout_apply",
                 arguments={"contract_path": contract.contract_path.as_posix()},
@@ -102,21 +132,18 @@ def test_enabled_message_observations_refuse_with_exact_correction(
     assert corrected_arguments[f"{leg}_commit_message"] == (f"<nonblank {leg} commit message>")
 
 
-def test_plan_uses_lifecycle_possible_writes_and_typed_not_applicable(
-    tmp_path: Path,
-) -> None:
-    fixture = _selected_fixture(tmp_path, memory_mode="external")
-    external = fixture.contracts[MASTER_A]
-    with mock.patch(
-        "agents_remember.worktrees.closeout_input.capture_closeout_candidate",
-        return_value=CloseoutCandidateSnapshot("a" * 40, "b" * 40, "a" * 40),
-    ):
-        normalized = normalize_closeout_input(
-            external,
-            raw_closeout_messages(code=None, memory=" memory ", ledger=" ledger "),
-            route="worktree",
-            corrected_call=CloseoutCorrectedCall(tool="worktree_closeout_preview", arguments={}),
-        )
+def test_plan_uses_lifecycle_possible_writes_and_typed_not_applicable() -> None:
+    external = _input_contract()
+    clean = CloseoutCandidateSnapshot("a" * 40, "b" * 40, "a" * 40)
+    dirty = CloseoutCandidateSnapshot("c" * 40, "b" * 40, "a" * 40)
+    correction = CloseoutCorrectedCall(tool="worktree_closeout_preview", arguments={})
+    normalized = normalize_closeout_input(
+        external,
+        raw_closeout_messages(code=None, memory=" memory ", ledger=" ledger "),
+        route="worktree",
+        resolved_plan=resolve_closeout_plan(external, route="worktree", candidate=clean),
+        corrected_call=correction,
+    )
     assert normalized.code.state == "not-applicable"
     assert normalized.memory.state == "enabled"
     assert normalized.message_for("memory") == "memory"
@@ -129,22 +156,21 @@ def test_plan_uses_lifecycle_possible_writes_and_typed_not_applicable(
         memory_worktree=None,
         ledger_path=None,
     )
-    with mock.patch(
-        "agents_remember.worktrees.closeout_input.capture_closeout_candidate",
-        return_value=CloseoutCandidateSnapshot("a" * 40, "b" * 40, "a" * 40),
-    ):
-        first = normalize_closeout_input(
-            internal,
-            raw_closeout_messages(code=None, memory="ignored one", ledger="ignored one"),
-            route="worktree",
-            corrected_call=CloseoutCorrectedCall(tool="worktree_closeout_preview", arguments={}),
-        )
-        second = normalize_closeout_input(
-            internal,
-            raw_closeout_messages(code=" ", memory="ignored two", ledger=None),
-            route="worktree",
-            corrected_call=CloseoutCorrectedCall(tool="worktree_closeout_preview", arguments={}),
-        )
+    internal_plan = resolve_closeout_plan(internal, route="worktree", candidate=clean)
+    first = normalize_closeout_input(
+        internal,
+        raw_closeout_messages(code=None, memory="ignored one", ledger="ignored one"),
+        route="worktree",
+        resolved_plan=internal_plan,
+        corrected_call=correction,
+    )
+    second = normalize_closeout_input(
+        internal,
+        raw_closeout_messages(code=" ", memory="ignored two", ledger=None),
+        route="worktree",
+        resolved_plan=internal_plan,
+        corrected_call=correction,
+    )
     assert first == second
     assert first.memory.state == first.ledger.state == "not-applicable"
 
@@ -153,24 +179,24 @@ def test_plan_uses_lifecycle_possible_writes_and_typed_not_applicable(
         disabled,
         raw_closeout_messages(code="code", memory=None, ledger=None),
         route="worktree",
-        corrected_call=CloseoutCorrectedCall(tool="worktree_closeout_preview", arguments={}),
+        resolved_plan=resolve_closeout_plan(disabled, route="worktree", candidate=dirty),
+        corrected_call=correction,
     )
     assert disabled_input.code.state == "enabled"
-    assert disabled_input.memory.state == "not-applicable"
-    assert disabled_input.ledger.state == "not-applicable"
+    assert disabled_input.memory.state == disabled_input.ledger.state == "not-applicable"
 
     series = replace(external, kind="series")
     series_input = normalize_closeout_input(
         series,
         raw_closeout_messages(code=None, memory=None, ledger=None),
         route="worktree",
-        corrected_call=CloseoutCorrectedCall(tool="worktree_closeout_preview", arguments={}),
+        corrected_call=correction,
     )
     assert series_input.code.state == "not-applicable"
-    assert series_input.memory.state == "not-applicable"
-    assert series_input.ledger.state == "not-applicable"
+    assert series_input.memory.state == series_input.ledger.state == "not-applicable"
 
 
+@pytest.mark.integration
 def test_preview_apply_and_duplicate_fingerprints_share_one_normalized_input(
     tmp_path: Path,
 ) -> None:
@@ -259,6 +285,7 @@ def test_preview_apply_and_duplicate_fingerprints_share_one_normalized_input(
     launcher.assert_called_once()
 
 
+@pytest.mark.integration
 def test_invalid_apply_after_selection_changes_no_authority_or_git_fact(tmp_path: Path) -> None:
     fixture = _selected_fixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
@@ -293,6 +320,7 @@ def test_invalid_apply_after_selection_changes_no_authority_or_git_fact(tmp_path
     assert _git_facts(contract.memory_worktree) == before_memory
 
 
+@pytest.mark.integration
 def test_preview_translates_curator_coherence_refusal_at_its_shared_boundary(
     tmp_path: Path,
 ) -> None:
@@ -322,6 +350,7 @@ def test_preview_translates_curator_coherence_refusal_at_its_shared_boundary(
     assert result["nextAction"] == "prepare"
 
 
+@pytest.mark.integration
 def test_apply_pair_refusal_names_field_and_exact_repair_route(tmp_path: Path) -> None:
     fixture = _selected_fixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
@@ -372,6 +401,7 @@ def test_apply_pair_refusal_names_field_and_exact_repair_route(tmp_path: Path) -
 
 
 @pytest.mark.parametrize("drift", ["dirty-to-clean", "clean-to-dirty"])
+@pytest.mark.integration
 def test_candidate_drift_at_normalization_capture_seam_refuses_without_authority(
     tmp_path: Path,
     drift: str,
@@ -440,6 +470,7 @@ def test_candidate_drift_at_normalization_capture_seam_refuses_without_authority
     assert _git_facts(contract.memory_worktree) == before_memory
 
 
+@pytest.mark.integration
 def test_preview_and_direct_apply_return_the_same_typed_refusal(tmp_path: Path) -> None:
     fixture = _selected_fixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
@@ -475,6 +506,7 @@ def test_preview_and_direct_apply_return_the_same_typed_refusal(tmp_path: Path) 
     closeout.assert_not_called()
 
 
+@pytest.mark.integration
 def test_dry_run_apply_refusal_preserves_the_non_mutating_corrected_call(
     tmp_path: Path,
 ) -> None:
@@ -495,6 +527,7 @@ def test_dry_run_apply_refusal_preserves_the_non_mutating_corrected_call(
     assert corrected_arguments["dry_run"] is True
 
 
+@pytest.mark.integration
 def test_valid_crash_cuts_before_and_after_record_publication(tmp_path: Path) -> None:
     fixture = _selected_fixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
@@ -539,6 +572,7 @@ def test_valid_crash_cuts_before_and_after_record_publication(tmp_path: Path) ->
     resumed_launcher.assert_called_once()
 
 
+@pytest.mark.integration
 def test_valid_duplicate_keeps_one_generation_and_invalid_duplicate_cannot_observe_it(
     tmp_path: Path,
 ) -> None:
@@ -587,6 +621,7 @@ def test_valid_duplicate_keeps_one_generation_and_invalid_duplicate_cannot_obser
     assert _git_facts(contract.memory_worktree) == before_memory
 
 
+@pytest.mark.integration
 def test_same_tree_different_head_conflicts_with_pre_mutation_generation(
     tmp_path: Path,
 ) -> None:
@@ -610,6 +645,7 @@ def test_same_tree_different_head_conflicts_with_pre_mutation_generation(
 
 
 @pytest.mark.parametrize("output_cut", ["code", "memory", "ledger"])
+@pytest.mark.integration
 def test_public_retry_uses_accepted_plan_after_each_proven_output_cut(
     tmp_path: Path,
     output_cut: CloseoutMutationLeg,
@@ -674,6 +710,7 @@ def test_public_retry_uses_accepted_plan_after_each_proven_output_cut(
     assert store.path.read_bytes() == before_invalid
 
 
+@pytest.mark.integration
 def test_valid_retry_refuses_candidate_content_added_after_proven_code_output(
     tmp_path: Path,
 ) -> None:
@@ -699,6 +736,7 @@ def test_valid_retry_refuses_candidate_content_added_after_proven_code_output(
     assert store.path.read_bytes() == before
 
 
+@pytest.mark.integration
 def test_valid_retry_refuses_contract_drift_after_proven_code_output(tmp_path: Path) -> None:
     fixture = _selected_fixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
@@ -718,6 +756,7 @@ def test_valid_retry_refuses_contract_drift_after_proven_code_output(tmp_path: P
 
 
 @pytest.mark.parametrize("output_cut", ["code", "memory", "ledger"])
+@pytest.mark.integration
 def test_atomic_proof_publication_and_restart_repair_each_recovery_projection(
     tmp_path: Path,
     output_cut: CloseoutMutationLeg,

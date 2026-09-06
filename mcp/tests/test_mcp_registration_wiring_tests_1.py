@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
 from agents_remember.models.core import ServingBuildPayload
 from agents_remember.models.memory import (
     MemoryQualityCheckRequest,
@@ -35,6 +36,8 @@ class RegistrationWiringTests1(RegistrationWiringTests):
         self.assertEqual(scope.document, "mcp/example.py.md")
         self.assertEqual(scope.expected_snapshot, "a" * 64)
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_ping_takes_no_configuration(self) -> None:
         """``ping`` is a liveness check: it must not depend on resolved settings."""
         recorder = self.invoke("ping", "agents_remember.mcp.registration.core.ping_payload")
@@ -42,6 +45,8 @@ class RegistrationWiringTests1(RegistrationWiringTests):
         self.assertEqual(recorder.args, ())
         self.assertEqual(recorder.kwargs, {})
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_server_info_reports_the_config_the_server_was_built_with(self) -> None:
         recorder = self.invoke(
             "server_info", "agents_remember.mcp.registration.core.server_info_payload"

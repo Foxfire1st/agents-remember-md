@@ -244,9 +244,6 @@ class CodeQualityCheckTests(unittest.TestCase):
         dagger_main = (REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/main.py").read_text(
             encoding="utf-8"
         )
-        dagger_command = (
-            REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/quality_command.py"
-        ).read_text(encoding="utf-8")
         profile = (REPOSITORY_ROOT / "mcp/certification-profile-v1.json").read_text(
             encoding="utf-8"
         )
@@ -261,9 +258,8 @@ class CodeQualityCheckTests(unittest.TestCase):
         self.assertNotIn("npm run test", workflow)
         self.assertNotIn("agents_remember_test_support.code_quality.check", workflow)
         self.assertNotIn("quality_wrapper_command", dagger_main)
-        self.assertIn("agents_remember_test_support.code_quality.check", dagger_command)
         self.assertIn('"railId": "python-suite"', profile)
-        for content in (hook, workflow, dagger_main, dagger_command):
+        for content in (hook, workflow, dagger_main):
             self.assertNotIn("fail-on-crap-threshold", content)
 
     def test_workflows_preserve_the_pr_check_and_release_only_boundaries(self) -> None:

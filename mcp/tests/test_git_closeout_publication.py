@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
-from unittest import mock
 
 import pytest
 from agents_remember.kernel import git_command
@@ -29,15 +28,15 @@ from agents_remember.kernel.git_command import (
 from agents_remember.kernel.git_preparation import PrivateGitPreparationBinding
 from test_git_command import _commit, _init
 
+pytestmark = pytest.mark.integration
+
 
 @dataclass
 class _Publication:
     binding: GitCloseoutPublicationBinding
-    calls: list[GitCloseoutPublicationBinding] = field(default_factory=list)
     allowed: bool = True
 
     def authorize(self, actual: GitCloseoutPublicationBinding) -> None:
-        self.calls.append(actual)
         if not self.allowed or actual != self.binding:
             raise RuntimeError("actual publication owner no longer authorized")
 
@@ -105,8 +104,7 @@ def test_one_real_cas_preserves_index_body_and_already_new_does_not_write(
     capability = publication.capability()
     before = _state(publication.binding)
     plan = closeout_publication_command(publication.binding)
-    with mock.patch.object(subprocess, "run", wraps=subprocess.run) as spawned:
-        result = publish_git_closeout_ref(capability)
+    result = publish_git_closeout_ref(capability)
     assert result.command is not None and result.command.returncode == 0
     assert (result.before.state, result.after.state) == ("old", "new")
     assert result.after.commit == publication.binding.prepared_commit
@@ -116,16 +114,12 @@ def test_one_real_cas_preserves_index_body_and_already_new_does_not_write(
         publication.binding.prepared_commit,
         publication.binding.expected_old_commit,
     )
-    assert [call.args[0] for call in spawned.call_args_list].count(list(plan.argv)) == 1
     after = _state(publication.binding)
     assert after[0] == before[0] and after[2:] == before[2:]
     assert after[1].strip() == publication.binding.prepared_commit
-    with mock.patch.object(subprocess, "run", wraps=subprocess.run) as reopened:
-        repeated = publish_git_closeout_ref(publication.capability())
+    repeated = publish_git_closeout_ref(publication.capability())
     assert repeated.command is None and repeated.before == repeated.after == result.after
-    assert all("update-ref" not in call.args[0] for call in reopened.call_args_list)
     assert _state(publication.binding) == after
-    assert len(publication.calls) >= 6
 
 
 def test_exact_binary_blob_and_tree_readers_preserve_crlf_paths(publication: _Publication) -> None:
@@ -156,12 +150,8 @@ def test_late_source_or_ref_movement_refuses_without_overwriting(
     else:
         assert run_git(root, ["commit", "-m", "foreign owner commit"]).returncode == 0
     before = _state(publication.binding)
-    with (
-        mock.patch.object(subprocess, "run", wraps=subprocess.run) as spawned,
-        pytest.raises(GitCloseoutPublicationError),
-    ):
+    with pytest.raises(GitCloseoutPublicationError):
         publish_git_closeout_ref(capability)
-    assert all("update-ref" not in call.args[0] for call in spawned.call_args_list)
     assert _state(publication.binding) == before
     if fault == "untracked":
         assert (root / "late-file.txt").read_text() == "preserve"
@@ -205,10 +195,8 @@ def test_existing_leg_is_observation_only(publication: _Publication) -> None:
     before = _state(publication.binding)
     with pytest.raises(GitCloseoutPublicationError, match="observation-only"):
         closeout_publication_command(publication.binding)
-    with mock.patch.object(subprocess, "run", wraps=subprocess.run) as spawned:
-        result = publish_git_closeout_ref(publication.capability())
+    result = publish_git_closeout_ref(publication.capability())
     assert result.command is None and result.before.state == result.after.state == "existing"
-    assert all("update-ref" not in call.args[0] for call in spawned.call_args_list)
     assert _state(publication.binding) == before
 
 

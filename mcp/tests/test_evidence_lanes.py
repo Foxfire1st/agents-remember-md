@@ -6,6 +6,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 from agents_remember_test_support.testing.evidence_lanes import (
@@ -18,10 +19,20 @@ from agents_remember_test_support.testing.evidence_lanes import (
     validate_lane_registry,
 )
 from agents_remember_test_support.testing.evidence_lifecycle import EvidenceCategory
-from agents_remember_test_support.testing.lane_manifest import load_lane_manifest
+from agents_remember_test_support.testing.lane_manifest import LaneManifest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = load_lane_manifest(REPO_ROOT)
+MANIFEST = LaneManifest(
+    files={
+        Path("mcp/tests/test_evidence_lanes.py"): EvidenceCategory.UNIT_REGRESSION,
+        Path("mcp/tests/test_active_projector_singleflight.py"): EvidenceCategory.UNIT_REGRESSION,
+        Path("mcp/tests/test_conversation_control_api.py"): EvidenceCategory.INTEGRATION,
+        Path("mcp/tests/test_pi_rpc_real_smoke.py"): EvidenceCategory.PROVIDER_CONFORMANCE,
+        Path("mcp/tests/test_pi_rpc_adapter.py"): EvidenceCategory.PROVIDER_CONFORMANCE,
+    },
+    overrides=(),
+    digest="a" * 64,
+)
 
 
 class _Item:
@@ -142,6 +153,10 @@ class EvidenceLaneRegistryTests(unittest.TestCase):
                 MANIFEST,
             )
 
+    @patch(
+        "agents_remember_test_support.testing.evidence_lanes.load_lane_manifest",
+        new=lambda _root: MANIFEST,
+    )
     def test_plugin_registers_the_registry_and_reports_category_on_each_item(self) -> None:
         config = _Config()
         pytest_configure(cast(pytest.Config, config))

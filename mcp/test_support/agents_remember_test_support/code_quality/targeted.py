@@ -119,7 +119,7 @@ def derive_targeted_scope(project_root: Path, base_revision: str) -> TargetedSco
         graph.modules,
         graph.importers,
     )
-    impact = graph.resolve(changed)
+    impact = graph.resolve(changed, base_revision=base_revision)
     package_authority = configured_package_authority(root, list(graph.tracked))
     product_python = tuple(
         path for path in graph.python_paths if within_any(path, package_authority.product)

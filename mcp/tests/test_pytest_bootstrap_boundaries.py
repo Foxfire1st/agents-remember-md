@@ -72,7 +72,7 @@ class PytestBootstrapBoundaryTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def test_candidate_a_retirement_preserves_certifying_authority_boundary(self) -> None:
+    def test_certification_requires_its_own_admission(self) -> None:
         attestation = self.root / "attestation"
         attestation.write_text(VALID_NONCE, encoding="utf-8")
         certifying = prepare_certifying_pytest_bootstrap(
@@ -94,17 +94,6 @@ class PytestBootstrapBoundaryTests(unittest.TestCase):
 
         with self.assertRaises(EvidenceConsumerRefusal):
             require_certifying_evidence(object(), consumer=EvidenceConsumer.QUALITY)
-
-        repository_root = Path(__file__).resolve().parents[2]
-        self.assertFalse((repository_root / "scripts/test-python").exists())
-        support = repository_root / "mcp/test_support/agents_remember_test_support/testing"
-        for retired in (
-            "diagnostic_bootstrap.py",
-            "direct_runner.py",
-            "direct_source_closure.py",
-            "eligibility.py",
-        ):
-            self.assertFalse((support / retired).exists(), retired)
 
     def test_admission_matrix_is_total_and_does_not_expose_the_nonce(self) -> None:
         attestation = self.root / "attestation"

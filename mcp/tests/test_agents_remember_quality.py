@@ -192,10 +192,6 @@ def test_agents_remember_quality_module_is_pinned_and_parseable() -> None:
         "quality",
         "portable_certification",
         "cadence_evidence",
-        "causal_evidence",
-        "retry_evidence",
-        "retry_matrix_evidence",
-        "route_measurement_evidence",
     }
     assert DAGGER_MODULE_ID.endswith(".main")
     assert DAGGER_MODULE.parent.parent == DAGGER_SOURCE_ROOT
@@ -541,28 +537,6 @@ def test_agents_remember_quality_exports_failures_as_the_only_authoritative_resu
 
 
 @pytest.mark.parametrize(
-    ("pytest_results", "must_run", "expected"),
-    [
-        (("result: pytest PASS",), True, True),
-        (("result: pytest SKIPPED (an earlier quality rail failed)",), False, True),
-        ((), False, False),
-        (("result: pytest FAIL",), False, False),
-    ],
-)
-def test_retry_matrix_distinguishes_pytest_execution_from_explicit_skip(
-    pytest_results: tuple[str, ...],
-    must_run: bool,
-    expected: bool,
-) -> None:
-    module_root = str(DAGGER_SOURCE_ROOT)
-    if module_root not in sys.path:
-        sys.path.insert(0, module_root)
-    route = importlib.import_module("agents_remember_quality.retry_evidence_route")
-
-    assert route._pytest_observation_matches(pytest_results, must_run=must_run) is expected
-
-
-@pytest.mark.parametrize(
     ("diff_base", "memory_cap", "message"),
     [
         ("", 0, "manifest.diffBase must be"),
@@ -583,19 +557,6 @@ def test_dagger_quality_refuses_invalid_public_inputs(
                 object(),
                 FakeFile(json.dumps(manifest)),
                 memory_cap_bytes=memory_cap,
-            )
-        )
-
-
-def test_dagger_route_measurement_refuses_single_observation_distributions() -> None:
-    module = load_dagger_module()
-
-    with pytest.raises(ValueError, match="at least 2"):
-        asyncio.run(
-            module.AgentsRememberQuality().route_measurement_evidence(
-                object(),
-                object(),
-                repetitions=1,
             )
         )
 

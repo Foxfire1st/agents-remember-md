@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -93,6 +94,8 @@ from test_closeout_queue import MASTER_A, QueueFixture, _grade, _leaf
 from test_operation_certification_selection import _fixture as selected_fixture
 from test_operation_certification_selection import _queued
 from test_worktree_support import git
+
+pytestmark = pytest.mark.integration
 
 
 def _original_run_bytes(record: LifecycleOperationRecord) -> bytes:
@@ -945,24 +948,29 @@ def test_retained_output_refuses_persisted_repository_alias_with_unchanged_physi
     assert alias.is_symlink() and alias.resolve() == contract.code_repo_path.resolve()
 
 
-def _run_preparation_in_worker_session(request: pytest.FixtureRequest, root: Path) -> bool:
-    """Execute the same bounded scenario in a real isolated worker process group."""
-    if os.getpgrp() == os.getpid():
-        return False
-    command = [
-        sys.executable,
-        "-B",
-        "-m",
-        "pytest",
-        "-q",
-        "-n=0",
-        "--tb=long",
-        f"--basetemp={root / 'worker-session'}",
-        request.node.nodeid,
-    ]
+def _run_preparation_in_worker_session(scenario: str, root: Path, value: bool | str) -> None:
+    """Run a scenario under genuine worker ownership without recursively invoking pytest."""
+    script = "\n".join(
+        (
+            "import json, sys",
+            "from pathlib import Path",
+            "import pytest",
+            "from dataclasses import replace",
+            "from agents_remember_test_support.testing.global_state import begin_pytest_process",
+            "from agents_remember.application.worktree_services import build_default_worktree_services",
+            "from agents_remember.worktrees.services import bind_worktree_services",
+            "begin_pytest_process()",
+            "services = replace(build_default_worktree_services(), certification_continuation=None)",
+            "bind_worktree_services(services)",
+            "import test_closeout_certification_admission_recovery as scenarios",
+            "with pytest.MonkeyPatch.context() as patch:",
+            "    getattr(scenarios, sys.argv[1])(Path(sys.argv[2]), patch, json.loads(sys.argv[3]))",
+        )
+    )
     with subprocess.Popen(
-        command,
+        [sys.executable, "-B", "-c", script, scenario, str(root), json.dumps(value)],
         cwd=Path(__file__).resolve().parents[2],
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
         start_new_session=True,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -977,7 +985,6 @@ def _run_preparation_in_worker_session(request: pytest.FixtureRequest, root: Pat
             stdout, stderr = process.communicate()
             pytest.fail(f"bounded lifecycle scenario timed out\n{stdout}\n{stderr}")
         assert process.returncode == 0, f"{stdout}\n{stderr}"
-    return True
 
 
 def _green_code_preparation_handoff(
@@ -1026,10 +1033,14 @@ def _green_code_preparation_handoff(
 
 @pytest.mark.parametrize("existing", [False, True], ids=["new-private-code", "existing-code"])
 def test_preparation_selects_exact_real_code_without_publishing_logical_refs_or_recommitting(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool, request: pytest.FixtureRequest
+    tmp_path: Path, existing: bool
 ) -> None:
-    if _run_preparation_in_worker_session(request, tmp_path):
-        return
+    _run_preparation_in_worker_session("_prepared_code_scenario", tmp_path, existing)
+
+
+def _prepared_code_scenario(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool
+) -> None:
     handoff = _green_code_preparation_handoff(tmp_path, monkeypatch, existing=existing)
     before = _git_state(handoff.contract)
     original_run = _original_run_bytes(handoff.record)
@@ -1099,10 +1110,14 @@ def test_preparation_selects_exact_real_code_without_publishing_logical_refs_or_
     "cut", ["before-create", "before-commit", "after-commit", "cancel-after-commit"]
 )
 def test_preparation_retains_original_uncertain_commands_without_repeating_git(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cut: str, request: pytest.FixtureRequest
+    tmp_path: Path, cut: str
 ) -> None:
-    if _run_preparation_in_worker_session(request, tmp_path):
-        return
+    _run_preparation_in_worker_session("_interrupted_preparation_scenario", tmp_path, cut)
+
+
+def _interrupted_preparation_scenario(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cut: str
+) -> None:
     handoff = _green_code_preparation_handoff(tmp_path, monkeypatch)
     before = _git_state(handoff.contract)
     original_runner = private_execution.run_git_preparation

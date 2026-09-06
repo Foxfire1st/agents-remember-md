@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tomllib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from agents_remember.kernel import git_command
+
+from agents_remember_test_support.code_quality.catalog_selection import changed_catalog_consumers
 from agents_remember_test_support.code_quality.scope import top_level_packages
 from agents_remember_test_support.testing.dependency_facts import (
     RepositoryDependencyFacts,
@@ -24,10 +28,10 @@ from agents_remember_test_support.testing.evidence_lifecycle import (
 GLOBAL_TEST_INPUTS = frozenset(
     {
         Path("pyproject.toml"),
-        Path("mcp/tests/evidence-lifecycle.toml"),
     }
 )
-OWNERSHIP_AUTHORITY_VERSION = "2.0.0"
+CATALOG_PATH = Path("mcp/tests/evidence-lifecycle.toml")
+OWNERSHIP_AUTHORITY_VERSION = "2.1.0"
 IRRELEVANT_ROOTS = frozenset({"dashboard", "docs", "notes"})
 IRRELEVANT_SUFFIXES = frozenset({".md", ".rst", ".txt"})
 
@@ -58,8 +62,6 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
     ),
     AMBIENT_ROLE_RUNNER_PATH: frozenset(
         {
-            # The shared profile and source-selection fixtures model the runner output.
-            # Their actual importers belong to this explicit consumer declaration.
             Path("mcp/tests/test_agents_remember_quality.py"),
             Path("mcp/tests/test_certification_lane_bridge.py"),
             Path("mcp/tests/test_clean_quality_executor.py"),
@@ -116,6 +118,7 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_lifecycle_operation_store_invariants.py"),
             Path("mcp/tests/test_lifecycle_operation_worker_entrypoint.py"),
             Path("mcp/tests/test_lifecycle_operations.py"),
+            Path("mcp/tests/test_lifecycle_preparation_selection.py"),
             Path("mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py"),
             Path("mcp/tests/test_lifecycle_resume_invariant_owner_l2.py"),
             Path("mcp/tests/test_lifecycle_status_wait_outcomes.py"),
@@ -146,7 +149,28 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
     ),
     SETTINGS_EXAMPLE_PATH: frozenset(
         {
+            Path("mcp/tests/test_causal_quality_preflight.py"),
+            Path("mcp/tests/test_code_quality_check.py"),
+            Path("mcp/tests/test_code_quality_check_scope.py"),
+            Path("mcp/tests/test_code_quality_environment_guard.py"),
+            Path("mcp/tests/test_code_quality_memory_cap.py"),
+            Path("mcp/tests/test_code_quality_targeted.py"),
+            Path("mcp/tests/test_code_quality_tool_signature_exemption.py"),
+            Path("mcp/tests/test_dependency_ownership_ast_helpers.py"),
+            Path("mcp/tests/test_diff_coverage.py"),
+            Path("mcp/tests/test_file_size_detector.py"),
+            Path("mcp/tests/test_gate_scope.py"),
+            Path("mcp/tests/test_git_closeout_publication.py"),
+            Path("mcp/tests/test_git_command.py"),
+            Path("mcp/tests/test_l6_diff_coverage_code_quality.py"),
+            Path("mcp/tests/test_l6_diff_coverage_crap.py"),
+            Path("mcp/tests/test_python_test_evidence_firewall.py"),
+            Path("mcp/tests/test_quality_retry_proof.py"),
+            Path("mcp/tests/test_quality_scope_reporting.py"),
+            Path("mcp/tests/test_rail_evidence_publication.py"),
             Path("mcp/tests/test_repository_certification_profiles.py"),
+            Path("mcp/tests/test_repository_source_applicability.py"),
+            Path("mcp/tests/test_worktree_closeout_gate_scope.py"),
         }
     ),
     CERTIFICATION_PROFILE_PATH: frozenset(
@@ -155,6 +179,7 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_atomic_series_activation.py"),
             Path("mcp/tests/test_atomic_series_landing_l3.py"),
             Path("mcp/tests/test_author_execution_graph.py"),
+            Path("mcp/tests/test_causal_quality_preflight.py"),
             Path("mcp/tests/test_certification_lane_bridge.py"),
             Path("mcp/tests/test_clean_quality_executor.py"),
             Path("mcp/tests/test_clean_room.py"),
@@ -162,11 +187,11 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_cleanup_carryover_cache_1.py"),
             Path("mcp/tests/test_cleanup_carryover_cache_2.py"),
             Path("mcp/tests/test_cleanup_carryover_terminal.py"),
+            Path("mcp/tests/test_closeout_candidate_publication_guard.py"),
             Path("mcp/tests/test_closeout_certification_admission_recovery.py"),
             Path("mcp/tests/test_closeout_certification_entrypoint.py"),
             Path("mcp/tests/test_closeout_certification_recovery.py"),
             Path("mcp/tests/test_closeout_claim_l3.py"),
-            Path("mcp/tests/test_closeout_candidate_publication_guard.py"),
             Path("mcp/tests/test_closeout_execution_input_guards.py"),
             Path("mcp/tests/test_closeout_generation_boundary.py"),
             Path("mcp/tests/test_closeout_input_boundary.py"),
@@ -181,6 +206,10 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_code_certification_execution.py"),
             Path("mcp/tests/test_code_quality_check.py"),
             Path("mcp/tests/test_code_quality_check_scope.py"),
+            Path("mcp/tests/test_code_quality_environment_guard.py"),
+            Path("mcp/tests/test_code_quality_memory_cap.py"),
+            Path("mcp/tests/test_code_quality_targeted.py"),
+            Path("mcp/tests/test_code_quality_tool_signature_exemption.py"),
             Path("mcp/tests/test_compact_content.py"),
             Path("mcp/tests/test_config.py"),
             Path("mcp/tests/test_configured_contract_admission_l2.py"),
@@ -189,6 +218,8 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_curator_coherence.py"),
             Path("mcp/tests/test_curator_coherence_edges.py"),
             Path("mcp/tests/test_dagger_certification_suffix.py"),
+            Path("mcp/tests/test_dependency_ownership_ast_helpers.py"),
+            Path("mcp/tests/test_diff_coverage.py"),
             Path("mcp/tests/test_direct_landing.py"),
             Path("mcp/tests/test_direct_landing_input_boundary.py"),
             Path("mcp/tests/test_direct_landing_operation_recovery.py"),
@@ -204,15 +235,18 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_gate_certification_evidence.py"),
             Path("mcp/tests/test_gate_certification_records.py"),
             Path("mcp/tests/test_gate_replay_window.py"),
+            Path("mcp/tests/test_gate_scope.py"),
             Path("mcp/tests/test_generation_coherent_lifecycle_projection.py"),
-            Path("mcp/tests/test_integration_certification_selection.py"),
-            Path("mcp/tests/test_integration_organizational_decisions_l2.py"),
+            Path("mcp/tests/test_git_closeout_publication.py"),
+            Path("mcp/tests/test_git_command.py"),
             Path("mcp/tests/test_integration_apply_recovery_edges_l2.py"),
             Path("mcp/tests/test_integration_authority_lowest_writers.py"),
             Path("mcp/tests/test_integration_branch_authority.py"),
             Path("mcp/tests/test_integration_branch_authority_bootstrap_edges.py"),
             Path("mcp/tests/test_integration_branch_authority_edges.py"),
             Path("mcp/tests/test_integration_branch_authority_series_drift.py"),
+            Path("mcp/tests/test_integration_certification_selection.py"),
+            Path("mcp/tests/test_integration_organizational_decisions_l2.py"),
             Path("mcp/tests/test_integration_ref_cas_classification_l2.py"),
             Path("mcp/tests/test_integration_ref_controls_l2.py"),
             Path("mcp/tests/test_integration_ref_transaction.py"),
@@ -221,6 +255,8 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_l4_start_authority_gap_coverage.py"),
             Path("mcp/tests/test_l4_terminal_and_series_gap_coverage.py"),
             Path("mcp/tests/test_l5_quality_and_recovery_edges.py"),
+            Path("mcp/tests/test_l6_diff_coverage_code_quality.py"),
+            Path("mcp/tests/test_l6_diff_coverage_crap.py"),
             Path("mcp/tests/test_legacy_operation_bridge.py"),
             Path("mcp/tests/test_legacy_operation_entry_totality_l2.py"),
             Path("mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py"),
@@ -233,10 +269,11 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_lifecycle_operation_controls_l2.py"),
             Path("mcp/tests/test_lifecycle_operation_dispositions_l2.py"),
             Path("mcp/tests/test_lifecycle_operation_dry_run_l2.py"),
-            Path("mcp/tests/test_lifecycle_operation_store_invariants.py"),
             Path("mcp/tests/test_lifecycle_operation_request_validation_l2.py"),
+            Path("mcp/tests/test_lifecycle_operation_store_invariants.py"),
             Path("mcp/tests/test_lifecycle_operation_worker_entrypoint.py"),
             Path("mcp/tests/test_lifecycle_operations.py"),
+            Path("mcp/tests/test_lifecycle_preparation_selection.py"),
             Path("mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py"),
             Path("mcp/tests/test_lifecycle_resume_invariant_owner_l2.py"),
             Path("mcp/tests/test_lifecycle_status_wait_outcomes.py"),
@@ -261,10 +298,11 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_public_surface_conformance.py"),
             Path("mcp/tests/test_python_test_evidence_firewall.py"),
             Path("mcp/tests/test_quality_gate_public_contract.py"),
+            Path("mcp/tests/test_quality_report_publication_security.py"),
+            Path("mcp/tests/test_quality_retry_proof.py"),
+            Path("mcp/tests/test_quality_scope_reporting.py"),
             Path("mcp/tests/test_rail_bindings.py"),
             Path("mcp/tests/test_rail_evidence_publication.py"),
-            Path("mcp/tests/test_quality_report_publication_security.py"),
-            Path("mcp/tests/test_quality_scope_reporting.py"),
             Path("mcp/tests/test_read_ar_files.py"),
             Path("mcp/tests/test_register_scaffold.py"),
             Path("mcp/tests/test_repository_certification_profiles.py"),
@@ -289,9 +327,9 @@ REPOSITORY_TEST_INPUT_CONSUMERS: dict[Path, frozenset[Path]] = {
             Path("mcp/tests/test_task_reopen_authority.py"),
             Path("mcp/tests/test_task_reopen_guards.py"),
             Path("mcp/tests/test_task_sprint_linkage.py"),
-            Path("mcp/tests/test_terminal_leaf_assignment.py"),
             Path("mcp/tests/test_terminal_enclosure_archive_boundary_l2.py"),
             Path("mcp/tests/test_terminal_enclosure_cleanup_l5.py"),
+            Path("mcp/tests/test_terminal_leaf_assignment.py"),
             Path("mcp/tests/test_terminal_opener.py"),
             Path("mcp/tests/test_terminal_ws.py"),
             Path("mcp/tests/test_terminal_ws_misc.py"),
@@ -413,7 +451,7 @@ class DependencyOwnershipGraph:
         self.parse_error = self.facts.parse_error
         self.declared_consumers, self.catalog_error = _declared_consumers(self.project_root)
 
-    def resolve(self, changed: Sequence[Path]) -> TestImpact:
+    def resolve(self, changed: Sequence[Path], *, base_revision: str | None = None) -> TestImpact:
         """Resolve exact consumers and retain every unresolved input without broadening."""
 
         changed_paths = tuple(sorted(set(changed), key=Path.as_posix))
@@ -431,15 +469,21 @@ class DependencyOwnershipGraph:
                 global_invalidation=False,
                 unresolved_inputs=unresolved,
             )
-        return self._resolved_impact(changed_paths)
+        return self._resolved_impact(changed_paths, base_revision)
 
-    def _resolved_impact(self, changed_paths: Sequence[Path]) -> TestImpact:
+    def _resolved_impact(
+        self, changed_paths: Sequence[Path], base_revision: str | None
+    ) -> TestImpact:
         reasons: dict[Path, set[SelectionReason]] = {}
         global_sources: list[SelectionReason] = []
         input_decisions: list[SelectionReason] = []
         unresolved: list[SelectionReason] = []
         for path in changed_paths:
-            decision = self._resolve_one(path)
+            decision = (
+                self._catalog_consumers(base_revision)
+                if path == CATALOG_PATH
+                else self._resolve_one(path)
+            )
             if isinstance(decision, SelectionReason):
                 if decision.kind is SelectionReasonKind.UNRESOLVED:
                     unresolved.append(decision)
@@ -465,6 +509,42 @@ class DependencyOwnershipGraph:
             input_decisions=tuple(sorted(input_decisions)),
             unresolved_inputs=tuple(sorted(unresolved)),
             global_invalidators=tuple(sorted(global_sources)),
+        )
+
+    def _catalog_consumers(
+        self, base_revision: str | None
+    ) -> dict[Path, set[SelectionReason]] | SelectionReason:
+        # Retry snapshots retain hashes, not old catalog bytes. Without an exact old
+        # declaration they must run fresh rather than guess removed dependencies.
+        if base_revision is None:
+            return SelectionReason(
+                SelectionReasonKind.UNRESOLVED, CATALOG_PATH, "catalog-base-required"
+            )
+        try:
+            previous = git_command.run_git(
+                self.project_root, ["show", f"{base_revision}:{CATALOG_PATH.as_posix()}"]
+            )
+            if previous.returncode != 0:
+                return SelectionReason(
+                    SelectionReasonKind.PYTEST_GLOBAL, CATALOG_PATH, "catalog-added-or-unavailable"
+                )
+            affected = changed_catalog_consumers(
+                previous.stdout, (self.project_root / CATALOG_PATH).read_text(encoding="utf-8")
+            )
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            return SelectionReason(SelectionReasonKind.UNRESOLVED, CATALOG_PATH, str(error))
+        if affected is None:
+            return SelectionReason(
+                SelectionReasonKind.PYTEST_GLOBAL, CATALOG_PATH, "catalog-policy-changed"
+            )
+        tests = set(affected).intersection(self.tests)
+        for consumer in affected.difference(self.tests):
+            tests.update(self._observed_consumers(consumer))
+        return self._owned(
+            tests,
+            SelectionReasonKind.DECLARED_CONSUMER,
+            CATALOG_PATH,
+            "changed-old-and-new-catalog-consumers",
         )
 
     def _graph_refusal_detail(self) -> str | None:

@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from agents_remember.controlplane.durable_store import (
     OPERATOR_INBOX_OWNERSHIP,
     append_line,
@@ -150,6 +151,8 @@ class CheckoutCoordinationIsolationTests(unittest.TestCase):
         self.assertFalse(config.retirement.auto_close_completed_seats)
         self.assertFalse(live_settings.parent.joinpath("live-ar-coordination").exists())
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_incident_shaped_inbox_write_lands_only_in_leaf_dummy_root(self) -> None:
         _checkout, source = self._checkout()
         self._undeclared_checkout(source)
@@ -168,6 +171,8 @@ class CheckoutCoordinationIsolationTests(unittest.TestCase):
         )
         self.assertFalse((self.root / "live-ar-coordination").exists())
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_store_guard_refuses_escape_before_creating_lock_or_parent(self) -> None:
         _checkout, source = self._checkout()
         self._undeclared_checkout(source)

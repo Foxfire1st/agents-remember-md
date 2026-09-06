@@ -20,15 +20,6 @@ from agents_remember_quality.profile_publication import (
     export_profile_reports,
     prepare_profile_reports,
 )
-from agents_remember_quality.quality_command import (
-    ExpectedCommand,
-    causal_evidence_steps,
-)
-from agents_remember_quality.retry_evidence_route import (
-    RetryEvidenceContext,
-    run_exact_retry_evidence,
-    run_retry_matrix_evidence,
-)
 
 AMBIENT_CODEX_PROTOCOL = profile_results.AMBIENT_CODEX_PROTOCOL
 BASELINE_CODEX_PROTOCOL = profile_results.BASELINE_CODEX_PROTOCOL
@@ -275,27 +266,6 @@ def _candidate_container(
     )
 
 
-async def _run_expected_commands(
-    container: dagger.Container,
-    commands: tuple[ExpectedCommand, ...],
-    step_codes: dict[str, int],
-) -> tuple[dagger.Container, bool]:
-    """Run a non-accepting route whose deliberate failures are part of its proof."""
-
-    route_ok = all(code == 0 for code in step_codes.values())
-    for step in commands:
-        if not route_ok:
-            break
-        container = await container.with_exec(
-            list(step.command),
-            expect=ReturnType.ANY,
-        ).sync()
-        code = await container.exit_code()
-        step_codes[step.name] = code
-        route_ok = code == step.expected_exit
-    return container, route_ok
-
-
 def _portable_candidate_container(
     source: dagger.Directory,
     repository_bundle: dagger.File,
@@ -499,129 +469,6 @@ class AgentsRememberQuality:
         )
 
     @function
-    async def retry_evidence(
-        self,
-        source: Annotated[
-            dagger.Directory,
-            Doc("Exact candidate source tree for non-accepting retry-route evidence."),
-        ],
-        repository_bundle: Annotated[
-            dagger.File,
-            Doc("Git bundle containing the candidate commit and its ancestry."),
-        ],
-        diff_base: Annotated[
-            str,
-            Doc("Explicit comparison commit used by both retry attempts."),
-        ],
-        mode: Annotated[
-            str,
-            Doc("Either 'targeted' or 'full'; both attempts use the same population."),
-        ] = "targeted",
-    ) -> QualityResult:
-        """Prove fresh publication then exact reuse across two real Dagger containers."""
-
-        if mode not in {"targeted", "full"}:
-            raise ValueError(f"unknown retry evidence mode: {mode}")
-        if not diff_base.strip():
-            raise ValueError("diff_base must name the explicit retry comparison commit")
-        context = RetryEvidenceContext(
-            source,
-            repository_bundle,
-            diff_base,
-            RETRY_CACHE_ROOT,
-            _candidate_container,
-        )
-        outcome = await run_exact_retry_evidence(
-            context,
-            mode=mode,
-        )
-        return QualityResult(
-            reports=outcome.container.directory("/reports"),
-            exit_code=outcome.exit_code,
-        )
-
-    @function
-    async def retry_matrix_evidence(
-        self,
-        source: Annotated[
-            dagger.Directory,
-            Doc("Exact candidate source tree for non-accepting retry-matrix evidence."),
-        ],
-        repository_bundle: Annotated[
-            dagger.File,
-            Doc("Git bundle containing the candidate commit and its ancestry."),
-        ],
-        diff_base: Annotated[
-            str,
-            Doc("Explicit comparison commit used by every retry-matrix attempt."),
-        ],
-    ) -> QualityResult:
-        """Prove mutation, lane, context, and filtering decisions on the real wrapper."""
-
-        if not diff_base.strip():
-            raise ValueError("diff_base must name the explicit retry comparison commit")
-        context = RetryEvidenceContext(
-            source,
-            repository_bundle,
-            diff_base,
-            RETRY_CACHE_ROOT,
-            _candidate_container,
-        )
-        outcome = await run_retry_matrix_evidence(context)
-        return QualityResult(
-            reports=outcome.container.directory("/reports"),
-            exit_code=outcome.exit_code,
-        )
-
-    @function
-    async def causal_evidence(
-        self,
-        source: Annotated[
-            dagger.Directory,
-            Doc("Exact candidate source tree for non-accepting causal-route evidence."),
-        ],
-        repository_bundle: Annotated[
-            dagger.File,
-            Doc("Git bundle containing the candidate commit and its ancestry."),
-        ],
-    ) -> QualityResult:
-        """Prove exact-node suppression and independent execution on real pytest."""
-
-        reports = "/reports"
-        attempt_nonce = secrets.token_hex(16)
-        container = (
-            _candidate_container(
-                source,
-                repository_bundle,
-                attempt_nonce=attempt_nonce,
-                reports=reports,
-            )
-            .with_env_variable("AR_QUALITY_ATTEMPT_NONCE", attempt_nonce)
-            .with_env_variable("AR_CAUSAL_EVIDENCE_FORCE_DEPENDENT_FAILURE", "1")
-        )
-        container = await container.sync()
-        step_codes: dict[str, int] = {"environment": await container.exit_code()}
-        container, route_ok = await _run_expected_commands(
-            container,
-            causal_evidence_steps(reports),
-            step_codes,
-        )
-        payload = {
-            "schemaVersion": "ar-causal-route-results/v1",
-            "status": "passed" if route_ok else "failed",
-            "acceptanceEligible": False,
-            "stepExitCodes": step_codes,
-        }
-        container = container.with_new_file(
-            f"{reports}/causal-route-results.json",
-            contents=json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        )
-        return QualityResult(
-            reports=container.directory(reports),
-            exit_code=0 if route_ok else 1,
-        )
-
-    @function
     async def cadence_evidence(
         self,
         source: Annotated[
@@ -690,51 +537,4 @@ class AgentsRememberQuality:
             f"{reports}/cadence-route-results.json",
             contents=json.dumps(result, indent=2, sort_keys=True) + "\n",
         )
-        return QualityResult(reports=container.directory(reports), exit_code=exit_code)
-
-    @function
-    async def route_measurement_evidence(
-        self,
-        source: Annotated[
-            dagger.Directory,
-            Doc("Exact candidate source tree for non-accepting representative measurements."),
-        ],
-        repository_bundle: Annotated[
-            dagger.File,
-            Doc("Git bundle containing the exact candidate commit and ancestry."),
-        ],
-        repetitions: Annotated[
-            int,
-            Doc("Repeated cold/warm pairs for every pure, integration, and durability route."),
-        ] = 3,
-    ) -> QualityResult:
-        """Compare representative cohorts under serial and repository-default xdist."""
-
-        if repetitions < 2:
-            raise ValueError("repetitions must be at least 2 for medians and ranges")
-        reports = "/reports"
-        attempt_nonce = secrets.token_hex(16)
-        container = await _candidate_container(
-            source,
-            repository_bundle,
-            attempt_nonce=attempt_nonce,
-            reports=reports,
-        ).sync()
-        exit_code = await container.exit_code()
-        if exit_code == 0:
-            container = await container.with_exec(
-                [
-                    "/opt/ar-venv/bin/python",
-                    "-m",
-                    "agents_remember_test_support.testing.route_measurement",
-                    "--project-root",
-                    "/workspace",
-                    "--output",
-                    f"{reports}/representative-route-measurement.json",
-                    "--repetitions",
-                    str(repetitions),
-                ],
-                expect=ReturnType.ANY,
-            ).sync()
-            exit_code = await container.exit_code()
         return QualityResult(reports=container.directory(reports), exit_code=exit_code)

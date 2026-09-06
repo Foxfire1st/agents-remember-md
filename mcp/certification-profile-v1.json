@@ -3639,7 +3639,7 @@
         "--output",
         "{selector-output}"
       ],
-      "configurationDigest": "5a6c02980b9428702808d770c2961d55b73c51990509f84b584a0daaa1c39309",
+      "configurationDigest": "31bb6e57dd6db2d8bb8bfa94f9e24827c0af1f82ecd88222211a5e50e62b0235",
       "externalInputs": [],
       "inputUniverse": [
         "configuration and generated projections",
@@ -3661,7 +3661,7 @@
       "resultPath": ".quality-profile/agents-remember-test-selection.json",
       "schemaVersion": "repository-selector-result/v2",
       "selectorId": "agents-remember-test-selection",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "workingDirectory": "."
     }
   ],

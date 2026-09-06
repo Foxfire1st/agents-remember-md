@@ -169,6 +169,8 @@ class InProcessExclusivityTests(_TempRoot):
     def _log(self) -> Path:
         return self.root / "workspace" / "gates.jsonl"
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_a_second_thread_is_kept_out_of_a_log_that_is_already_held(self) -> None:
         """Both halves: the in-process mutex is really held, and no second entry happens.
 
@@ -285,6 +287,8 @@ class InProcessExclusivityTests(_TempRoot):
         # ...and the outermost exit really let go: a rewrite now refuses.
         self.assertIs(outcome.get("released"), True)
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_a_dismissal_is_not_lost_to_a_prune_sweeping_on_another_thread(self) -> None:
         """The lost-update pair the dashboard actually runs, forced rather than raced.
 

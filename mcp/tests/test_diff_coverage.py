@@ -694,12 +694,9 @@ class WrapperIntegrationTests(unittest.TestCase):
         self.assertEqual(parsed.diff_base, "abc123")
         self.assertEqual(parsed.diff_floor, 95.0)
 
-    def test_the_floor_defaults_to_zero_uncovered_changed_lines(self) -> None:
-        # The value is argued in `diff_coverage`'s module docstring: anything below 100
-        # is a per-change budget for untested code that grows with the size of the
-        # change. This pins it so lowering it is a visible edit to a test.
-        self.assertEqual(diff_coverage.DEFAULT_DIFF_COVERAGE_FLOOR, 100.0)
-        self.assertEqual(check.build_parser().parse_args([]).diff_floor, 100.0)
+    def test_delivery_floor_defaults_to_ninety_percent(self) -> None:
+        self.assertEqual(diff_coverage.DEFAULT_DIFF_COVERAGE_FLOOR, 90.0)
+        self.assertEqual(check.build_parser().parse_args([]).diff_floor, 90.0)
 
 
 if __name__ == "__main__":

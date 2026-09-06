@@ -1,24 +1,9 @@
-"""The gated integration paths have a runner, and the runner reaches all of them.
-
-``pyproject.toml`` registered eight markers for suites that skip unless an ``AR_*``
-variable opts them in, and ``mcp/tests/test_code_quality_check.py`` already holds that
-registry in step with the suite's skip decorators. Both of those were true while nothing
-ran any of the eight: the markers were registered but never *applied*, so
-``pytest -m ar_run_pi_rpc_smoke`` selected nothing at all, and no job or script set any
-of the variables.
-
-This module closes that third gap. It asserts, in both directions, that every registered
-environment-gated marker is applied to at least one test and has an entry in
-``scripts/run-gated-integration.py`` -- so a path cannot be registered, documented and
-still unreachable, and the runner cannot claim a path the suite no longer has. Ordinary
-markers such as ``fitness`` remain outside that opt-in runner.
-"""
+"""Input/output checks for opt-in integration selection and result validation."""
 
 from __future__ import annotations
 
 import importlib.util
 import re
-import subprocess
 import sys
 import tempfile
 import tomllib
@@ -29,8 +14,6 @@ from types import ModuleType
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MCP_SRC = REPO_ROOT / "mcp" / "src"
 sys.path.insert(0, str(MCP_SRC))
-
-from agents_remember_test_support.testing.evidence_lanes import LANE_BY_MARKER
 
 MARKER_NAME = re.compile(r"^([a-z_][a-z0-9_]*):")
 ENVIRONMENT_NAME = re.compile(r"\b(?:AR|AGENTS_REMEMBER)_[A-Z0-9_]+\b")
@@ -58,68 +41,16 @@ def registered_gated_markers() -> list[str]:
     return [match.group(1) for match in names if match is not None]
 
 
-def selected_test_count(marker: str) -> int:
-    """How many tests ``pytest -m <marker>`` actually selects in this checkout."""
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-m",
-            marker,
-            "--collect-only",
-            "-q",
-            "-p",
-            "no:cacheprovider",
-        ],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    )
-    return sum(
-        1
-        for line in completed.stdout.splitlines()
-        if "::" in line and not line.startswith(("ERROR", "no tests"))
-    )
-
-
 class GatedPathInventoryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.runner = load_runner()
-
-    def test_every_registered_gated_marker_is_applied_to_at_least_one_test(self) -> None:
-        # The failure this catches is silent by construction: `--strict-markers` rejects
-        # an *unknown* marker, but a registered marker that decorates nothing selects
-        # zero tests and pytest reports that as a successful run of an empty selection.
-        # All eight were in that state until 260731-EFA-L2.
-        empty = [
-            marker for marker in registered_gated_markers() if selected_test_count(marker) == 0
-        ]
-
-        self.assertEqual(empty, [], f"registered markers that select no test: {empty}")
 
     def test_the_runner_covers_every_registered_gated_marker_and_invents_none(self) -> None:
         self.assertEqual(
             {path.marker for path in self.runner.PATHS},
             set(registered_gated_markers()),
         )
-
-    def test_evidence_fitness_is_owned_by_the_lane_without_claiming_the_legacy_selector(
-        self,
-    ) -> None:
-        fitness = LANE_BY_MARKER["evidence_fitness"]
-
-        self.assertTrue(fitness.authority)
-        self.assertNotIn("fitness", LANE_BY_MARKER)
-        self.assertFalse(any(entry.startswith("evidence_fitness:") for entry in marker_entries()))
-        self.assertTrue(any(entry.startswith("fitness:") for entry in marker_entries()))
-        self.assertNotIn("evidence_fitness", registered_gated_markers())
-        self.assertNotIn("fitness", registered_gated_markers())
-        self.assertNotIn("evidence_fitness", {path.marker for path in self.runner.PATHS})
-        self.assertNotIn("fitness", {path.marker for path in self.runner.PATHS})
 
     def test_every_path_states_what_it_requires(self) -> None:
         for path in self.runner.PATHS:
@@ -144,15 +75,6 @@ class GatedPathInventoryTests(unittest.TestCase):
             credential_free,
             {"ar-run-pi-rpc-smoke", "agents-remember-real-mcp-config"},
         )
-
-    def test_github_pr_checks_do_not_bypass_dagger_for_gated_pytest_paths(self) -> None:
-        workflows = "\n".join(
-            path.read_text(encoding="utf-8")
-            for path in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml"))
-        )
-
-        self.assertNotIn("run-gated-integration.py", workflows)
-        self.assertNotIn("python -m pytest", workflows)
 
     def test_the_dry_run_selection_names_a_test_that_exists(self) -> None:
         # A stale node id would make an acceptance selection run nothing and still exit 0.

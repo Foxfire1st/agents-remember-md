@@ -1,58 +1,116 @@
-"""Certifying pytest composition: Dagger admission, then reusable bootstrap."""
+"""Local, isolated pytest; delivery certification is an explicit Dagger-only option."""
 
 from __future__ import annotations
 
 import os
 import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
-# This stdlib-only pin must precede the first production import. It prevents an editable-install
-# ``.pth`` entry from validating one checkout and collecting another.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-MCP_SRC = REPOSITORY_ROOT / "mcp" / "src"
-MCP_TEST_SUPPORT = REPOSITORY_ROOT / "mcp" / "test_support"
-sys.path.insert(0, str(MCP_SRC))
-sys.path.insert(0, str(MCP_TEST_SUPPORT))
+sys.path[:0] = [
+    str(REPOSITORY_ROOT / "mcp" / "src"),
+    str(REPOSITORY_ROOT / "mcp" / "test_support"),
+]
 
-from agents_remember_test_support.testing.certifying_bootstrap import (
-    CertifyingPytestBootstrap,
-)
-from agents_remember_test_support.testing.certifying_bootstrap import (
-    prepare_certifying_pytest_bootstrap as _prepare_certifying_pytest_bootstrap,
-)
-from agents_remember_test_support.testing.dagger_admission import DaggerAdmissionError
-from agents_remember_test_support.testing.global_state import begin_pytest_process
 from agents_remember_test_support.testing.hermetic_bootstrap import (
-    BootstrapConfigurationError,
-    EnvironmentLease,
     activate_current_pytest_environment,
+    candidate_test_process,
 )
 
-
-def prepare_certifying_pytest_bootstrap() -> CertifyingPytestBootstrap:
-    """Refuse before plugin loading, collection, execution, or artifact publication."""
-
-    try:
-        return _prepare_certifying_pytest_bootstrap(REPOSITORY_ROOT)
-    except (DaggerAdmissionError, BootstrapConfigurationError) as error:
-        raise pytest.UsageError(str(error)) from error
-
-
-CERTIFYING_BOOTSTRAP = prepare_certifying_pytest_bootstrap()
-_ENVIRONMENT_LEASE: EnvironmentLease = activate_current_pytest_environment(
-    CERTIFYING_BOOTSTRAP.process,
+# This is an actual pytest process, using the existing test isolation owner. No daemon,
+# lifecycle-worker identity, or Dagger capability is supplied to the ordinary test loop.
+_ENVIRONMENT_LEASE = activate_current_pytest_environment(
+    candidate_test_process(REPOSITORY_ROOT), os.environ
+)
+_TEMPORARY = tempfile.TemporaryDirectory(prefix="ar-pytest-", dir="/tmp")
+_ISOLATED_ROOT = Path(_TEMPORARY.name)
+_ISOLATED_ENVIRONMENT = mock.patch.dict(
     os.environ,
+    {
+        "HOME": str(_ISOLATED_ROOT / "home"),
+        "XDG_CONFIG_HOME": str(_ISOLATED_ROOT / "config"),
+        "XDG_DATA_HOME": str(_ISOLATED_ROOT / "data"),
+        "XDG_CACHE_HOME": str(_ISOLATED_ROOT / "cache"),
+        "CODEX_HOME": str(_ISOLATED_ROOT / "codex"),
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+    },
 )
-begin_pytest_process()
+_ISOLATED_ENVIRONMENT.start()
+for directory in ("home", "config", "data", "cache", "codex"):
+    (_ISOLATED_ROOT / directory).mkdir()
+# Inherited live opt-ins and credentials must never make an ordinary run contact a service.
+# Tests that exercise these inputs construct their own local environment explicitly.
+for name in tuple(os.environ):
+    if (
+        name.startswith(("AR_RUN_", "AR_SPAWN_", "AR_HOSTED_"))
+        or name.endswith(("_API_KEY", "_ACCESS_TOKEN", "_AUTH_TOKEN"))
+        or name
+        in {
+            "AGENTS_REMEMBER_REAL_MCP_CONFIG",
+            "AR_CLAUDE_STREAM_SMOKE",
+            "AR_CODEX_APP_SERVER_LIVE_SMOKE",
+            "AR_CODEX_APP_SERVER_LIVE_CONFORMANCE",
+            "SSH_AUTH_SOCK",
+            "GITHUB_TOKEN",
+            "GH_TOKEN",
+            "AWS_PROFILE",
+        }
+    ):
+        os.environ.pop(name, None)
 
-# Pytest imports this only after the module-level admission above succeeds. Non-accepting Dagger
-# evidence routes load ``agents_remember_test_support.testing.pytest_bootstrap`` directly and
-# therefore never import this certifying service composition.
-pytest_plugins = ("agents_remember_test_support.pytest_certifying_bootstrap",)
+pytest_plugins = ("agents_remember_test_support.testing.pytest_bootstrap",)
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--certify",
+        action="store_true",
+        help="load delivery evidence services after genuine Dagger admission",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    if config.getoption("certify"):
+        from agents_remember_test_support.testing.certifying_bootstrap import (  # noqa: PLC0415
+            prepare_certifying_pytest_bootstrap,
+        )
+        from agents_remember_test_support.testing.dagger_admission import (  # noqa: PLC0415
+            DaggerAdmissionError,
+        )
+
+        try:
+            prepare_certifying_pytest_bootstrap(REPOSITORY_ROOT)
+        except DaggerAdmissionError as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.import_plugin(
+            "agents_remember_test_support.pytest_certifying_bootstrap"
+        )
+
+
+@pytest.fixture
+def worktree_services() -> Iterator[None]:
+    """Explicit application composition for boundary tests, never an autouse unit fixture."""
+    from agents_remember.application.worktree_services import (  # noqa: PLC0415
+        bind_worktree_services,
+        build_default_worktree_services,
+    )
+    from agents_remember.worktrees.services import reset_worktree_services  # noqa: PLC0415
+
+    bind_worktree_services(build_default_worktree_services())
+    try:
+        yield
+    finally:
+        reset_worktree_services()
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
     del config
+    _ISOLATED_ENVIRONMENT.stop()
     _ENVIRONMENT_LEASE.close()
+    _TEMPORARY.cleanup()

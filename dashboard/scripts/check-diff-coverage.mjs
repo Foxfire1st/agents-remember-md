@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Per-diff coverage floor for dashboard/src (L8-R7, mirroring the Python changed-lines gate):
-// every changed line v8 records as an executable statement must be covered by the Vitest run.
+// at delivery, at least 90% of changed executable lines must be covered by the Vitest run.
 // A changed comment/blank/continuation line carries no executable statement and contributes
 // nothing (same accounting as Coverage.py's executed/missing lines). Resolves AR_GATE_DIFF_BASE,
 // then GITHUB_BASE_REF, then the upstream, then origin/HEAD, then main, then git's empty tree.

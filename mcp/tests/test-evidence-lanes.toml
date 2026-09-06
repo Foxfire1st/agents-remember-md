@@ -3,6 +3,7 @@ schema_version = "ar-test-evidence-lanes/v1"
 # Every current test file appears exactly once. Empty lanes remain explicit.
 [files]
 unit-regression = [
+  "mcp/tests/test_catalog_selection.py",
   "mcp/tests/test_active_projector_singleflight.py",
   "mcp/tests/test_agent_notifier.py",
   "mcp/tests/test_agent_notifier_ladder.py",
@@ -545,7 +546,6 @@ architecture-fitness = [
   "mcp/tests/test_e2e_harness_selection.py",
   "mcp/tests/test_facade_surface.py",
   "mcp/tests/test_file_size_detector.py",
-  "mcp/tests/test_fitness_marker.py",
   "mcp/tests/test_layering.py",
   "mcp/tests/test_leaf_structural_coverage.py",
   "mcp/tests/test_packaged_assets_and_context_values.py",
@@ -557,7 +557,6 @@ architecture-fitness = [
   "mcp/tests/test_requirement_attempt_journal_doctrine.py",
   "mcp/tests/test_requirement_compilation_gate_doctrine.py",
   "mcp/tests/test_retry_coverage.py",
-  "mcp/tests/test_route_measurement.py",
   "mcp/tests/test_single_owner_primitives.py",
   "mcp/tests/test_source_lineage.py",
   "mcp/tests/test_static.py",

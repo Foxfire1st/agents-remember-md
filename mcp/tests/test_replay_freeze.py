@@ -158,7 +158,6 @@ def _generations() -> list[PopulationGeneration]:
 def test_population_compile_orders_and_digests_rows() -> None:
     population = compile_replay_population(_generations())
     assert isinstance(population, ReplayPopulation)
-    assert population.populationDigest == population.populationDigest
     assert [row.generation for row in population.generations] == list(range(1, 15))
 
 

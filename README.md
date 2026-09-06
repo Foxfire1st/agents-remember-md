@@ -248,16 +248,29 @@ CONTRIBUTING.md for the tier table and staged-content contract.
 Agents Remember declares that Dagger graph in its repository-owned
 `mcp/certification-profile-v1.json`, selected explicitly by
 `repositories.agents-remember.certificationProfile` in the MCP authority settings. The framework
-does not discover a wrapper or carry an Agents Remember command/report inventory. A direct host
-invocation of pytest is refused, and no Python diagnostic wrapper or compatibility route exists.
-Direct targeted Vitest unit/component runs are supported
-as fast diagnostic loops, but they do not create acceptance, coverage, or lifecycle evidence.
-Python has no supported host diagnostic route. The former Candidate-A command, manifest, static
-closure analyzer, and self-proof were removed after repeated exact-candidate measurement showed
-that the route was slower than the corresponding warm Dagger micro-route while adding substantial
-maintenance surface. Python investigation and acceptance therefore share the pinned Dagger
-environment, with non-accepting evidence routes labelled explicitly and unable to publish
-acceptance.
+does not discover a wrapper or carry an Agents Remember command/report inventory. Ordinary Python development uses pytest directly, without Dagger admission, coverage,
+repository certification, or an autouse application service graph:
+
+```bash
+mcp/.venv/bin/python -m pytest                         # default unit loop
+mcp/.venv/bin/python -m pytest mcp/tests/test_example.py # one changed behavior
+mcp/.venv/bin/python -m pytest -m integration           # delivery boundary checks
+```
+
+The default excludes the `integration` marker. Local inputs, temporary resources, and
+explicit test doubles remain ordinary tests; real publication/recovery, competing writers,
+application wiring, and whole-repository observations run separately. Imported test classes
+are exercised only in their defining module. Four workers are the default; use `-n=0` for
+serial debugging. Tests use disposable home/config/cache directories and scrub inherited
+Git selectors, live opt-ins and credentials. They never declare a daemon identity.
+
+Delivery runs both populations together (`-m ""`) in the existing shared Dagger environment.
+Only explicit `--certify` loads the retained certification plugins and requires genuine
+Dagger admission. Combined branch coverage feeds the **90% changed-production-code floor**
+and the existing **CRAP threshold of 30**. Tests and verification-only support are excluded
+from production scoring. Coverage and CRAP are not part of the ordinary unit command.
+Direct targeted Vitest unit/component commands also remain available.
+
 The full evidence taxonomy, lifecycle metadata, fixture-authority rule, dependency-owned
 selection/retry behavior, stress cadence, and causal-failure contract are documented in
 [`docs/design/python-evidence-system.md`](docs/design/python-evidence-system.md).

@@ -107,7 +107,6 @@ def test_bridge_derives_one_canonical_five_gate_authority_from_the_real_profile(
     assert envelope.repositoryId == _REPOSITORY_ID
     assert envelope.candidateCodeTree == _CANDIDATE
     assert envelope.profileId == lane.selectionId
-    assert lane.admission.admissionDigest == lane.admission.admissionDigest
 
 
 def test_bridge_is_deterministic_and_ignores_creation_provenance(tmp_path: Path) -> None:

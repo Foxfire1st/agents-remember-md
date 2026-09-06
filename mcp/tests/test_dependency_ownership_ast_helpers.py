@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import subprocess
 from pathlib import Path
 
@@ -48,34 +47,6 @@ def test_file_imports_includes_python_and_declared_pytest_plugins(tmp_path: Path
     invalid.write_text("def broken(:\n", encoding="utf-8")
     with pytest.raises(ScopeError, match="could not parse"):
         facts.file_imports(invalid, None)
-
-
-def test_pytest_plugin_ast_helpers_accept_only_assignment_string_values() -> None:
-    tree = ast.parse(
-        "pytest_plugins = ['one.plugin', dynamic]\n"
-        "pytest_plugins: tuple[str, ...] = ('two.plugin',)\n"
-        "other = 'ignored.plugin'\n"
-    )
-    assignments = [node for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))]
-    first, second, other = assignments
-    assert isinstance(first, ast.Assign)
-    assert isinstance(second, ast.AnnAssign)
-    assert isinstance(other, ast.Assign)
-    assert facts._pytest_plugins_value(first) is not None
-    assert facts._pytest_plugins_value(second) is not None
-    assert facts._pytest_plugins_value(other) is None
-    assert facts._pytest_plugins_value(ast.Pass()) is None
-    assert facts._pytest_plugins_target(first.targets[0])
-    assert not facts._pytest_plugins_target(other.targets[0])
-
-    assert second.value is not None
-    with pytest.raises(ScopeError, match="literal dotted module names"):
-        facts._literal_plugin_names(first.value)
-    assert facts._literal_plugin_names(second.value) == ("two.plugin",)
-    with pytest.raises(ScopeError, match="literal string or sequence"):
-        facts._literal_plugin_names(ast.Name(id="dynamic"))
-    with pytest.raises(ScopeError, match="literal dotted module names"):
-        facts._pytest_plugin_imports(tree)
 
 
 def test_nested_pytest_plugin_edges_reach_the_complete_test_population(tmp_path: Path) -> None:
@@ -179,149 +150,21 @@ def test_exact_dotted_module_literal_is_an_observable_test_consumer(tmp_path: Pa
     )
 
 
-def test_codex_starter_config_has_exact_observed_consumers() -> None:
-    repository_root = Path(__file__).parents[2]
-
-    impact = DependencyOwnershipGraph(repository_root).resolve([CODEX_CONFIG_PATH])
-
-    assert impact.complete
-    assert impact.tests == (
-        Path("mcp/tests/test_public_surface_conformance.py"),
-        Path("mcp/tests/test_starter_renderers.py"),
-    )
-    assert all(
-        any(
-            reason.kind.value == "declared-consumer"
-            and reason.detail == "verified-repository-input"
-            for reason in impact.reasons_for(test)
+@pytest.mark.integration
+def test_repository_inputs_reach_their_supported_consumers() -> None:
+    graph = DependencyOwnershipGraph(Path(__file__).parents[2])
+    for source, consumer in (
+        (CODEX_CONFIG_PATH, Path("mcp/tests/test_starter_renderers.py")),
+        (AMBIENT_ROLE_RUNNER_PATH, Path("mcp/tests/test_agents_remember_quality.py")),
+        (LAYERS_CONTRACT_PATH, Path("mcp/tests/test_layering.py")),
+    ):
+        impact = graph.resolve([source])
+        assert impact.complete
+        assert not impact.global_invalidation
+        assert consumer in impact.tests
+        assert any(
+            reason.kind.value == "declared-consumer" for reason in impact.reasons_for(consumer)
         )
-        for test in impact.tests
-    )
-
-
-def test_ambient_role_runner_has_exact_pytest_consumers() -> None:
-    repository_root = Path(__file__).parents[2]
-
-    impact = DependencyOwnershipGraph(repository_root).resolve([AMBIENT_ROLE_RUNNER_PATH])
-
-    assert impact.complete
-    assert impact.unresolved_inputs == ()
-    assert not impact.global_invalidation
-    assert impact.global_invalidators == ()
-    assert impact.tests == (
-        Path("mcp/tests/test_agents_remember_quality.py"),
-        Path("mcp/tests/test_certification_lane_bridge.py"),
-        Path("mcp/tests/test_clean_quality_executor.py"),
-        Path("mcp/tests/test_closeout_candidate_publication_guard.py"),
-        Path("mcp/tests/test_closeout_certification_admission_recovery.py"),
-        Path("mcp/tests/test_closeout_certification_entrypoint.py"),
-        Path("mcp/tests/test_closeout_certification_recovery.py"),
-        Path("mcp/tests/test_closeout_execution_input_guards.py"),
-        Path("mcp/tests/test_closeout_generation_boundary.py"),
-        Path("mcp/tests/test_closeout_input_boundary.py"),
-        Path("mcp/tests/test_closeout_input_model_invariants.py"),
-        Path("mcp/tests/test_closeout_ledger_evidence_order.py"),
-        Path("mcp/tests/test_closeout_mutation_evidence_boundary.py"),
-        Path("mcp/tests/test_closeout_recovery_projection_invariants.py"),
-        Path("mcp/tests/test_code_certification_execution.py"),
-        Path("mcp/tests/test_configured_contract_admission_l2.py"),
-        Path("mcp/tests/test_dagger_certification_suffix.py"),
-        Path("mcp/tests/test_environment_reconstruction.py"),
-        Path("mcp/tests/test_evidence_dependencies.py"),
-        Path("mcp/tests/test_frozen_certification_store.py"),
-        Path("mcp/tests/test_gate_certificate_authority.py"),
-        Path("mcp/tests/test_gate_certification_evidence.py"),
-        Path("mcp/tests/test_gate_certification_records.py"),
-        Path("mcp/tests/test_generation_coherent_lifecycle_projection.py"),
-        Path("mcp/tests/test_integration_apply_recovery_edges_l2.py"),
-        Path("mcp/tests/test_integration_authority_lowest_writers.py"),
-        Path("mcp/tests/test_integration_branch_authority.py"),
-        Path("mcp/tests/test_integration_branch_authority_bootstrap_edges.py"),
-        Path("mcp/tests/test_integration_branch_authority_edges.py"),
-        Path("mcp/tests/test_integration_branch_authority_series_drift.py"),
-        Path("mcp/tests/test_integration_certification_selection.py"),
-        Path("mcp/tests/test_integration_organizational_decisions_l2.py"),
-        Path("mcp/tests/test_integration_ref_cas_classification_l2.py"),
-        Path("mcp/tests/test_integration_ref_controls_l2.py"),
-        Path("mcp/tests/test_integration_ref_transaction.py"),
-        Path("mcp/tests/test_l4_authority_branch_coverage.py"),
-        Path("mcp/tests/test_l4_integration_authority_gap_coverage.py"),
-        Path("mcp/tests/test_l4_start_authority_gap_coverage.py"),
-        Path("mcp/tests/test_l4_terminal_and_series_gap_coverage.py"),
-        Path("mcp/tests/test_l5_quality_and_recovery_edges.py"),
-        Path("mcp/tests/test_legacy_operation_bridge.py"),
-        Path("mcp/tests/test_legacy_operation_entry_totality_l2.py"),
-        Path("mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py"),
-        Path("mcp/tests/test_lifecycle_enclosure_adoption_l2.py"),
-        Path("mcp/tests/test_lifecycle_enclosure_model_invariants.py"),
-        Path("mcp/tests/test_lifecycle_enclosure_publication_l2.py"),
-        Path("mcp/tests/test_lifecycle_enclosure_successor.py"),
-        Path("mcp/tests/test_lifecycle_journal_read_totality_l2.py"),
-        Path("mcp/tests/test_lifecycle_operation_controls_l2.py"),
-        Path("mcp/tests/test_lifecycle_operation_dispositions_l2.py"),
-        Path("mcp/tests/test_lifecycle_operation_dry_run_l2.py"),
-        Path("mcp/tests/test_lifecycle_operation_request_validation_l2.py"),
-        Path("mcp/tests/test_lifecycle_operation_store_invariants.py"),
-        Path("mcp/tests/test_lifecycle_operation_worker_entrypoint.py"),
-        Path("mcp/tests/test_lifecycle_operations.py"),
-        Path("mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py"),
-        Path("mcp/tests/test_lifecycle_resume_invariant_owner_l2.py"),
-        Path("mcp/tests/test_lifecycle_status_wait_outcomes.py"),
-        Path("mcp/tests/test_lifecycle_status_wait_store.py"),
-        Path("mcp/tests/test_lifecycle_worker_release_guards.py"),
-        Path("mcp/tests/test_operation_certification_selection.py"),
-        Path("mcp/tests/test_organizational_completion_validation.py"),
-        Path("mcp/tests/test_pending_door_live_classification_l2.py"),
-        Path("mcp/tests/test_python_test_evidence_firewall.py"),
-        Path("mcp/tests/test_quality_gate_public_contract.py"),
-        Path("mcp/tests/test_quality_report_publication_security.py"),
-        Path("mcp/tests/test_rail_bindings.py"),
-        Path("mcp/tests/test_rail_evidence_publication.py"),
-        Path("mcp/tests/test_repository_certification_profiles.py"),
-        Path("mcp/tests/test_repository_profile_authority.py"),
-        Path("mcp/tests/test_repository_profile_branch_coverage.py"),
-        Path("mcp/tests/test_repository_quality_branch_coverage.py"),
-        Path("mcp/tests/test_repository_source_applicability.py"),
-        Path("mcp/tests/test_source_lineage.py"),
-        Path("mcp/tests/test_terminal_enclosure_archive_boundary_l2.py"),
-        Path("mcp/tests/test_terminal_enclosure_cleanup_l5.py"),
-        Path("mcp/tests/test_tool_response_conformance.py"),
-        Path("mcp/tests/test_worktree_closeout_gate_scope.py"),
-        Path("mcp/tests/test_worktree_closeout_quality_gate.py"),
-        Path("mcp/tests/test_worktree_integrate_quality_gate.py"),
-        Path("mcp/tests/test_worktree_quality_gate_runner.py"),
-    )
-    assert all(
-        any(
-            reason.kind.value == "declared-consumer"
-            and reason.detail == "verified-repository-input"
-            for reason in impact.reasons_for(test)
-        )
-        for test in impact.tests
-    )
-
-
-def test_layers_contract_has_exact_observed_consumers() -> None:
-    repository_root = Path(__file__).parents[2]
-
-    impact = DependencyOwnershipGraph(repository_root).resolve([LAYERS_CONTRACT_PATH])
-
-    assert impact.complete
-    assert impact.tests == (
-        Path("mcp/tests/test_application_boundary.py"),
-        Path("mcp/tests/test_l6_diff_coverage_code_quality.py"),
-        Path("mcp/tests/test_layering.py"),
-        Path("mcp/tests/test_leaf_structural_coverage.py"),
-        Path("mcp/tests/test_structural_limits.py"),
-    )
-    assert all(
-        any(
-            reason.kind.value == "declared-consumer"
-            and reason.detail == "verified-repository-input"
-            for reason in impact.reasons_for(test)
-        )
-        for test in impact.tests
-    )
 
 
 def _initialize_repository(root: Path) -> None:

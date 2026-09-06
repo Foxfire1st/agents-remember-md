@@ -1004,14 +1004,14 @@ consumers = [
 path = "mcp/tests/conftest.py"
 kind = "shared-support"
 authority = "internal-canonical"
-owner = "certifying-pytest-composition"
+owner = "isolated-pytest-composition"
 category = "architecture-fitness"
 fidelity = "repository-structure"
 cadence = "affected"
-source_version_or_generator = "canonical pytest plugin and fixture composition root"
+source_version_or_generator = "isolated unit composition; --certify adds Dagger delivery services"
 introduced_by = "260824-PDLS"
 lifetime = "permanent"
-permanence_rationale = "Every certifying pytest item is composed through this one explicit plugin root."
+permanence_rationale = "Every test uses isolated local state; certification services load only for explicit --certify delivery."
 replacement_contract = "node:mcp/tests/test_evidence_lanes.py::EvidenceLaneRegistryTests::test_plugin_registers_the_registry_and_reports_category_on_each_item"
 consumer_scope = "all-tests"
 
@@ -1499,7 +1499,6 @@ consumers = [
   "mcp/tests/test_python_test_evidence_firewall.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_quality_report_publication_security.py",
-  "mcp/tests/test_quality_scope_reporting.py",
   "mcp/tests/test_rail_bindings.py",
   "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",

@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
+import pytest
 from agents_remember.kernel import coordination_context_resolver as resolver
 from agents_remember.kernel.coordination_context.models import CoordinationRequest
 from agents_remember.kernel.coordination_context_resolver import CoordinationHints
@@ -95,6 +96,8 @@ class WorktreeSupport2(WorktreeSupportTests):
             self.assertTrue(loaded.approved_for_commit)
             self.assertEqual(loaded.commit_approval_note, "developer approved commit preview")
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_closeout_refreshes_onboarding_metadata_to_new_code_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -357,6 +360,8 @@ class WorktreeSupport2(WorktreeSupportTests):
                 load_contract(contract.contract_path).integration_status, "not-started"
             )
 
+    @pytest.mark.integration
+    @pytest.mark.usefixtures("worktree_services")
     def test_noop_recloseout_after_integration_keeps_completed_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

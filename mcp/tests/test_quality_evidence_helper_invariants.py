@@ -62,68 +62,6 @@ def test_evidence_selector_helpers_reject_invalid_source_and_shape(tmp_path: Pat
     assert evidence_lifecycle._selector_tail_exists(class_node, ("Case", "test_value"))
 
 
-def test_retry_route_python_comment_mutation_is_formatter_safe(tmp_path: Path) -> None:
-    helper_path = (
-        Path(__file__).resolve().parents[1]
-        / "test_support/agents_remember_test_support/testing/retry_route_evidence.py"
-    )
-    tree = ast.parse(helper_path.read_text(encoding="utf-8"))
-    definition = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "_append_comment"
-    )
-    isolated = ast.Module(
-        body=[
-            ast.ImportFrom(
-                module="__future__",
-                names=[ast.alias(name="annotations")],
-                level=0,
-            ),
-            definition,
-        ],
-        type_ignores=[],
-    )
-    namespace: dict[str, Any] = {"Path": Path}
-    exec(compile(ast.fix_missing_locations(isolated), helper_path, "exec"), namespace)
-    module = tmp_path / "sample.py"
-    module.write_text("def value():\n    return 1\n", encoding="utf-8")
-
-    namespace["_append_comment"](module, SimpleNamespace(value="product"))
-
-    assert module.read_text(encoding="utf-8") == (
-        "def value():\n    return 1\n\n\n# Non-accepting retry evidence mutation: product.\n"
-    )
-
-
-def test_retry_product_scenario_uses_the_seed_low_fan_out_owner() -> None:
-    helper_path = (
-        Path(__file__).resolve().parents[1]
-        / "test_support/agents_remember_test_support/testing/retry_route_evidence.py"
-    )
-    tree = ast.parse(helper_path.read_text(encoding="utf-8"))
-    assignments = {
-        target.id: value
-        for node in tree.body
-        if isinstance(node, ast.Assign)
-        for target in node.targets
-        if isinstance(target, ast.Name)
-        for value in (node.value,)
-    }
-    seed_path = assignments["SEED_FAILURE_PATH"]
-    mutation_paths = assignments["MUTATION_PATHS"]
-    assert isinstance(seed_path, ast.Call)
-    assert isinstance(mutation_paths, ast.Dict)
-    product_value = next(
-        value
-        for key, value in zip(mutation_paths.keys, mutation_paths.values, strict=True)
-        if isinstance(key, ast.Attribute) and key.attr == "PRODUCT"
-    )
-
-    assert isinstance(product_value, ast.Name)
-    assert product_value.id == "SEED_FAILURE_PATH"
-
-
 def test_candidate_identity_binds_tree_attempt_and_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

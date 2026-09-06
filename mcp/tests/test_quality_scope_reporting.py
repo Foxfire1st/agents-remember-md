@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -30,8 +29,6 @@ from agents_remember_test_support.code_quality import (
 )
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-ESLINT_EXECUTABLE = REPOSITORY_ROOT / "dashboard/node_modules/.bin/eslint"
-ESLINT_AVAILABLE = ESLINT_EXECUTABLE.is_file() and os.access(ESLINT_EXECUTABLE, os.X_OK)
 
 
 def run_git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -123,33 +120,6 @@ def write_executable(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
-
-
-def workflow_run_blocks(workflow: str) -> list[str]:
-    lines = workflow.splitlines()
-    blocks: list[str] = []
-    index = 0
-    while index < len(lines):
-        match = re.match(r"^(?P<indent>\s*)run:\s*(?P<value>.*)$", lines[index])
-        if match is None:
-            index += 1
-            continue
-        value = match.group("value")
-        if value != "|":
-            blocks.append(value)
-            index += 1
-            continue
-        indent = len(match.group("indent"))
-        body: list[str] = []
-        index += 1
-        while index < len(lines):
-            line = lines[index]
-            if line and len(line) - len(line.lstrip()) <= indent:
-                break
-            body.append(line.strip())
-            index += 1
-        blocks.append("\n".join(body))
-    return blocks
 
 
 class WrapperScopeOutputTests(unittest.TestCase):
@@ -569,16 +539,6 @@ class UntrackedExposureTests(unittest.TestCase):
 
 
 class CallerProvenanceTests(unittest.TestCase):
-    def test_hook_selects_only_the_mcp_development_environment(self) -> None:
-        gate = (REPOSITORY_ROOT / ".githooks/_gate.sh").read_text(encoding="utf-8")
-
-        self.assertIn('local_py="$root/mcp/.venv/bin/python"', gate)
-        self.assertIn('shared_py="$main_root/mcp/.venv/bin/python"', gate)
-        self.assertIn("import agents_remember_test_support.code_quality.scope_reporting", gate)
-        self.assertNotIn('[ -x ".venv/bin/python" ]', gate)
-        self.assertNotIn("command -v python3", gate)
-        self.assertIn("complete MCP dev environment not found at mcp/.venv", gate)
-
     def test_pre_push_ref_range_is_stated_without_a_worktree_certification_claim(self) -> None:
         raw = (
             "refs/heads/feature 1234567890abcdef refs/heads/feature "
@@ -641,7 +601,6 @@ class CallerProvenanceTests(unittest.TestCase):
     def test_closeout_labels_the_already_staged_candidate(self) -> None:
         environment = {scope_reporting.INVOCATION_ENV: "closeout-staged"}
 
-        self.assertEqual(environment[scope_reporting.INVOCATION_ENV], "closeout-staged")
         self.assertIn("staged candidate", scope_reporting.invocation_description(environment))
 
     def test_integration_invocations_name_the_clean_checkout(self) -> None:
@@ -656,136 +615,6 @@ class CallerProvenanceTests(unittest.TestCase):
 
         self.assertIn("master integration tree", master)
         self.assertIn("leaf integration tree", leaf)
-
-    def test_every_generated_hook_gate_has_a_counted_target_map(self) -> None:
-        scripts = {
-            "projection": Path("scripts/sync-projection-types.py"),
-            "skills": Path("scripts/sync-skills.py"),
-            "runtime": Path("scripts/sync-runtime.py"),
-            "harness": Path("scripts/sync-harness.py"),
-        }
-
-        for name, script in scripts.items():
-            with self.subTest(name=name):
-                line = scope_reporting.generated_scope_line(REPOSITORY_ROOT, name, script)
-                self.assertIn(f"scope: generated-{name}", line)
-                self.assertRegex(line, r"units=[1-9][0-9]* generated targets")
-
-    def test_dashboard_typecheck_names_nonvacuous_projects_and_inputs(self) -> None:
-        line = scope_reporting.dashboard_scope_line(REPOSITORY_ROOT, "typecheck")
-
-        self.assertIn("config=dashboard/tsconfig.json", line)
-        self.assertRegex(line, r"units=3 projects; [1-9][0-9]* TypeScript inputs")
-
-    @unittest.skipUnless(ESLINT_AVAILABLE, "dashboard-local ESLint executable is unavailable")
-    def test_dashboard_lint_matches_live_eslint_machine_result_set(self) -> None:
-        dashboard = REPOSITORY_ROOT / "dashboard"
-        completed = subprocess.run(
-            [
-                (dashboard / "node_modules/.bin/eslint").as_posix(),
-                ".",
-                "--format",
-                "json",
-            ],
-            cwd=dashboard,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertIn(completed.returncode, {0, 1}, completed.stderr)
-        rows = json.loads(completed.stdout)
-        line = scope_reporting.dashboard_scope_line(REPOSITORY_ROOT, "lint")
-
-        self.assertIn(f"units={len(rows)} ESLint-resolved files", line)
-        self.assertNotIn("styled-system/", "\n".join(row["filePath"] for row in rows))
-
-    def test_dashboard_build_reports_only_config_owned_stable_inputs(self) -> None:
-        line = scope_reporting.dashboard_scope_line(REPOSITORY_ROOT, "build")
-
-        self.assertIn("Panda include [./src/**/*.{ts,tsx}]", line)
-        self.assertIn("bundled module graph intentionally uncounted", line)
-        self.assertIn(
-            "units=1 Panda source glob; 3 TypeScript projects; 441 TypeScript inputs", line
-        )
-        self.assertIn("9 explicit Vite inputs", line)
-        for name in (
-            "index.html",
-            "vite.config.ts",
-            "tsconfig.json",
-            "tsconfig.app.json",
-            "tsconfig.node.json",
-            "panda.config.ts",
-            "postcss.config.cjs",
-            "package.json",
-            "package-lock.json",
-        ):
-            self.assertIn(name, line)
-
-    def test_randomized_pytest_and_dagger_share_the_contract_while_ci_stays_non_test(self) -> None:
-        line = scope_reporting.randomized_pytest_scope_line(REPOSITORY_ROOT, "260731")
-        self.assertIn("scope: randomized-pytest", line)
-        self.assertIn("seed=260731", line)
-        self.assertRegex(line, r"units=[1-9][0-9]* Python test files")
-
-        workflow = (REPOSITORY_ROOT / ".github/workflows/quality-checks.yml").read_text(
-            encoding="utf-8"
-        )
-        self.assertNotIn("dagger/dagger-for-github", workflow)
-        self.assertIn("./.githooks/_gate.sh targeted", workflow)
-        self.assertFalse(
-            any(
-                "agents_remember_test_support.code_quality.check" in block
-                or re.search(r"\bpython\s+-m\s+pytest\b", block)
-                or re.search(r"\bnpm\s+run\s+", block)
-                for block in workflow_run_blocks(workflow)
-            )
-        )
-        dagger_main = (REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/main.py").read_text(
-            encoding="utf-8"
-        )
-        dagger_command = (
-            REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/quality_command.py"
-        ).read_text(encoding="utf-8")
-        profile = (REPOSITORY_ROOT / "mcp/certification-profile-v1.json").read_text(
-            encoding="utf-8"
-        )
-        self.assertNotIn("quality_wrapper_command", dagger_main)
-        self.assertIn("agents_remember_test_support.code_quality.check", dagger_command)
-        self.assertIn('"railId": "dashboard-lint"', profile)
-        self.assertIn('"test:coverage"', profile)
-        self.assertIn('"--fail-on-flaky-tests"', profile)
-
-    def test_every_dashboard_ci_rail_uses_the_shared_provenance_path(self) -> None:
-        profile = (REPOSITORY_ROOT / "mcp/certification-profile-v1.json").read_text(
-            encoding="utf-8"
-        )
-
-        for step in ("typecheck", "test", "build", "coverage", "diff-coverage"):
-            with self.subTest(step=step):
-                line = scope_reporting.dashboard_scope_line(REPOSITORY_ROOT, step)
-                self.assertIn(f"scope: dashboard-{step}", line)
-                self.assertIn(" | input=", line)
-                self.assertIn(" | config=", line)
-                self.assertRegex(line, r"units=.*[1-9][0-9]*")
-                command = {
-                    "test": "test:coverage",
-                    "coverage": "test:coverage",
-                    "diff-coverage": "coverage:diff",
-                }.get(step, step)
-                self.assertIn(f'"{command}"', profile)
-
-        e2e_line = scope_reporting.dashboard_scope_line(REPOSITORY_ROOT, "e2e")
-        self.assertIn("scope: dashboard-e2e", e2e_line)
-        self.assertIn(" | input=", e2e_line)
-        self.assertIn(" | config=", e2e_line)
-        self.assertRegex(e2e_line, r"units=.*[1-9][0-9]*")
-        self.assertIn('"railId": "dashboard-browser-e2e"', profile)
-        self.assertIn('"--fail-on-flaky-tests"', profile)
-
-        gate = (REPOSITORY_ROOT / ".githooks/_gate.sh").read_text(encoding="utf-8")
-        self.assertIn("agents_remember_test_support.code_quality.scope_reporting", gate)
-        self.assertNotIn("agents_remember_test_support.code_quality.check", gate)
-        self.assertIn("acceptance is Dagger-only", gate)
 
     def test_vacuous_dashboard_project_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

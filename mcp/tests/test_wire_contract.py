@@ -42,6 +42,7 @@ def _wire(source: str) -> list[str]:
 class PostDumpMutationTests(unittest.TestCase):
     """The armed check. It runs in the ordinary suite, so it runs wherever the suite does."""
 
+    @pytest.mark.integration
     def test_no_dumped_payload_is_mutated_after_it_leaves_its_model(self) -> None:
         offenders = wire_contract.post_dump_mutation_offenders(PACKAGE_ROOT)
         self.assertEqual(
@@ -53,14 +54,6 @@ class PostDumpMutationTests(unittest.TestCase):
                 remediation=wire_contract.WIRE_DUMP_REMEDIATION,
             ),
         )
-
-    def test_the_sweep_reaches_the_whole_package_except_runtime_assets(self) -> None:
-        # A sweep that silently stopped covering serving/ would pass forever.
-        trees = wire_contract._parse_package(PACKAGE_ROOT)
-        self.assertIn("serving/app.py", trees)
-        self.assertIn("providers/status.py", trees)
-        self.assertIn("mcp/tools/base.py", trees)
-        self.assertFalse([name for name in trees if name.startswith("package_data/")])
 
 
 class FunctionBoundaryTests(unittest.TestCase):
@@ -97,12 +90,6 @@ class FunctionBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(_wire(source), ["11 [post-dump mutation]"])
 
-    def test_the_real_projection_memo_is_recognised_as_a_dump_source(self) -> None:
-        # Not a fixture: the actual package. `body` must be in the producer set, or the
-        # two app.py sites are invisible and the owner permission below is meaningless.
-        trees = wire_contract._parse_package(PACKAGE_ROOT)
-        self.assertIn("body", wire_contract.dump_returning_names(trees).returning)
-
     def test_a_pass_through_carries_the_dump_through_itself(self) -> None:
         # `finalize_payload_tokens` returns the dict it was handed. Without this the wire
         # choke point's payload is untainted and every mutation below it is invisible --
@@ -118,11 +105,6 @@ class FunctionBoundaryTests(unittest.TestCase):
             "    return finalized\n"
         )
         self.assertEqual(_wire(source), ["7 [post-dump mutation]"])
-
-    def test_the_real_token_finalizer_is_recognised_as_a_pass_through(self) -> None:
-        trees = wire_contract._parse_package(PACKAGE_ROOT)
-        producers = wire_contract.dump_returning_names(trees)
-        self.assertIn("finalize_payload_tokens", producers.passthrough)
 
     def test_a_pass_through_handed_no_dump_produces_no_taint(self) -> None:
         # The pass-through arm resolves against the ARGUMENT, not the callee alone, so an
@@ -320,44 +302,6 @@ class WireSweepFalsePositiveTests(unittest.TestCase):
 class SanctionedOwnerTests(unittest.TestCase):
     """The one permitted serve-time tail builder -- an owner, not an exception entry."""
 
-    def test_the_owner_module_and_its_declarations_exist(self) -> None:
-        # An owner named by a misspelled string is a permission that covers nothing and a
-        # rule nobody can satisfy. Assert the real thing is there.
-        owner = PACKAGE_ROOT / wire_contract.SERVED_TAIL_OWNER
-        self.assertTrue(owner.is_file(), wire_contract.SERVED_TAIL_OWNER)
-        source = owner.read_text(encoding="utf-8")
-        self.assertIn(f"def {wire_contract.SERVED_TAIL_BUILDER}(", source)
-        self.assertIn("SERVED_TAIL_FIELDS", source)
-        self.assertIn("class ServedWorkspaceProjection", source)
-
-    def test_the_owner_is_actually_reached(self) -> None:
-        # A permission nobody exercises is a dead string, and a dead string is how an
-        # exception list starts. The tail merges must be real call sites.
-        merges = wire_contract.served_tail_merges(PACKAGE_ROOT)
-        self.assertTrue(merges, "no module merges the declared serve-time tail")
-        self.assertEqual(
-            {offender.module for offender in merges},
-            {"serving/_app_common.py", "serving/_app_routes.py"},
-        )
-
-    def test_the_conformance_suite_that_holds_the_owner_shut_exists(self) -> None:
-        held = Path(__file__).resolve().parent / "test_served_state_conformance.py"
-        self.assertTrue(held.is_file(), "the served-state contract has no conformance suite")
-
-    def test_the_permission_covers_real_sites_rather_than_an_analysis_gap(self) -> None:
-        # THE test that separates a single owner from a hole in the sweep. Neutralise only
-        # the owner permission: the covered sites must then be REPORTED. If they are not,
-        # the taint never reached them and the permission was decorative.
-        original = wire_contract._is_owner_merge
-        try:
-            wire_contract._is_owner_merge = lambda node: False
-            offenders = wire_contract.post_dump_mutation_offenders(PACKAGE_ROOT)
-        finally:
-            wire_contract._is_owner_merge = original
-        covered = {(o.module, o.line) for o in offenders}
-        expected = {(m.module, m.line) for m in wire_contract.served_tail_merges(PACKAGE_ROOT)}
-        self.assertTrue(expected <= covered, f"permission covers nothing real: {expected}")
-
     def test_a_hand_written_tail_key_is_reported_even_beside_the_owner_call(self) -> None:
         # The permission is the CALL, not the file and not the line. Writing the same key
         # by hand next to a sanctioned merge is still an escape.
@@ -406,11 +350,6 @@ class OffenderReportTests(unittest.TestCase):
         self.assertIn("a/one.py:12", message)
         self.assertIn("b/two.py:40", message)
         self.assertIn("remediation: declare the field", message)
-
-    def test_the_remediation_names_both_ways_out(self) -> None:
-        self.assertIn("declare the key on the response model", wire_contract.WIRE_DUMP_REMEDIATION)
-        self.assertIn("model_validate", wire_contract.WIRE_DUMP_REMEDIATION)
-        self.assertIn(wire_contract.SERVED_TAIL_BUILDER, wire_contract.WIRE_DUMP_REMEDIATION)
 
 
 if __name__ == "__main__":

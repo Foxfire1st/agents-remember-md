@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import asyncio
 import multiprocessing
-import os
 import subprocess
 import tempfile
 import unittest
@@ -158,8 +157,6 @@ class CausalFailureLocalizationTests(unittest.TestCase):
             ok=False,
             stamp="2026-08-25T00:00:01+00:00",
         )
-        if os.environ.get("AR_CAUSAL_EVIDENCE_FORCE_DEPENDENT_FAILURE") == "1":
-            self.fail("controlled downstream symptom for non-accepting Dagger evidence")
         return record, transitioned
 
     def test_source_derivation_excludes_observer_and_independent_nodes(self) -> None:

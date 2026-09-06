@@ -255,7 +255,7 @@ def _pytest_step(
     require_dagger_admission_capability(config.admission)
     if config.targeted and not config.scope.test_paths:
         return None
-    pytest_args = [sys.executable, "-m", "pytest", *test_args]
+    pytest_args = [sys.executable, "-m", "pytest", "--certify", "-m", "", *test_args]
     marker_expression = expression_for(
         EvidenceTrigger.AFFECTED if config.targeted else EvidenceTrigger.RELEASE
     )
