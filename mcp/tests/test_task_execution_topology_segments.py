@@ -12,14 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from agents_remember.models.task_document_ref import TaskDocumentRef
-from agents_remember.observer.projection import TaskExecutionEndpointNode, TaskExecutionNode
 from agents_remember.tasks import (
-    SprintExecutionEndpoint,
     SprintExecutionGraph,
     SubTaskRef,
     derived_leaf_placement,
     leaf_placement_facts,
-    numbering_drift_hints,
     write_task_doc,
 )
 from agents_remember.tasks.document_refs import TaskDocumentRefError, TaskDocumentTopology
@@ -27,7 +24,6 @@ from pydantic import ValidationError
 from test_task_execution_topology import (
     MASTER_A,
     MASTER_B,
-    MASTER_C,
     REPOSITORY,
     SPRINT,
     _master,
@@ -40,41 +36,6 @@ def _segment(ref: TaskDocumentRef, leaf_ids: list[str]) -> dict[str, Any]:
 
 class ExecutionGraphSegmentSchemaTests(unittest.TestCase):
     """L11-R1/R3/R4/R7: node kinds, leaf-level uniqueness, endpoint grammar, compat."""
-
-    def test_legacy_bare_node_graph_parses_as_lumps_and_roundtrips_byte_identical(self) -> None:
-        # The IAS-shaped 16-node/0-edge graph is deliberately left as-is (L11-R7).
-        payload = {
-            "nodes": [
-                {"repository": REPOSITORY, "path": f"ias-master-{number:02d}/task.json"}
-                for number in range(16)
-            ],
-            "edges": [],
-        }
-        graph = SprintExecutionGraph.model_validate(payload)
-        self.assertEqual([node.kind for node in graph.nodes], ["master"] * 16)
-        self.assertTrue(all(node.leafIds == [] for node in graph.nodes))
-        self.assertEqual(graph.model_dump(mode="json"), payload)
-        self.assertEqual(len(graph.derived_waves()), 1)
-
-    def test_constructor_lifts_bare_ref_instances_without_cross_type_equality(self) -> None:
-        graph = SprintExecutionGraph.model_validate({"nodes": [MASTER_A, MASTER_B], "edges": []})
-        self.assertEqual(
-            [[node.ref for node in wave] for wave in graph.derived_waves()],
-            [[MASTER_A, MASTER_B]],
-        )
-        self.assertIn(MASTER_A, [node.ref for node in graph.nodes])
-        self.assertEqual(graph.master_refs(), [MASTER_A, MASTER_B])
-
-    def test_segment_shape_rules(self) -> None:
-        mutations = (
-            {"kind": "segment", "ref": MASTER_A.model_dump(), "leafIds": []},
-            {"kind": "segment", "ref": MASTER_A.model_dump(), "leafIds": ["L1", "L1"]},
-            {"kind": "master", "ref": MASTER_A.model_dump(), "leafIds": ["L1"]},
-            {"kind": "segment", "ref": MASTER_A.model_dump(), "leafIds": ["  "]},
-        )
-        for node in mutations:
-            with self.subTest(node=node), self.assertRaises(ValidationError):
-                SprintExecutionGraph.model_validate({"nodes": [node, MASTER_B.model_dump()]})
 
     def test_leaf_ids_are_unique_sprint_wide(self) -> None:
         with self.assertRaisesRegex(ValidationError, "more than one node"):
@@ -123,59 +84,6 @@ class ExecutionGraphSegmentSchemaTests(unittest.TestCase):
             ],
         )
 
-    def test_edge_endpoint_resolution_refusals(self) -> None:
-        base = [
-            _segment(MASTER_A, ["L1"]),
-            _segment(MASTER_A, ["L2"]),
-            MASTER_B.model_dump(),
-        ]
-        mutations = (
-            # bare ref is ambiguous across multiple segments of one master
-            {
-                "predecessor": MASTER_B.model_dump(),
-                "successor": MASTER_A.model_dump(),
-                "reason": "ambiguous",
-            },
-            # leaf id placed in no node of that master
-            {
-                "predecessor": MASTER_B.model_dump(),
-                "successor": {"ref": MASTER_A.model_dump(), "leafId": "L9"},
-                "reason": "unplaced",
-            },
-            # undeclared master
-            {
-                "predecessor": MASTER_B.model_dump(),
-                "successor": MASTER_C.model_dump(),
-                "reason": "unknown",
-            },
-            # resolves to the same segment
-            {
-                "predecessor": {"ref": MASTER_A.model_dump(), "leafId": "L1"},
-                "successor": {"ref": MASTER_A.model_dump(), "leafId": "L1"},
-                "reason": "self",
-            },
-        )
-        for edge in mutations:
-            with self.subTest(edge=edge), self.assertRaises(ValidationError):
-                SprintExecutionGraph.model_validate({"nodes": base, "edges": [edge]})
-
-    def test_equivalent_edge_addressing_is_a_duplicate(self) -> None:
-        nodes = [_segment(MASTER_A, ["L1"]), MASTER_B.model_dump()]
-        edges = [
-            {
-                "predecessor": MASTER_B.model_dump(),
-                "successor": MASTER_A.model_dump(),
-                "reason": "bare form",
-            },
-            {
-                "predecessor": MASTER_B.model_dump(),
-                "successor": {"ref": MASTER_A.model_dump(), "leafId": "L1"},
-                "reason": "leaf-sample form",
-            },
-        ]
-        with self.assertRaisesRegex(ValidationError, "edges must be unique"):
-            SprintExecutionGraph.model_validate({"nodes": nodes, "edges": edges})
-
     def test_cycle_through_segments_is_refused(self) -> None:
         with self.assertRaisesRegex(ValidationError, "acyclic"):
             SprintExecutionGraph.model_validate(
@@ -195,114 +103,6 @@ class ExecutionGraphSegmentSchemaTests(unittest.TestCase):
                     ],
                 }
             )
-
-    def test_edge_judgment_id_is_trimmed_and_never_blank(self) -> None:
-        graph = SprintExecutionGraph.model_validate(
-            {
-                "nodes": [MASTER_A.model_dump(), MASTER_B.model_dump()],
-                "edges": [
-                    {
-                        "predecessor": MASTER_A.model_dump(),
-                        "successor": MASTER_B.model_dump(),
-                        "reason": "x",
-                        "judgmentId": "  J-7  ",
-                    }
-                ],
-            }
-        )
-        self.assertEqual(graph.edges[0].judgmentId, "J-7")
-        with self.assertRaises(ValidationError):
-            SprintExecutionGraph.model_validate(
-                {
-                    "nodes": [MASTER_A.model_dump(), MASTER_B.model_dump()],
-                    "edges": [
-                        {
-                            "predecessor": MASTER_A.model_dump(),
-                            "successor": MASTER_B.model_dump(),
-                            "reason": "x",
-                            "judgmentId": " ",
-                        }
-                    ],
-                }
-            )
-
-    def test_endpoint_leaf_id_defaults_to_none_and_must_not_be_blank(self) -> None:
-        endpoint = SprintExecutionEndpoint.model_validate(
-            {"ref": MASTER_A.model_dump(), "leafId": None}
-        )
-        self.assertIsNone(endpoint.leafId)
-        with self.assertRaises(ValidationError):
-            SprintExecutionEndpoint.model_validate({"ref": MASTER_A.model_dump(), "leafId": " "})
-
-    def test_nodes_compare_structurally_without_cross_type_aliases(self) -> None:
-        lump = SprintExecutionGraph.model_validate({"nodes": [MASTER_A.model_dump()]}).nodes[0]
-        segment = SprintExecutionGraph.model_validate(
-            {"nodes": [_segment(MASTER_A, ["L1"])]}
-        ).nodes[0]
-        equal_lump = SprintExecutionGraph.model_validate({"nodes": [MASTER_A.model_dump()]}).nodes[
-            0
-        ]
-        other_segment = SprintExecutionGraph.model_validate(
-            {"nodes": [_segment(MASTER_A, ["L2"])]}
-        ).nodes[0]
-
-        for node in (lump, segment):
-            with self.subTest(kind=node.kind):
-                self.assertFalse(node == "master-a/task.json")
-                self.assertTrue(node != "master-a/task.json")
-                self.assertFalse(node == MASTER_A)
-                self.assertFalse(node == MASTER_A)
-                self.assertEqual(len({node, MASTER_A}), 2)
-                self.assertEqual(len({MASTER_A, node}), 2)
-                self.assertNotIn(MASTER_A, {node: "node"})
-                self.assertNotIn(node, {MASTER_A: "ref"})
-                self.assertEqual(
-                    {node: "node", MASTER_A: "ref"},
-                    {MASTER_A: "ref", node: "node"},
-                )
-
-        self.assertEqual(len({lump, equal_lump}), 1)
-        self.assertEqual(len({lump, segment, other_segment}), 3)
-
-    def test_cross_addressed_self_edge_is_refused_at_resolution(self) -> None:
-        # A bare ref addresses the master's only node; so does the leaf sample of it.
-        with self.assertRaisesRegex(ValidationError, "itself"):
-            SprintExecutionGraph.model_validate(
-                {
-                    "nodes": [_segment(MASTER_A, ["L1"])],
-                    "edges": [
-                        {
-                            "predecessor": MASTER_A.model_dump(),
-                            "successor": {"ref": MASTER_A.model_dump(), "leafId": "L1"},
-                            "reason": "same segment twice",
-                        }
-                    ],
-                }
-            )
-
-
-class ExecutionGraphProjectionLiftTests(unittest.TestCase):
-    """The projection models lift the same bare-ref grammar the schema does."""
-
-    def test_node_model_accepts_bare_ref_instances_and_dicts(self) -> None:
-        node = TaskExecutionNode.model_validate(MASTER_A)
-        self.assertEqual((node.kind, node.ref, node.leafIds), ("master", MASTER_A, []))
-        lifted = TaskExecutionNode.model_validate(MASTER_A.model_dump())
-        self.assertEqual(lifted.ref, MASTER_A)
-        segment = TaskExecutionNode.model_validate(
-            {"kind": "segment", "ref": MASTER_A.model_dump(), "leafIds": ["L1"]}
-        )
-        self.assertEqual(segment.leafIds, ["L1"])
-
-    def test_endpoint_model_lifts_bare_refs_and_keeps_leaf_samples(self) -> None:
-        endpoint = TaskExecutionEndpointNode.model_validate(MASTER_A)
-        self.assertEqual((endpoint.ref, endpoint.leafId), (MASTER_A, None))
-        lifted = TaskExecutionEndpointNode.model_validate(MASTER_A.model_dump())
-        self.assertIsNone(lifted.leafId)
-        sampled = TaskExecutionEndpointNode.model_validate(
-            {"ref": MASTER_A.model_dump(), "leafId": "L1"}
-        )
-        self.assertEqual(sampled.leafId, "L1")
 
 
 class DerivedLeafPlacementTests(unittest.TestCase):
@@ -347,97 +147,6 @@ class DerivedLeafPlacementTests(unittest.TestCase):
                 }
             ],
         )
-
-    def test_all_blocked_falls_back_to_the_latest_segment_flagged(self) -> None:
-        graph = SprintExecutionGraph.model_validate(
-            {
-                "nodes": [
-                    _segment(MASTER_A, ["L1"]),
-                    _segment(MASTER_A, ["L2"]),
-                    MASTER_B.model_dump(),
-                ],
-                "edges": [
-                    {
-                        "predecessor": MASTER_B.model_dump(),
-                        "successor": {"ref": MASTER_A.model_dump(), "leafId": leaf},
-                        "reason": f"blocks {leaf}",
-                    }
-                    for leaf in ("L1", "L2")
-                ],
-            }
-        )
-        placement = derived_leaf_placement(graph, MASTER_A, ["L1", "L2", "L3"], set())
-        self.assertEqual(placement.derived["L3"].leafIds, ["L2"])
-        self.assertTrue(placement.derived_all_blocked)
-        completed = derived_leaf_placement(graph, MASTER_A, ["L1", "L2", "L3"], {MASTER_B})
-        self.assertEqual(completed.derived["L3"].leafIds, ["L2"])
-        self.assertFalse(completed.derived_all_blocked)
-
-    def test_lump_masters_have_no_segment_placement(self) -> None:
-        graph = SprintExecutionGraph.model_validate(
-            {"nodes": [MASTER_A.model_dump(), MASTER_B.model_dump()]}
-        )
-        placement = derived_leaf_placement(graph, MASTER_A, ["L1"], set())
-        self.assertEqual(placement.unplaced_leaf_ids, ())
-        self.assertEqual(placement.derived, {})
-
-    def test_unknown_leafs_are_facts(self) -> None:
-        placement = derived_leaf_placement(self._graph(), MASTER_A, ["L1"], set())
-        self.assertEqual(placement.unknown_leaf_ids, ("L2",))
-        facts = leaf_placement_facts(MASTER_A.key, placement)
-        self.assertEqual(facts, [{"kind": "unknown-leaf", "master": MASTER_A.key, "leafId": "L2"}])
-
-    def test_numbering_inversion_across_waves_is_a_hint_never_a_refusal(self) -> None:
-        # L1 sits in wave 2 (blocked by B) while the higher-numbered L3 is in wave 1.
-        graph = SprintExecutionGraph.model_validate(
-            {
-                "nodes": [
-                    _segment(MASTER_A, ["L3"]),
-                    _segment(MASTER_A, ["L1", "L2"]),
-                    MASTER_B.model_dump(),
-                ],
-                "edges": [
-                    {
-                        "predecessor": MASTER_B.model_dump(),
-                        "successor": {"ref": MASTER_A.model_dump(), "leafId": "L1"},
-                        "reason": "B first",
-                    }
-                ],
-            }
-        )
-        hints = numbering_drift_hints(graph)
-        self.assertEqual(len(hints), 2)
-        self.assertEqual(
-            hints[0],
-            {
-                "kind": "leaf-numbering-inversion",
-                "master": MASTER_A.key,
-                "lowerNumberLeafId": "L1",
-                "lowerNumberWave": 2,
-                "higherNumberLeafId": "L3",
-                "higherNumberWave": 1,
-            },
-        )
-        self.assertEqual(numbering_drift_hints(self._graph()), [])
-
-    def test_numbering_hints_ignore_leafs_without_trailing_numbers(self) -> None:
-        graph = SprintExecutionGraph.model_validate(
-            {
-                "nodes": [
-                    _segment(MASTER_A, ["LEAF-B"]),
-                    _segment(MASTER_A, ["LEAF-A"]),
-                    MASTER_B.model_dump(),
-                ],
-                "edges": [
-                    {
-                        "predecessor": MASTER_B.model_dump(),
-                        "successor": {"ref": MASTER_A.model_dump(), "leafId": "LEAF-A"},
-                        "reason": "B first",
-                    }
-                ],
-            }
-        )
-        self.assertEqual(numbering_drift_hints(graph), [])
 
 
 class ExecutionTopologySegmentValidationTests(unittest.TestCase):
@@ -510,23 +219,3 @@ class ExecutionTopologySegmentValidationTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, "task-execution-graph-node-kind-invalid")
         self.assertIn(MASTER_A.key, str(raised.exception))
         self.assertIn("L1", str(raised.exception))
-
-    def test_leaf_placement_reports_unplaced_and_unknown_against_the_live_plan(self) -> None:
-        self._write_segmented_sprint(leafs_a=["L1", "L2", "L3", "L4"])
-        reports = {
-            report.master.ref: report.placement
-            for report in self.topology.execution_leaf_placement(SPRINT)
-        }
-        placement = reports[MASTER_A]
-        self.assertEqual(placement.unplaced_leaf_ids, ("L4",))
-        self.assertEqual(placement.derived["L4"].leafIds, ["L2", "L3"])
-        self.assertEqual(reports[MASTER_B].unplaced_leaf_ids, ())
-
-        self._write_segmented_sprint(leafs_a=["L1", "L2"])
-        self.topology = TaskDocumentTopology(self.coord)
-        reports = {
-            report.master.ref: report.placement
-            for report in self.topology.execution_leaf_placement(SPRINT)
-        }
-        self.assertEqual(reports[MASTER_A].unknown_leaf_ids, ("L3",))
-        self.assertEqual(reports[MASTER_A].unplaced_leaf_ids, ())

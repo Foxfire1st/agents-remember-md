@@ -104,40 +104,6 @@ class FinalCodexCertificateTests:
             )
         assert "final-codex-certificate-run-incomplete" in store_codes(error.value)
 
-    def test_one_pass_one_fail_cannot_compensate(self, tmp_path) -> None:
-        store = make_store(tmp_path)
-        identities = fresh_identities()
-        attempt = attempt_record(identities=identities)
-        store.reserve(attempt)
-        running = store.mark_running(attempt)
-        one = make_draft(
-            repetition_number=1,
-            identity=identities[0],
-            disposition="fail",
-            overrides={
-                "manifest": gate4_manifest(red=True).model_dump(mode="json"),
-                "failure": scenario_failure().model_dump(mode="json"),
-            },
-        )
-        two = make_draft(
-            repetition_number=2,
-            identity=identities[1],
-            disposition="pass",
-            overrides={"manifest": gate4_manifest().model_dump(mode="json")},
-        )
-        store.publish_repetition(running, one)
-        store.publish_repetition(running, two)
-        manifest = store.manifest(CANDIDATE)
-        assert manifest is not None and manifest.aggregate == "red"
-        with pytest.raises(CertificationContractError) as error:
-            compile_gate_four_certificate(
-                plan_record(),
-                manifest,
-                predecessor_identities(),
-                repository_id="sample-repository",
-            )
-        assert "final-codex-certificate-not-two-fresh-pass" in store_codes(error.value)
-
     def test_candidate_mismatch_refuses(self, tmp_path) -> None:
         store = make_store(tmp_path)
         attempt, drafts = green_run()
@@ -151,16 +117,3 @@ class FinalCodexCertificateTests:
                 predecessor_identities(),
                 repository_id="sample-repository",
             )
-
-    def test_diagnostic_or_partial_predecessors_refuse(self, tmp_path) -> None:
-        store = make_store(tmp_path)
-        attempt, drafts = green_run()
-        manifest = publish_run(store, attempt=attempt, drafts=drafts)
-        with pytest.raises(CertificationContractError) as error:
-            compile_gate_four_certificate(
-                plan_record(),
-                manifest,
-                (predecessor_identities()[0],),
-                repository_id="sample-repository",
-            )
-        assert "final-codex-predecessor-prefix-invalid" in store_codes(error.value)

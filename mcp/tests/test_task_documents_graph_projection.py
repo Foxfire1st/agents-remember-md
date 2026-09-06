@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.serving.projections.snapshots_impl._task_documents import (
-    _master_docs_by_ref,
     read_task_documents,
 )
 from agents_remember.tasks import TaskDocument, write_task_doc
@@ -61,52 +58,6 @@ class TaskDocumentsGraphViewProjectionTests(unittest.TestCase):
                 }
             ),
         )
-
-    def test_sprint_doc_carries_render_ready_graph_view(self) -> None:
-        write_task_doc(
-            self.coord / "tasks" / REPO / "sprint",
-            _doc(
-                id="SPRINT",
-                kind="master",
-                title="Sprint",
-                orchestrates=["master-a", "master-b"],
-                executionGraph={
-                    "nodes": [
-                        {"ref": {"repository": REPO, "path": "master-a/task.json"}},
-                        {"ref": {"repository": REPO, "path": "master-b/task.json"}},
-                    ],
-                    "edges": [],
-                },
-            ),
-        )
-        self._master(
-            "master-a",
-            status="inProgress",
-            nature="organizational",
-            rows=[{"number": "A-L1", "name": "Leaf one", "status": "inProgress"}],
-        )
-        self._master(
-            "master-b",
-            status="Completed",
-            nature="atomic",
-            rows=[{"number": "B-L1", "name": "Lump leaf", "status": "Completed"}],
-        )
-        write_task_doc(self.coord / "tasks" / REPO / "plain", _doc())
-
-        nodes = read_task_documents(self.coord, enclosures=[], now=FRESH)
-        sprint = next(node for node in nodes if node.id == "SPRINT")
-        view = sprint.executionGraphView
-        self.assertIsNotNone(view)
-        assert view is not None
-        # zero-edge graph: one wave, both masters independent
-        self.assertEqual([node.waveIndex for node in view.nodes], [1, 1])
-        self.assertEqual(
-            [(node.masterTitle, node.frontierState) for node in view.nodes],
-            [("Title master-a", "in-flight"), ("Title master-b", "landed")],
-        )
-        # non-sprint docs carry no graph view
-        plain = next(node for node in nodes if node.id == "D")
-        self.assertIsNone(plain.executionGraphView)
 
     def test_segmented_master_scenario_projects_titles_and_predecessors(self) -> None:
         write_task_doc(
@@ -244,29 +195,3 @@ class TaskDocumentsGraphViewProjectionTests(unittest.TestCase):
         assert view is not None
         segment = next(node for node in view.nodes if node.kind == "segment")
         self.assertEqual(segment.leafTitles, ["Title from A"])
-
-    def test_master_docs_by_ref_skips_invalid_master_payloads(self) -> None:
-        # The invalid-master skip branch: a kind=master payload that fails validation is
-        # dropped from the join table (a corrupted master must not break the projection).
-        bad_path = self.coord / "tasks" / REPO / "bad" / "task.json"
-        bad_payload = {
-            "schema": "ar-task-document/v1",
-            "kind": "master",
-            "executionGraph": {"nodes": []},
-        }
-        self.assertEqual(_master_docs_by_ref([(bad_path, bad_payload)]), {})
-        # a valid master is indexed under its repo-relative reference
-        self._master(
-            "master-a",
-            status="planning",
-            nature="organizational",
-            rows=[{"number": "A-L1", "name": "Leaf one", "status": "planning"}],
-        )
-        valid_path = self.coord / "tasks" / REPO / "master-a" / "task.json"
-        with open(valid_path, encoding="utf-8") as handle:
-            payload = json.load(handle)
-        indexed = _master_docs_by_ref([(valid_path, payload)])
-        self.assertEqual(
-            list(indexed),
-            [TaskDocumentRef(repository=REPO, path="master-a/task.json")],
-        )

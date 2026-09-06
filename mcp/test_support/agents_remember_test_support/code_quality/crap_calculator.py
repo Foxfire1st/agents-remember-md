@@ -92,17 +92,6 @@ def crap_score(complexity: int, coverage_ratio: float) -> float:
     return complexity**2 * (1.0 - bounded_coverage) ** 3 + complexity
 
 
-def coverage_clearing(complexity: int, threshold: float) -> float | None:
-    """The branch coverage at which ``complexity`` first scores below ``threshold``.
-
-    ``crap = cc**2 * (1 - c)**3 + cc`` solved for ``c``. ``None`` when the complexity term
-    alone reaches the threshold, which is the case no amount of testing can fix.
-    """
-    if complexity >= threshold:
-        return None
-    return 1.0 - ((threshold - complexity) / complexity**2) ** (1.0 / 3.0)
-
-
 def read_json(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -366,7 +355,7 @@ def render_table(
     lines = [
         "# CRAP-Calculator",
         "",
-        f"Threshold: {threshold:.1f}",
+        f"Review threshold: {threshold:.1f} (diagnostic only)",
         "",
         "## Function Scores",
         "",
@@ -427,7 +416,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("paths", nargs="*", type=Path, default=[Path(".")])
     parser.add_argument("--coverage-json", type=Path, required=True)
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
-    parser.add_argument("--threshold", type=float, default=DEFAULT_CRAP_THRESHOLD)
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=DEFAULT_CRAP_THRESHOLD,
+        help="Review threshold for diagnostic findings; scores do not fail delivery.",
+    )
     parser.add_argument("--top", type=int, default=DEFAULT_TOP)
     parser.add_argument("--format", choices=("table", "json"), default="table")
     return parser

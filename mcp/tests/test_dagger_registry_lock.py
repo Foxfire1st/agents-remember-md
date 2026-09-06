@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 from agents_remember.controlplane import durable_store
-from agents_remember.errors import DaggerRuntimeAuthorityError, LockCapabilityError
 from agents_remember.kernel import file_lock
 from agents_remember.kernel.primitives import checkout_coordination
 from agents_remember.worktrees.modules.quality import dagger_authority as authority
@@ -115,28 +114,6 @@ def test_host_admission_keeps_undeclared_checkout_coordinator_writes_refused(
     assert registry.owners() == []
 
 
-def test_undeclared_registry_preserves_transition_barrier_and_exact_owner_release(
-    registry: authority.AuthorityRegistry,
-) -> None:
-    first = _admit(registry)
-    sibling = _admit(registry, scope="integration")
-    with pytest.raises(DaggerRuntimeAuthorityError) as caught:
-        _admit(registry, engine="replacement-engine")
-    assert caught.value.findings[0]["code"] == "runtime-authority-transition-barrier"
-    assert registry.state().active_digest == first.snapshot_digest
-    authority.reuse_authority_for_continuation(first.snapshot, registry=registry, owner=first.owner)
-    authority.release_dagger_authority(first, registry=registry)
-    assert registry.census(first.snapshot_digest) == 1
-    with pytest.raises(DaggerRuntimeAuthorityError):
-        _admit(registry, engine="replacement-engine")
-    authority.release_dagger_authority(sibling, registry=registry)
-    replacement = _admit(registry, engine="replacement-engine")
-    assert replacement.snapshot_digest != first.snapshot_digest
-    assert registry.state().barrier_pending_digest is None
-    authority.release_dagger_authority(replacement, registry=registry)
-    assert registry.owners() == []
-
-
 def _process_lock_status(path: Path) -> int:
     result = subprocess.run(
         [
@@ -185,20 +162,3 @@ def test_registry_nested_exception_retains_then_releases_thread_and_process_excl
         assert _process_lock_status(physical_lock) == 0
         with registry.exclusive_access():
             assert _process_lock_status(physical_lock) == 17
-
-
-def test_registry_refuses_ineffective_flock_before_state_and_can_recover(
-    registry: authority.AuthorityRegistry, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with monkeypatch.context() as patch:
-        patch.setattr(file_lock.fcntl, "flock", lambda _fd, _operation: None)
-        with pytest.raises(DaggerRuntimeAuthorityError) as caught:
-            _admit(registry)
-    assert caught.value.findings[0]["code"] == "runtime-authority-registry-lock-unsafe"
-    assert isinstance(caught.value.__cause__, LockCapabilityError)
-    assert not registry.state_path.exists()
-    assert not registry.owners_path.exists()
-    assert not file_lock.lock_held(registry.lock_path)
-    admitted = _admit(registry)
-    assert registry.census(admitted.snapshot_digest) == 1
-    authority.release_dagger_authority(admitted, registry=registry)

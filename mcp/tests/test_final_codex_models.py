@@ -1,9 +1,4 @@
-"""Standalone CCR-R14 leaf builders and model contract tests.
-
-This module owns the leaf scenario-registry and record builders the final-codex
-test modules share, plus the final-codex model/invariant contract tests. Fully
-standalone: imports only the package under test and stdlib/pytest.
-"""
+"""Frozen candidate and rail-result builders for final certification checks."""
 
 from __future__ import annotations
 
@@ -14,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import pytest
 from agents_remember.certification import canonicalize_registry
 from agents_remember.certification.digests import content_digest
 from agents_remember.certification.final_codex.models import (
@@ -23,7 +17,6 @@ from agents_remember.certification.final_codex.models import (
     FinalCodexFailureRecord,
     FinalCodexPlanRecord,
     FinalCodexRepetitionIdentity,
-    FinalCodexRepetitionResult,
     FinalCodexRepetitionResultDraft,
     FinalCodexRunManifest,
     FinalCodexRuntimeAuthorityBinding,
@@ -250,11 +243,6 @@ def manifest_for(
             altitude=altitude,
         ),
     )
-
-
-def green_gates(registry: CanonicalRailRegistry) -> tuple[GateResultManifest, ...]:
-    certifying = certifying_plan(registry)
-    return tuple(manifest_for(registry, certifying, gate) for gate in (1, 2, 3))
 
 
 def scenario_failure(
@@ -491,20 +479,6 @@ def publish_run(
     return manifest
 
 
-def finalize_result(
-    draft: FinalCodexRepetitionResultDraft,
-    *,
-    predecessor: str = "",
-) -> FinalCodexRepetitionResult:
-    payload = {**draft.model_dump(mode="json"), "predecessorDigest": predecessor}
-    result_id = content_digest(payload)
-    final_payload = {**payload, "resultId": result_id}
-    return FinalCodexRepetitionResult(
-        **final_payload,
-        resultDigest=content_digest(final_payload),
-    )
-
-
 def store_codes(error: CertificationContractError) -> set[str]:
     return {str(item["code"]) for item in error.findings}
 
@@ -554,171 +528,3 @@ def engine_environ(declaration: dict[str, object]) -> dict[str, str]:
     }
     env[authority.HOST_DECLARATION_ENV] = json.dumps(declaration)
     return env
-
-
-def red_gate4():
-    return gate4_manifest(red=True)
-
-
-def make_pass_draft(number, identities, *, manifest=None, binding=None):
-    return make_draft(
-        repetition_number=number,
-        identity=identities[number - 1],
-        disposition="pass",
-        overrides={
-            "manifest": (manifest or gate4_manifest()).model_dump(mode="json"),
-            "runtimeAuthority": (binding or authority_binding()).model_dump(mode="json"),
-        },
-    )
-
-
-def make_fail_draft(number, identities):
-    return make_draft(
-        repetition_number=number,
-        identity=identities[number - 1],
-        disposition="fail",
-        overrides={
-            "manifest": red_gate4().model_dump(mode="json"),
-            "failure": scenario_failure().model_dump(mode="json"),
-        },
-    )
-
-
-def make_aborted_draft(number, identities):
-    return make_draft(
-        repetition_number=number,
-        identity=identities[number - 1],
-        disposition="aborted",
-    )
-
-
-def make_hard_draft(number, identities):
-    failure = FinalCodexFailureRecord(
-        failureClass="infrastructure",
-        code="runner-down",
-        detail="engine lost",
-        correctiveOwner="dagger-owner",
-        evidence=(
-            RailEvidenceReference(
-                evidenceId="runner",
-                sha256=content_digest({"evidence": "runner"}),
-                size=16,
-                reference="evidence://runner",
-            ),
-        ),
-    )
-    return make_draft(
-        repetition_number=number,
-        identity=identities[number - 1],
-        disposition="hard-failure",
-        overrides={"failure": failure.model_dump(mode="json")},
-    )
-
-
-class FinalCodexModelTests:
-    def test_certifying_literals_and_retry_zero_are_structural(self) -> None:
-        identities = fresh_identities()
-        item = make_pass_draft(1, identities)
-        assert item.acceptanceEligible is True
-        assert item.certifying is True
-        assert item.retryCount == 0
-        rendered = item.model_dump(mode="json")
-        assert rendered["acceptanceEligible"] is True
-        assert rendered["certifying"] is True
-        assert rendered["retryCount"] == 0
-
-    def test_attempt_requires_two_fresh_distinct_identities(self) -> None:
-        duplicate = (repetition_identity(1), repetition_identity(1))
-        with pytest.raises(ValueError):
-            attempt_record(identities=duplicate)
-
-    def test_plan_record_verifies_its_digest(self) -> None:
-        record = plan_record()
-        tampered = record.model_dump(mode="json")
-        tampered["scenarioVersion"] = "2.0.0"
-        del tampered["planDigest"]
-        # stale original digest no longer matches the changed content
-        with pytest.raises(ValueError):
-            FinalCodexPlanRecord(**tampered, planDigest=record.planDigest)
-
-    def test_runtime_binding_digest_must_match(self) -> None:
-        with pytest.raises(ValueError):
-            FinalCodexRuntimeAuthorityBinding(
-                snapshotDigest=DIGEST,
-                endpoint="container://shared-dagger-engine",
-                engineId="shared-dagger-engine",
-                layerStore="/var/lib/dagger",
-                storeMountedPath="/var/lib/dagger",
-                observedVersion="dagger 0.21.8",
-                bindingDigest="b" * 64,
-            )
-
-    def test_pass_and_fail_require_complete_gate_four_manifest(self) -> None:
-        identities = fresh_identities()
-        passing = make_pass_draft(1, identities)
-        assert passing.manifest is not None
-        failing = make_fail_draft(1, identities)
-        assert failing.manifest is not None
-        assert failing.failure is not None
-
-    def test_aborted_and_hard_failure_carry_no_manifest(self) -> None:
-        identities = fresh_identities()
-        aborted = make_aborted_draft(1, identities)
-        assert aborted.manifest is None
-        hard = make_hard_draft(1, identities)
-        assert hard.manifest is None
-        assert hard.failure is not None
-
-    def test_run_manifest_green_only_when_both_pass(self, tmp_path) -> None:
-        store = make_store(tmp_path)
-        identities = fresh_identities()
-        attempt = attempt_record(identities=identities)
-        manifest = publish_run(
-            store,
-            attempt=attempt,
-            drafts=(
-                make_pass_draft(1, identities),
-                make_pass_draft(2, identities),
-            ),
-        )
-        assert manifest.aggregate == "green"
-        assert manifest.complete is True
-
-    def test_one_pass_cannot_compensate_a_failure(self, tmp_path) -> None:
-        store = make_store(tmp_path)
-        identities = fresh_identities()
-        attempt = attempt_record(identities=identities)
-        manifest = publish_run(
-            store,
-            attempt=attempt,
-            drafts=(make_fail_draft(1, identities), make_pass_draft(2, identities)),
-        )
-        assert manifest.aggregate == "red"
-        assert manifest.complete is True
-
-    def test_different_authority_between_repetitions_breaks_manifest(self, tmp_path) -> None:
-        store = make_store(tmp_path)
-        identities = fresh_identities()
-        attempt = attempt_record(identities=identities)
-        other = authority_binding(snapshot_digest="b" * 64)
-        with pytest.raises(ValueError):
-            publish_run(
-                store,
-                attempt=attempt,
-                drafts=(
-                    make_pass_draft(1, identities),
-                    make_pass_draft(2, identities, binding=other),
-                ),
-            )
-
-    def test_repetition_draft_verifies_its_own_result_digest(self) -> None:
-        identities = fresh_identities()
-        draft = make_pass_draft(1, identities)
-        payload = {**draft.model_dump(mode="json"), "predecessorDigest": ""}
-        result_id = content_digest(payload)
-        final_payload = {**payload, "resultId": result_id}
-        with pytest.raises(ValueError):
-            FinalCodexRepetitionResult(
-                **final_payload,
-                resultDigest=content_digest({"not": "the result"}),
-            )

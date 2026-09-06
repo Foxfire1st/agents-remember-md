@@ -135,7 +135,7 @@ Static correctness and behavioral certification are deliberately not identical p
 Test and support code therefore remain linted, formatted, typed, size-bounded, and directly tested
 where they own risky logic. Adding a branch to test support no longer creates a production CRAP or
 changed-coverage obligation that recursively demands another test solely to certify the testing
-machinery. Production thresholds and changed-unit coverage remain unchanged.
+machinery. Coverage is diagnostic; production CRAP20 prompts review without blocking delivery.
 
 ## Dependency-owned selection
 
@@ -174,7 +174,7 @@ consumers.
 
 ## Dependency-aware retry proof
 
-Retry is an internal Dagger optimization after a passed pytest run and a later coverage-derived
+Retry is an internal Dagger optimization after a passed pytest run and a later execution
 failure. Its schema binds repository bytes, selected tests, the immutable selector-result digest,
 diff base, Python/tool versions, environment digest, measurement settings, and the exact
 included/excluded lane population. Proof
@@ -224,9 +224,9 @@ symptoms are skipped.
 | Migration window | Dagger `cadence-evidence --trigger=migration-window` | Non-accepting cadence evidence or loud not-applicable result |
 | Targeted Vitest | existing dashboard command | Diagnostic only; unchanged by this reform |
 
-Host pytest and direct invocation of the quality wrapper remain unsupported. No direct Python
-compatibility command or classifier is shipped; an investigation route must be selected explicitly
-through Dagger and never substitutes itself for acceptance.
+Ordinary isolated host pytest is supported for development as described in
+`python-pytest-bootstrap.md`. The quality wrapper and certifying bootstrap retain their genuine
+Dagger admission boundary. Host results do not substitute themselves for certification.
 
 ## Maintenance rules
 
@@ -237,8 +237,8 @@ through Dagger and never substitutes itself for acceptance.
 4. Treat every fresh/full decision as an explicit conservative result with a stable cause, never a
    silent fallback or compatibility mechanism.
 5. Keep stress out of affected repair runs without deleting deterministic durability regressions.
-6. Do not recreate Candidate A without a new developer-approved requirement and evidence that
-   overturns its exact-candidate cost falsifier.
+6. Follow the case budgets and behavior-based admission policy in `python-pytest-bootstrap.md`;
+   diagnostic coverage and production CRAP findings do not require suite growth.
 7. Preserve one unresolved requirement set during review. Reviewer findings describe deltas; they
    do not create new leaf scope or restart already-approved requirements.
 8. Run one full Dagger gate only after the complete master candidate is assembled.

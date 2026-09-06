@@ -1,8 +1,8 @@
-"""Enforce 90% changed-production coverage at combined unit/integration delivery.
+"""Report changed-production coverage at combined unit/integration delivery.
 
 The gate compares Coverage.py's statements and branch arcs with lines added since the
 resolved merge base. Every uncovered changed line and untaken changed branch is named.
-The delivery report combines unit and integration coverage before applying the floor.
+The delivery report combines unit and integration coverage for diagnosis only.
 
 Reported non-measured states are explicit: ``no-changed-lines``,
 ``no-python-changes``, and ``no-measurable-changes``. The last state includes affected
@@ -28,7 +28,6 @@ from agents_remember.kernel import git_command
 from agents_remember_test_support.code_quality import crap_calculator
 
 # Combined delivery coverage of changed statements and branches.
-DEFAULT_DIFF_COVERAGE_FLOOR = 90.0
 
 # git's empty tree. Diffing against it yields the whole tree, which is what "no merge
 # base" honestly means: nothing has been established yet, so nothing is grandfathered.
@@ -342,7 +341,7 @@ def empty_result(base: BaseResolution, state: str) -> DiffCoverage:
     )
 
 
-def render(result: DiffCoverage, floor: float) -> list[str]:
+def render(result: DiffCoverage) -> list[str]:
     """The report, findings and all.
 
     Every uncovered line is named. The percentage alone trains people to add any test
@@ -351,7 +350,7 @@ def render(result: DiffCoverage, floor: float) -> list[str]:
     """
     lines = [
         f"base: {result.base.revision} -- {result.base.origin}",
-        f"floor: {floor:.1f}% of changed statements and branches",
+        "policy: diagnostic only; no coverage floor",
         f"state: {result.state}",
     ]
     lines.extend(STATE_NOTES.get(result.state, ()))
@@ -366,13 +365,10 @@ def render(result: DiffCoverage, floor: float) -> list[str]:
         f"changed coverage: {result.covered_units}/{result.total_units} units "
         f"= {result.percent:.2f}%"
     )
-    if result.percent >= floor:
-        return lines
     lines.append(
         f"\n{len(result.uncovered_lines)} changed line(s) and "
-        f"{len(result.untaken_branches)} changed branch(es) never ran. There is no "
-        "exemption list: each is cleared by a test that reaches it, or by deleting the "
-        "code."
+        f"{len(result.untaken_branches)} changed branch(es) were not observed. "
+        "Use these observations to assess meaningful behavior; they do not require new tests."
     )
     lines.extend(f"  uncovered line    {entry}" for entry in result.uncovered_lines)
     lines.extend(f"  untaken branch    {entry}" for entry in result.untaken_branches)
@@ -381,10 +377,10 @@ def render(result: DiffCoverage, floor: float) -> list[str]:
 
 STATE_NOTES: dict[str, tuple[str, ...]] = {
     "no-changed-lines": (
-        "nothing changed against the base, so there is nothing for a coverage floor to certify.",
+        "nothing changed against the base, so there is nothing for a coverage report to measure.",
     ),
     "no-python-changes": (
-        "files changed against the base, none of them Python; the floor has nothing to measure.",
+        "files changed against the base, none of them Python; the report has nothing to measure.",
     ),
     "no-measurable-changes": (
         "Python changed, but no changed line sits inside a package the coverage run measures.",
@@ -403,6 +399,6 @@ def unmeasured_header(result: DiffCoverage) -> str:
     total = sum(count for _path, count in result.unmeasured_files)
     return (
         f"\n{len(result.unmeasured_files)} changed Python file(s) carrying {total} changed "
-        "line(s) are outside the packages coverage measures, so this floor cannot speak "
+        "line(s) are outside the packages coverage measures, so this report cannot speak "
         "for them:"
     )

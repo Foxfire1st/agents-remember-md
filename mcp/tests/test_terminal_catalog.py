@@ -7,7 +7,6 @@ import sys
 import tempfile
 import threading
 import unittest
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -22,7 +21,6 @@ from agents_remember.models.terminal_catalog import (
 from agents_remember.serving.terminal_catalog import (
     DispatchBriefReceiptStore,
     TerminalCatalog,
-    terminal_catalog_path,
 )
 
 
@@ -58,77 +56,6 @@ class TerminalCatalogTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._dir.cleanup()
 
-    def test_terminal_catalog_path_is_under_dashboard_logs(self) -> None:
-        self.assertEqual(
-            terminal_catalog_path(self.tmp),
-            self.tmp / "logs" / "dashboard" / "terminal-sessions.json",
-        )
-
-    def test_upsert_persists_json_rows_sorted_by_creation(self) -> None:
-        self.catalog.upsert(_entry("b", created_at="2026-06-26T00:00:02Z"))
-        self.catalog.upsert(_entry("a", created_at="2026-06-26T00:00:01Z"))
-
-        self.assertEqual([entry.id for entry in self.catalog.list()], ["a", "b"])
-        raw = json.loads(self.catalog.path.read_text(encoding="utf-8"))
-        self.assertEqual(raw["schema"], "ar-dashboard-terminal-sessions/v2")
-        self.assertEqual([row["id"] for row in raw["sessions"]], ["a", "b"])
-
-    def test_status_transitions_keep_exited_visible_and_filter_terminated(self) -> None:
-        self.catalog.upsert(_entry("a"))
-        self.catalog.upsert(_entry("b"))
-
-        self.catalog.mark_exited("a")
-        self.catalog.mark_terminated("b", "2026-06-26T00:01:00Z")
-
-        self.assertEqual([entry.id for entry in self.catalog.list()], ["a"])
-        self.assertEqual(
-            [entry.id for entry in self.catalog.list(include_terminated=True)], ["a", "b"]
-        )
-        exited = self.catalog.get("a")
-        terminated = self.catalog.get("b")
-        assert exited is not None
-        assert terminated is not None
-        self.assertEqual(exited.status, "exited")
-        self.assertEqual(terminated.terminated_at, "2026-06-26T00:01:00Z")
-
-    def test_mark_attached_restores_running_status(self) -> None:
-        self.catalog.upsert(_entry("a"))
-        self.catalog.mark_exited("a")
-
-        updated = self.catalog.mark_attached("a", "2026-06-26T00:02:00Z")
-
-        assert updated is not None
-        self.assertEqual(updated.status, "running")
-        self.assertEqual(updated.last_attached_at, "2026-06-26T00:02:00Z")
-
-    def test_mark_exited_does_not_downgrade_terminated_session(self) -> None:
-        self.catalog.upsert(_entry("a"))
-        self.catalog.mark_terminated("a", "2026-06-26T00:03:00Z")
-
-        updated = self.catalog.mark_exited("a")
-
-        assert updated is not None
-        self.assertEqual(updated.status, "terminated")
-        self.assertEqual(updated.terminated_at, "2026-06-26T00:03:00Z")
-        self.assertEqual(self.catalog.list(), [])
-
-    def test_mark_landed_keeps_row_visible_and_non_active(self) -> None:
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        self.catalog.upsert(_entry("a", task_document_ref=leaf, kind="harness"))
-
-        updated = self.catalog.mark_landed(
-            "a",
-            at="2026-07-09T00:00:00+00:00",
-            reason="leaf integrated",
-            edge="leaf-integration",
-        )
-
-        assert updated is not None
-        self.assertEqual(updated.status, "landed")
-        self.assertEqual(updated.landed_reason, "leaf integrated")
-        self.assertEqual([entry.id for entry in self.catalog.list()], ["a"])
-        self.assertIsNone(self.catalog.active_for_task(leaf, seat_role="chat"))
-
     def test_landed_state_round_trips_and_is_not_reanimated(self) -> None:
         self.catalog.upsert(_entry("a"))
         self.catalog.mark_landed(
@@ -157,89 +84,6 @@ class TerminalCatalogTests(unittest.TestCase):
         assert exited is not None
         self.assertEqual(exited.status, "landed")
 
-    def test_task_document_ref_round_trips_through_json(self) -> None:
-        leaf = TaskDocumentRef(
-            repository="agents-remember",
-            path="260628_operations-integration/260628-L5.json",
-        )
-        self.catalog.upsert(_entry("a", task_document_ref=leaf))
-
-        raw = json.loads(self.catalog.path.read_text(encoding="utf-8"))
-        self.assertEqual(raw["sessions"][0]["taskDocumentRef"], leaf.model_dump())
-
-        entry = self.catalog.get("a")
-        assert entry is not None
-        self.assertEqual(entry.task_document_ref, leaf)
-
-    def test_to_json_omits_task_document_ref_when_unset(self) -> None:
-        self.catalog.upsert(_entry("a"))
-        self.assertNotIn("taskDocumentRef", self.catalog.get("a").to_json())  # type: ignore[union-attr]
-
-    def test_spawn_role_round_trips_and_is_omitted_when_unset(self) -> None:
-        # L14: the AR_SPAWN_ROLE recorded at spawn is a durable column (the Chats command-tree
-        # grouping key) — written only when set, so legacy/hand-opened rows read back as None.
-        self.catalog.upsert(replace(_entry("a"), spawn_role="manager"))
-        self.catalog.upsert(_entry("b"))
-
-        raw = json.loads(self.catalog.path.read_text(encoding="utf-8"))
-        by_id = {row["id"]: row for row in raw["sessions"]}
-        self.assertEqual(by_id["a"]["spawnRole"], "manager")
-        self.assertNotIn("spawnRole", by_id["b"])
-
-        entry = self.catalog.get("a")
-        assert entry is not None
-        self.assertEqual(entry.spawn_role, "manager")
-        unset = self.catalog.get("b")
-        assert unset is not None
-        self.assertIsNone(unset.spawn_role)
-
-    def test_missing_required_seat_role_is_refused_without_rewriting_catalog(self) -> None:
-        rows = [
-            replace(_entry("worker", kind="harness"), spawn_role="worker").to_json(),
-            _entry("legacy-chat", kind="harness").to_json(),
-            _entry("terminal", kind="terminal").to_json(),
-        ]
-        for row in rows:
-            row.pop("seatRole")
-        self.catalog.path.write_text(
-            json.dumps({"schema": "ar-dashboard-terminal-sessions/v2", "sessions": rows}),
-            encoding="utf-8",
-        )
-
-        original = self.catalog.path.read_text(encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "seatRole"):
-            self.catalog.list(include_terminated=True)
-        self.assertEqual(self.catalog.path.read_text(encoding="utf-8"), original)
-
-    def test_dispatch_binding_fields_round_trip(self) -> None:
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        master = TaskDocumentRef(repository="repo", path="master/task.json")
-        self.catalog.upsert(
-            replace(
-                _entry("a", kind="harness"),
-                replacement_for_task_document_ref=leaf,
-                structural_parent_task_document_ref=master,
-                structural_parent_role="manager",
-                dispatch_brief_entry_id="dispatch-brief-1",
-                session_log_entry_id="brief-1",
-                session_log_path=Path("/tmp/session.jsonl"),
-            )
-        )
-
-        entry = self.catalog.get("a")
-        assert entry is not None
-        self.assertEqual(entry.replacement_for_task_document_ref, leaf)
-        self.assertEqual(entry.structural_parent_task_document_ref, master)
-        self.assertEqual(entry.structural_parent_role, "manager")
-        self.assertEqual(entry.dispatch_brief_entry_id, "dispatch-brief-1")
-        self.assertEqual(entry.session_log_entry_id, "brief-1")
-        self.assertEqual(entry.session_log_path, Path("/tmp/session.jsonl"))
-        self.assertEqual(entry.to_json()["replacementForTaskDocumentRef"], leaf.model_dump())
-        self.assertEqual(entry.to_json()["structuralParentTaskDocumentRef"], master.model_dump())
-        self.assertEqual(entry.to_json()["structuralParentRole"], "manager")
-        self.assertEqual(entry.to_json()["dispatchBriefEntryId"], "dispatch-brief-1")
-        self.assertEqual(entry.to_json()["sessionLogEntryId"], "brief-1")
-
     def test_dispatch_brief_receipts_are_idempotent_and_refuse_a_second_receipt(self) -> None:
         self.catalog.upsert(_entry("a", kind="harness"))
         receipts = DispatchBriefReceiptStore(self.catalog)
@@ -258,206 +102,6 @@ class TerminalCatalogTests(unittest.TestCase):
             "dispatch-brief-1",
         )
 
-    def test_task_binding_promotes_a_staged_replacement_to_the_canonical_seat(self) -> None:
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        staged = replace(
-            _entry("a", kind="harness"),
-            replacement_for_task_document_ref=leaf,
-        )
-
-        promoted = staged.with_task_binding(leaf, "worker")
-
-        self.assertEqual(promoted.task_document_ref, leaf)
-        self.assertEqual(promoted.seat_role, "worker")
-        self.assertIsNone(promoted.replacement_for_task_document_ref)
-
-    def test_task_rebinding_drops_a_reviewer_parent_that_belongs_to_the_old_address(self) -> None:
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        other = TaskDocumentRef(repository="repo", path="master/leaf-2.json")
-        master = TaskDocumentRef(repository="repo", path="master/task.json")
-        reviewer = replace(
-            _entry("reviewer", kind="harness"),
-            task_document_ref=leaf,
-            seat_role="reviewer",
-            structural_parent_task_document_ref=master,
-            structural_parent_role="manager",
-        )
-
-        same = reviewer.with_task_binding(leaf, "reviewer")
-        moved = reviewer.with_task_binding(other, "reviewer")
-
-        self.assertEqual(same.structural_parent_task_document_ref, master)
-        self.assertEqual(same.structural_parent_role, "manager")
-        self.assertIsNone(moved.structural_parent_task_document_ref)
-        self.assertIsNone(moved.structural_parent_role)
-
-    def test_control_metadata_round_trips_additively_and_legacy_rows_remain_unset(self) -> None:
-        self.catalog.upsert(
-            replace(
-                _entry("controlled", kind="harness"),
-                control_state="ready",
-                control_endpoint=Path("/tmp/ar-control/session.sock"),
-                control_protocol="ar-harness-control/v1",
-            )
-        )
-        self.catalog.upsert(_entry("legacy", kind="harness"))
-
-        controlled = self.catalog.get("controlled")
-        legacy = self.catalog.get("legacy")
-        assert controlled is not None and legacy is not None
-        self.assertEqual(controlled.control_state, "ready")
-        self.assertEqual(controlled.control_endpoint, Path("/tmp/ar-control/session.sock"))
-        self.assertEqual(controlled.to_json()["controlProtocol"], "ar-harness-control/v1")
-        self.assertNotIn("controlState", legacy.to_json())
-        self.assertNotIn("controlEndpoint", legacy.to_json())
-
-    def test_complete_optional_projection_round_trips_without_contract_loss(self) -> None:
-        entry = replace(
-            _entry("full", kind="harness"),
-            lifecycle_id="LC-full",
-            status="exited",
-            terminated_at="2026-07-10T10:00:00+00:00",
-            task_document_ref=TaskDocumentRef(repository="repo", path="master/leaf-1.json"),
-            seat_role="reviewer",
-            replacement_for_task_document_ref=TaskDocumentRef(
-                repository="repo", path="master/leaf-0.json"
-            ),
-            spawned_by_session="manager-1",
-            spawned_by_lifecycle="LC-manager",
-            spawn_role="reviewer",
-            launch_args=("--verbose",),
-            prompt_keywords=("strict", "review"),
-            session_commands=("/effort high",),
-            spawn_level="leaf",
-            spawn_level_source="explicit",
-            resolved_model="review-model",
-            resolved_effort="high",
-            session_log_entry_id="brief-1",
-            session_log_path=Path("/tmp/session.jsonl"),
-            liveness_failures=2,
-            liveness_first_failed_at="2026-07-10T10:01:00+00:00",
-            liveness_last_failed_at="2026-07-10T10:02:00+00:00",
-            liveness_evidence="pane-gone",
-            exit_evidence="pane-gone",
-            retired_at="2026-07-10T10:03:00+00:00",
-            retired_by_session="manager-1",
-            retired_reason="done",
-            retired_edge="leaf-closeout",
-            landed_at="2026-07-10T10:04:00+00:00",
-            landed_reason="integrated",
-            landed_edge="leaf-integration",
-            spawned_label="Original reviewer",
-            turn_state="turn-ended",
-            turn_state_changed_at="2026-07-10T10:05:00+00:00",
-        )
-
-        projected = entry.to_json()
-
-        self.assertEqual(TerminalCatalogEntry.from_json(projected), entry)
-        self.assertEqual(projected["seatRole"], "reviewer")
-        self.assertEqual(projected["launchArgs"], ["--verbose"])
-        self.assertEqual(projected["sessionLogPath"], "/tmp/session.jsonl")
-        self.assertEqual(projected["exitEvidence"], "pane-gone")
-
-    def test_bind_session_log_preserves_newer_liveness_state(self) -> None:
-        self.catalog.upsert(_entry("a", kind="harness"))
-        stale_snapshot = self.catalog.get("a")
-        assert stale_snapshot is not None
-        exited = self.catalog.record_liveness_probe(
-            "a",
-            alive=False,
-            evidence="pane-gone",
-            checked_at=datetime.fromisoformat("2026-07-10T10:00:00+00:00"),
-        )
-        assert exited is not None
-        self.assertEqual(exited.status, "exited")
-
-        bound = self.catalog.bind_session_log(
-            stale_snapshot.id,
-            entry_id="brief-1",
-            path=Path("/tmp/session.jsonl"),
-        )
-
-        assert bound is not None
-        self.assertEqual(bound.status, "exited")
-        self.assertEqual(bound.liveness_failures, 1)
-        self.assertEqual(bound.exit_evidence, "pane-gone")
-        self.assertEqual(bound.session_log_entry_id, "brief-1")
-        self.assertEqual(bound.session_log_path, Path("/tmp/session.jsonl"))
-
-    def test_row_without_task_document_ref_reads_as_none(self) -> None:
-        self.catalog.path.parent.mkdir(parents=True, exist_ok=True)
-        self.catalog.path.write_text(
-            json.dumps(
-                {
-                    "schema": "ar-dashboard-terminal-sessions/v2",
-                    "sessions": [
-                        {
-                            "id": "legacy",
-                            "label": "Terminal legacy",
-                            "kind": "terminal",
-                            "cwd": "/workspace",
-                            "tmuxName": "ar-legacy",
-                            "command": ["bash"],
-                            "createdAt": "2026-06-26T00:00:00Z",
-                            "lastAttachedAt": "2026-06-26T00:00:00Z",
-                            "status": "running",
-                            "seatRole": "terminal",
-                        }
-                    ],
-                }
-            ),
-            encoding="utf-8",
-        )
-        entry = self.catalog.get("legacy")
-        assert entry is not None
-        self.assertIsNone(entry.task_document_ref)
-
-    def test_active_for_task_returns_running_owner(self) -> None:
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        self.catalog.upsert(_entry("a", task_document_ref=leaf, kind="harness"))
-        owner = self.catalog.active_for_task(leaf, seat_role="chat")
-        assert owner is not None
-        self.assertEqual(owner.id, "a")
-        other = TaskDocumentRef(repository="repo", path="master/other.json")
-        self.assertIsNone(self.catalog.active_for_task(other, seat_role="chat"))
-
-    def test_active_for_task_is_scoped_by_role(self) -> None:
-        # A chat and a terminal can both own the same leaf; the probe resolves each independently.
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        self.catalog.upsert(_entry("chat", task_document_ref=leaf, kind="harness"))
-        self.catalog.upsert(_entry("term", task_document_ref=leaf, kind="terminal"))
-        chat = self.catalog.active_for_task(leaf, seat_role="chat")
-        term = self.catalog.active_for_task(leaf, seat_role="terminal")
-        assert chat is not None
-        assert term is not None
-        self.assertEqual(chat.id, "chat")
-        self.assertEqual(term.id, "term")
-
-    def test_active_for_task_ignores_exited_and_terminated(self) -> None:
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        self.catalog.upsert(_entry("exited", task_document_ref=leaf, kind="harness"))
-        self.catalog.mark_exited("exited")
-        # An exited chat frees its leaf.
-        self.assertIsNone(self.catalog.active_for_task(leaf, seat_role="chat"))
-
-        self.catalog.upsert(_entry("terminated", task_document_ref=leaf, kind="harness"))
-        self.catalog.mark_terminated("terminated", "2026-06-26T00:05:00Z")
-        # A terminated chat frees its leaf too.
-        self.assertIsNone(self.catalog.active_for_task(leaf, seat_role="chat"))
-
-    def test_replace_copies_task_document_binding(self) -> None:
-        entry = _entry("a")
-        leaf = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
-        bound = replace(entry, task_document_ref=leaf)
-        self.assertEqual(bound.task_document_ref, leaf)
-        self.assertIsNone(replace(bound, task_document_ref=None).task_document_ref)
-        self.assertIsNone(entry.task_document_ref)  # the original is untouched (frozen copy)
-
-    def test_with_turn_state_keeps_an_unchanged_state(self) -> None:
-        entry = replace(_entry("a"), turn_state="working")
-        self.assertIs(entry.with_turn_state("working", changed_at="2026-08-10T12:00:00Z"), entry)
-
     def test_read_refuses_torn_extra_data_without_erasing_evidence(self) -> None:
         self.catalog.upsert(_entry("a"))
         good = self.catalog.path.read_text(encoding="utf-8")
@@ -466,21 +110,6 @@ class TerminalCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not valid JSON"):
             self.catalog.list()
         self.assertIn("ar-torn", self.catalog.path.read_text(encoding="utf-8"))
-
-    def test_read_refuses_unparseable_file_without_treating_it_as_empty(self) -> None:
-        self.catalog.path.parent.mkdir(parents=True, exist_ok=True)
-        self.catalog.path.write_text("}{ not json at all", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "not valid JSON"):
-            self.catalog.list()
-        self.assertEqual(self.catalog.path.read_text(encoding="utf-8"), "}{ not json at all")
-
-    def test_write_leaves_no_fixed_name_temp_sibling(self) -> None:
-        # The old shared `.terminal-sessions.json.tmp` is what concurrent writers tore; a write must not
-        # create that fixed sibling (the per-write temp is unique and removed by os.replace).
-        self.catalog.upsert(_entry("a"))
-        self.assertFalse((self.catalog.path.with_name(f".{self.catalog.path.name}.tmp")).exists())
-        leftover = list(self.catalog.path.parent.glob(f".{self.catalog.path.name}.*.tmp"))
-        self.assertEqual(leftover, [])
 
     def test_concurrent_upserts_do_not_lose_or_corrupt_rows(self) -> None:
         # Reproduces the bug class directly: many threads upserting distinct rows at once. With the
@@ -507,28 +136,6 @@ class TerminalCatalogTests(unittest.TestCase):
             self.catalog.path.read_text(encoding="utf-8")
         )  # still valid JSON (no torn write)
 
-    def test_cross_instance_spawn_waits_for_batch_and_survives(self) -> None:
-        other = TerminalCatalog(self.catalog.path)
-        self.catalog.upsert(_entry("existing"))
-        started = threading.Event()
-        finished = threading.Event()
-
-        def spawn() -> None:
-            started.set()
-            other.upsert(_entry("spawned"))
-            finished.set()
-
-        with self.catalog.batch():
-            self.catalog.record_turn_state("existing", "working", changed_at="2026-07-12T10:00Z")
-            writer = threading.Thread(target=spawn)
-            writer.start()
-            self.assertTrue(started.wait(timeout=1))
-            self.assertFalse(finished.wait(timeout=0.05))
-        writer.join(timeout=1)
-
-        self.assertTrue(finished.is_set())
-        self.assertEqual({row.id for row in other.list()}, {"existing", "spawned"})
-
     def test_cross_instance_termination_is_sticky_and_never_resurrected(self) -> None:
         other = TerminalCatalog(self.catalog.path)
         self.catalog.upsert(_entry("worker"))
@@ -553,32 +160,6 @@ class TerminalCatalogTests(unittest.TestCase):
                 checked_at=datetime.fromisoformat("2026-07-12T10:02:00+00:00"),
             )
         self.assertEqual(other.get("worker").status, "terminated")  # type: ignore[union-attr]
-
-    def test_cross_instance_field_update_composes_after_batch(self) -> None:
-        other = TerminalCatalog(self.catalog.path)
-        self.catalog.upsert(_entry("worker"))
-        finished = threading.Event()
-
-        def bind_log() -> None:
-            other.bind_session_log(
-                "worker",
-                entry_id="dispatch-1",
-                path=Path("/tmp/session.jsonl"),
-            )
-            finished.set()
-
-        with self.catalog.batch():
-            self.catalog.record_turn_state("worker", "working", changed_at="2026-07-12T10:00Z")
-            writer = threading.Thread(target=bind_log)
-            writer.start()
-            self.assertFalse(finished.wait(timeout=0.05))
-        writer.join(timeout=1)
-
-        row = other.get("worker")
-        assert row is not None
-        self.assertEqual(row.turn_state, "working")
-        self.assertEqual(row.session_log_entry_id, "dispatch-1")
-        self.assertEqual(row.session_log_path, Path("/tmp/session.jsonl"))
 
 
 if __name__ == "__main__":

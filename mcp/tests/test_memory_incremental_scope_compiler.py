@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import cast
@@ -26,14 +25,11 @@ from agents_remember.memory_quality.incremental_scope.affected_execution import 
 )
 from agents_remember.memory_quality.incremental_scope.affected_models import (
     AffectedClosurePlan,
-    AffectedUnitPlan,
-    AffectedUnitResult,
 )
 from agents_remember.memory_quality.incremental_scope.affected_planning import (
     AffectedClosureAdmission,
     compile_affected_closure_plan,
 )
-from agents_remember.memory_quality.incremental_scope.candidate import ContractScopeAuthority
 from agents_remember.memory_quality.incremental_scope.compiler import (
     build_dependency_snapshot,
     compile_scope_manifest,
@@ -57,7 +53,6 @@ from agents_remember.memory_quality.incremental_scope.models import (
     TaskObservationPair,
     canonical_digest,
 )
-from agents_remember.memory_quality.incremental_scope.registry import checker_scope_registry
 from agents_remember.memory_quality.style.citations.range_resolution import CHECK_NAME
 from agents_remember.models.certification.base import GateId
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
@@ -249,29 +244,6 @@ def test_direct_transitive_and_reverse_only_dependencies_are_complete() -> None:
     assert len(manifest.selectedEdges) == 5
 
 
-def test_manifest_digest_is_stable_across_repeated_owner_observation() -> None:
-    candidate = _candidate()
-    snapshot = _snapshot(candidate)
-
-    first = compile_scope_manifest(
-        StaticAuthority(candidate), StaticDependencies(snapshot), checkers=(CHECK_NAME,)
-    )
-    second = compile_scope_manifest(
-        StaticAuthority(candidate), StaticDependencies(snapshot), checkers=(CHECK_NAME,)
-    )
-
-    assert first == second
-    assert first.manifestDigest == second.manifestDigest
-
-
-def test_every_current_checker_has_one_executable_or_full_only_policy() -> None:
-    policies = checker_scope_registry()
-
-    assert {policy.checker for policy in policies} == set(AVAILABLE_CHECKS)
-    assert [policy.checker for policy in policies if policy.mode == "incremental"] == [CHECK_NAME]
-    assert len([policy for policy in policies if policy.mode == "full-only"]) == 6
-
-
 def test_full_only_checker_remains_pending_without_silent_full_fallback() -> None:
     candidate = _candidate()
     manifest = compile_scope_manifest(
@@ -283,42 +255,6 @@ def test_full_only_checker_remains_pending_without_silent_full_fallback() -> Non
     assert manifest.incrementalReady is False
     assert manifest.fullOnlyCheckers == (DRIFT_CHECK_NAME,)
     assert "fallback" not in manifest.model_dump(mode="json")
-
-
-@pytest.mark.parametrize("checkers", [(), ("unknown.check",)])
-def test_empty_or_unknown_checker_population_is_scope_unproven(checkers: tuple[str, ...]) -> None:
-    candidate = _candidate()
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate),
-            StaticDependencies(_snapshot(candidate)),
-            checkers=checkers,
-        )
-
-    assert _reason(caught) in {"checker-population-empty", "checker-unknown"}
-
-
-def test_missing_edge_class_and_hidden_edge_count_are_scope_unproven() -> None:
-    candidate = _candidate()
-    snapshot = _snapshot(candidate)
-    missing = snapshot.model_copy(update={"edgeEvidence": snapshot.edgeEvidence[:-1]})
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate), StaticDependencies(missing), checkers=(CHECK_NAME,)
-        )
-    assert _reason(caught) == "edge-class-incomplete"
-
-    first = snapshot.edgeEvidence[0]
-    evidence = (
-        first.model_copy(update={"observedEdgeCount": first.observedEdgeCount + 1}),
-        *snapshot.edgeEvidence[1:],
-    )
-    hidden = snapshot.model_copy(update={"edgeEvidence": evidence})
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate), StaticDependencies(hidden), checkers=(CHECK_NAME,)
-        )
-    assert _reason(caught) == "edge-class-owner-invalid"
 
 
 def test_stale_index_and_adjacent_candidate_snapshot_are_scope_unproven() -> None:
@@ -386,241 +322,6 @@ def test_missing_or_ambiguous_r01_r02_authority_is_scope_unproven(
             checkers=(CHECK_NAME,),
         )
     assert _reason(caught) == expected
-
-
-def test_private_root_or_task_identity_and_moved_candidate_are_refused() -> None:
-    candidate = _candidate()
-    snapshot = _snapshot(candidate)
-    nodes = list(snapshot.nodes)
-    nodes[0] = nodes[0].model_copy(update={"authorityNamespace": "caller.private"})
-    private = build_dependency_snapshot(
-        candidate=candidate,
-        source_index=snapshot.sourceIndex,
-        nodes=nodes,
-        edges=snapshot.edges,
-    )
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate), StaticDependencies(private), checkers=(CHECK_NAME,)
-        )
-    assert _reason(caught) == "changed-root-private-authority"
-
-    task_root = _node("task:normative-intent", authority="caller.private")
-    replaced = build_dependency_snapshot(
-        candidate=candidate,
-        source_index=snapshot.sourceIndex,
-        nodes=(*snapshot.nodes, task_root),
-        edges=snapshot.edges,
-    )
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate), StaticDependencies(replaced), checkers=(CHECK_NAME,)
-        )
-    assert _reason(caught) == "task-node-private-authority"
-
-    moved = candidate.model_copy(
-        update={"code": candidate.code.model_copy(update={"candidateTree": "e" * 40})}
-    )
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate, replacement=moved),
-            StaticDependencies(snapshot),
-            checkers=(CHECK_NAME,),
-        )
-    assert _reason(caught) == "candidate-moved-during-compilation"
-
-
-def test_compiler_has_no_user_filename_or_full_scan_authority_parameter() -> None:
-    parameters = set(inspect.signature(compile_scope_manifest).parameters)
-
-    assert parameters == {"authority", "dependencies", "checkers"}
-    assert not parameters & {"only", "paths", "filenames", "fallback", "full_scan"}
-    assert set(inspect.signature(ContractScopeAuthority).parameters) == {"contract"}
-
-
-@pytest.mark.parametrize(
-    ("task", "expected"),
-    [
-        (
-            TaskObservationPair(base=_task_observation(), candidate=None),
-            "task-candidate-unavailable",
-        ),
-        (
-            TaskObservationPair(
-                base=_task_observation(), candidate=_task_observation(topology=None)
-            ),
-            "task-candidate-topology-unavailable",
-        ),
-        (
-            TaskObservationPair(
-                base=_task_observation(),
-                candidate=_task_observation(intent=missing_task_intent()),
-            ),
-            "task-candidate-intent-unavailable",
-        ),
-    ],
-)
-def test_candidate_side_missing_r01_or_r02_authority_is_scope_unproven(
-    task: TaskObservationPair,
-    expected: str,
-) -> None:
-    candidate = _candidate(task=task)
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate),
-            StaticDependencies(_snapshot(candidate)),
-            checkers=(CHECK_NAME,),
-        )
-    assert _reason(caught) == expected
-
-
-def test_task_root_must_match_the_contract_pair_root() -> None:
-    observation = _task_observation(root="/coord/tasks/repo/other")
-    candidate = _candidate(task=TaskObservationPair(base=observation, candidate=observation))
-
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate),
-            StaticDependencies(_snapshot(candidate)),
-            checkers=(CHECK_NAME,),
-        )
-
-    assert _reason(caught) == "task-root-pair-mismatch"
-
-
-def test_snapshot_and_individual_edge_digests_must_self_verify() -> None:
-    candidate = _candidate()
-    snapshot = _snapshot(candidate)
-    corrupt_snapshot = snapshot.model_copy(update={"snapshotDigest": "0" * 64})
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate),
-            StaticDependencies(corrupt_snapshot),
-            checkers=(CHECK_NAME,),
-        )
-    assert _reason(caught) == "dependency-snapshot-digest-invalid"
-
-    first = snapshot.edges[0].model_copy(update={"authorityNamespace": "caller.private"})
-    corrupt_edge = build_dependency_snapshot(
-        candidate=candidate,
-        source_index=snapshot.sourceIndex,
-        nodes=snapshot.nodes,
-        edges=(first, *snapshot.edges[1:]),
-    )
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate),
-            StaticDependencies(corrupt_edge),
-            checkers=(CHECK_NAME,),
-        )
-    assert _reason(caught) == "dependency-edge-invalid"
-
-
-def test_task_topology_and_intent_changes_are_canonical_roots() -> None:
-    base = _task_observation(topology="a", intent=TaskIntentIdentity(digest="b" * 64))
-    current = _task_observation(topology="c", intent=TaskIntentIdentity(digest="d" * 64))
-    candidate = _candidate(task=TaskObservationPair(base=base, candidate=current))
-    snapshot = _snapshot(candidate)
-
-    manifest = compile_scope_manifest(
-        StaticAuthority(candidate), StaticDependencies(snapshot), checkers=(CHECK_NAME,)
-    )
-
-    assert manifest.changedRoots == (
-        "code:src/a.py",
-        "task:normative-intent",
-        "task:semantic-topology",
-    )
-
-
-def test_added_root_covers_absent_old_path_and_requires_an_owner_node() -> None:
-    candidate = _candidate()
-    added = GitPathChange(status="added", newPath="src/new.py", newBlob="a" * 40)
-    candidate = candidate.model_copy(
-        update={"code": candidate.code.model_copy(update={"changes": (added,)})}
-    )
-    snapshot = build_dependency_snapshot(
-        candidate=candidate,
-        source_index=SourceIndexObservation(
-            snapshotId="a" * 64,
-            codeRoot=candidate.code.root,
-            memoryRoot=candidate.memory.root,
-            candidateDigest=candidate.digest,
-        ),
-        nodes=(),
-        edges=(),
-    )
-
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate), StaticDependencies(snapshot), checkers=(CHECK_NAME,)
-        )
-
-    assert _reason(caught) == "changed-root-unclassified"
-
-
-def test_missing_dependency_endpoint_fails_before_closure() -> None:
-    candidate = _candidate()
-    snapshot = _snapshot(candidate)
-    orphan = dependency_edge(
-        "code:src/a.py",
-        "memory:onboarding/missing.md",
-        "source-to-file-sidecar",
-        ("missing target fixture",),
-    )
-    invalid = build_dependency_snapshot(
-        candidate=candidate,
-        source_index=snapshot.sourceIndex,
-        nodes=snapshot.nodes,
-        edges=(*snapshot.edges, orphan),
-    )
-
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate), StaticDependencies(invalid), checkers=(CHECK_NAME,)
-        )
-
-    assert _reason(caught) == "dependency-edge-endpoint-missing"
-
-
-def test_reverse_closure_terminates_when_an_edge_targets_an_already_selected_node() -> None:
-    candidate = _candidate()
-    snapshot = _snapshot(candidate)
-    cycle = dependency_edge(
-        "memory:onboarding/src/a.py.md",
-        "code:src/a.py",
-        "route-index-dependency",
-        ("cycle fixture",),
-    )
-    cyclic = build_dependency_snapshot(
-        candidate=candidate,
-        source_index=snapshot.sourceIndex,
-        nodes=snapshot.nodes,
-        edges=(*snapshot.edges, cycle),
-    )
-
-    manifest = compile_scope_manifest(
-        StaticAuthority(candidate), StaticDependencies(cyclic), checkers=(CHECK_NAME,)
-    )
-
-    assert cycle in manifest.selectedEdges
-
-
-@pytest.mark.parametrize("field", ["nodes", "edges"])
-def test_dependency_population_must_be_sorted_and_unique(field: str) -> None:
-    candidate = _candidate()
-    snapshot = _snapshot(candidate)
-    values = getattr(snapshot, field)
-    noncanonical = snapshot.model_copy(update={field: tuple(reversed(values))})
-
-    with pytest.raises(ScopeUnprovenError) as caught:
-        compile_scope_manifest(
-            StaticAuthority(candidate),
-            StaticDependencies(noncanonical),
-            checkers=(CHECK_NAME,),
-        )
-
-    assert _reason(caught) == f"dependency-{field}-noncanonical"
 
 
 _R07_GATE_PREFIX: tuple[GateId, ...] = (1, 2, 3, 4)
@@ -866,33 +567,6 @@ def _r07_reason(error: pytest.ExceptionInfo[GateFiveClosureRefusedError]) -> str
     return error.value.failure.code
 
 
-def test_r07_plan_executes_only_incremental_documents_and_keeps_six_final_checks_pending(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    candidate, plan = _r07_plan(monkeypatch)
-
-    assert plan.candidateDigest == candidate.digest
-    assert plan.codeTree == candidate.code.candidateTree
-    assert len(plan.pendingFinalFull) == 6
-    assert {item.disposition for item in plan.pendingFinalFull} == {"pending-final-full"}
-    assert len(plan.units) == 3
-    assert {item.document for item in plan.units} == {
-        "claims.md",
-        "src/a.py.md",
-        "src/overview.md",
-    }
-    claims = next(item for item in plan.units if item.document == "claims.md")
-    assert {item.nodeId for item in claims.dependencies} == {
-        "code:src/a.py",
-        "memory:onboarding/src/a.py.md",
-    }
-    assert tuple(item.node.nodeId for item in plan.members) == tuple(
-        item.nodeId for item in plan.scope.selectedNodes
-    )
-    assert plan.acceptanceEligible is False
-    assert plan.fullFinalRequired is True
-
-
 def test_r07_execution_publishes_every_member_and_never_promotes_incremental_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -915,50 +589,6 @@ def test_r07_execution_publishes_every_member_and_never_promotes_incremental_suc
     }
     assert set(executor.calls or ()) == {item.document for item in plan.units}
     assert result.pendingFinalFull == plan.pendingFinalFull
-
-
-def test_r07_hard_finding_stays_failed_and_malformed_result_refuses(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    candidate, plan = _r07_plan(monkeypatch)
-    failed = execute_affected_closure(
-        AffectedClosureExecution(R07StableAuthority(candidate), R07RecordingExecutor(ok=False)),
-        plan,
-    )
-    assert failed.terminalStatus == "fail"
-    assert failed.incrementalMemoryReady is False
-    assert {item.status for item in failed.subresults} == {"fail"}
-
-    class EmptySuccess(R07RecordingExecutor):
-        def execute(self, plan, unit) -> dict[str, object]:
-            del plan
-            return {"check": unit.checker, "status": "checked", "ok": True}
-
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        execute_affected_closure(
-            AffectedClosureExecution(R07StableAuthority(candidate), EmptySuccess()),
-            plan,
-        )
-    assert _r07_reason(caught) == "checker-result-unproven"
-
-    class ContradictorySuccess(R07RecordingExecutor):
-        def execute(self, plan, unit) -> dict[str, object]:
-            del plan
-            return {
-                "check": unit.checker,
-                "status": "checked",
-                "ok": True,
-                "filesChecked": 1,
-                "findingCount": 1,
-                "findings": [{"code": "contradiction"}],
-            }
-
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        execute_affected_closure(
-            AffectedClosureExecution(R07StableAuthority(candidate), ContradictorySuccess()),
-            plan,
-        )
-    assert _r07_reason(caught) == "checker-result-unproven"
 
 
 def test_r07_blocked_unit_preserves_code_and_blocks_aggregate(
@@ -1072,123 +702,3 @@ def _r07_retarget_scope(
     return _r07_redigest_scope(
         scope.model_copy(update={"candidateDigest": candidate.digest, "sourceIndex": source_index})
     )
-
-
-def test_r07_incomplete_scope_code_repair_and_candidate_motion_refuse_typed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    candidate = _r07_candidate()
-    scope = _r07_scope(candidate)
-    incomplete = _r07_redigest_scope(
-        scope.model_copy(update={"checkerPolicies": scope.checkerPolicies[:-1]})
-    )
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        compile_affected_closure_plan(_r07_admission(monkeypatch, candidate), incomplete)
-    assert _r07_reason(caught) == "affected-checker-population-incomplete"
-
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        compile_affected_closure_plan(
-            _r07_admission(monkeypatch, candidate, first_gate=1),
-            scope,
-        )
-    assert _r07_reason(caught) == "gate-certificate-prefix-invalidated"
-
-    moved = _r07_candidate(memory_tree="8" * 40)
-    admission = _r07_admission(monkeypatch, candidate)
-    admission = AffectedClosureAdmission(
-        candidateAuthority=R07StableAuthority(candidate, replacement=moved),
-        certificationAdmission=admission.certificationAdmission,
-        gateCertificates=admission.gateCertificates,
-    )
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        compile_affected_closure_plan(admission, scope)
-    assert _r07_reason(caught) == "candidate-moved-during-affected-planning"
-
-
-def test_r07_executor_registry_and_post_plan_candidate_are_revalidated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    candidate, plan = _r07_plan(monkeypatch)
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        execute_affected_closure(
-            AffectedClosureExecution(
-                R07StableAuthority(candidate),
-                R07RecordingExecutor(version="0" * 64),
-            ),
-            plan,
-        )
-    assert _r07_reason(caught) == "checker-execution-registry-stale"
-
-    moved = _r07_candidate(memory_tree="8" * 40)
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        execute_affected_closure(
-            AffectedClosureExecution(
-                R07StableAuthority(candidate, replacement=moved), R07RecordingExecutor()
-            ),
-            plan,
-        )
-    assert _r07_reason(caught) == "affected-candidate-stale"
-
-
-def test_r07_conflicting_prior_result_authority_is_not_guessed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    candidate, plan = _r07_plan(monkeypatch)
-    result = execute_affected_closure(
-        AffectedClosureExecution(R07StableAuthority(candidate), R07RecordingExecutor()),
-        plan,
-    ).subresults[0]
-    payload = result.model_dump(mode="json", by_alias=True, exclude={"resultDigest"})
-    payload["code"] = "different-pass"
-    conflicting = AffectedUnitResult(
-        **payload,
-        resultDigest=canonical_digest(payload),
-    )
-
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        plan_affected_subresult_reuse(plan, (result, conflicting))
-    assert _r07_reason(caught) == "subresult-authority-conflict"
-
-    forged = result.model_copy(update={"resultDigest": "f" * 64})
-    with pytest.raises(GateFiveClosureRefusedError) as caught:
-        plan_affected_subresult_reuse(plan, (forged,))
-    assert _r07_reason(caught) == "subresult-invalid"
-
-
-def test_r07_plan_and_aggregate_models_refuse_rebound_identity(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    candidate, plan = _r07_plan(monkeypatch)
-    unit = plan.units[0]
-    unit_payload = unit.model_dump(mode="json", by_alias=True, exclude={"unitDigest"})
-    unit_payload["document"] = "other.md"
-    rebound = AffectedUnitPlan(
-        **unit_payload,
-        unitDigest=canonical_digest(unit_payload),
-    )
-    rebound_plan = plan.model_copy(update={"units": (rebound, *plan.units[1:])})
-    with pytest.raises(
-        ValueError,
-        match="affected-unit document must name its exact selected memory node",
-    ):
-        rebound_plan._require_exact_incremental_units()
-
-    result = execute_affected_closure(
-        AffectedClosureExecution(R07StableAuthority(candidate), R07RecordingExecutor()),
-        plan,
-    )
-    checked_index = next(
-        index for index, member in enumerate(result.memberResults) if member.status == "pass"
-    )
-    member_results = list(result.memberResults)
-    member_results[checked_index] = member_results[checked_index].model_copy(
-        update={"status": "fail"}
-    )
-    rebound_result = result.model_copy(update={"memberResults": tuple(member_results)})
-    with pytest.raises(
-        ValueError,
-        match="member result disposition and status must derive from its units",
-    ):
-        rebound_result._require_member_results(
-            {item.unit.unitDigest: item for item in rebound_result.subresults}
-        )

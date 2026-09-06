@@ -1,8 +1,0 @@
-{"id":"sim-e1","ts":"2026-06-14T09:00:00+00:00","kind":"lifecycle.started","trust":"observed","actor":"system","data":{"phase":"request","fleeting":true},"lifecycleId":"sim-replay-lifecycle"}
-{"id":"sim-e2","ts":"2026-06-14T09:00:05+00:00","kind":"lifecycle.promoted","trust":"approved","actor":"developer","data":{"scope":"agents-remember"},"lifecycleId":"sim-replay-lifecycle","enclosure":"sim-enclosure","repoId":"agents-remember"}
-{"id":"sim-e3","ts":"2026-06-14T09:00:10+00:00","kind":"lifecycle.phase-changed","trust":"declared","actor":"model","data":{"phase":"build"},"lifecycleId":"sim-replay-lifecycle"}
-{"id":"sim-e4","ts":"2026-06-14T09:00:20+00:00","kind":"tool.completed","trust":"observed","actor":"model","data":{"tool":"grepai_search","tokens":1200},"lifecycleId":"sim-replay-lifecycle"}
-{"id":"sim-e5","ts":"2026-06-14T09:00:30+00:00","kind":"lifecycle.blocked","trust":"observed","actor":"model","data":{"ask":{"kind":"gate","question":"Approve the plan?"}},"lifecycleId":"sim-replay-lifecycle"}
-{"id":"sim-e6","ts":"2026-06-14T09:00:40+00:00","kind":"lifecycle.resumed","trust":"approved","actor":"developer","data":{},"lifecycleId":"sim-replay-lifecycle"}
-{"id":"sim-e7","ts":"2026-06-14T09:00:50+00:00","kind":"tool.completed","trust":"observed","actor":"model","data":{"tool":"cgc_callers","tokens":800},"lifecycleId":"sim-replay-lifecycle"}
-{"id":"sim-e8","ts":"2026-06-14T09:01:00+00:00","kind":"lifecycle.ended","trust":"observed","actor":"system","data":{"outcome":"completed"},"lifecycleId":"sim-replay-lifecycle"}

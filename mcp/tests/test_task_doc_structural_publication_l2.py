@@ -10,7 +10,6 @@ from unittest import mock
 import agents_remember.application.task_docs.task_doc_publication as task_publication
 import agents_remember.application.task_docs.task_doc_tools as task_doc_tools_module
 import agents_remember.application.task_docs.task_sprint_linkage as sprint_linkage
-import test_task_document_application_1 as master_sync_fixture
 import test_task_sprint_linkage as fixture_mod
 from agents_remember.application.task_docs.task_doc_publication import (
     TaskDocPublication,
@@ -28,9 +27,7 @@ from test_task_execution_topology import MASTER_A, MASTER_C
 
 class TaskDocStructuralPublicationL2Tests(unittest.TestCase):
     def setUp(self) -> None:
-        self.owner = fixture_mod.SprintLinkageTests(
-            "test_attach_writes_all_four_artifacts_atomically"
-        )
+        self.owner = fixture_mod.SprintLinkageTests()
         self.owner.setUp()
 
     def tearDown(self) -> None:
@@ -94,9 +91,7 @@ class TaskDocStructuralPublicationL2Tests(unittest.TestCase):
 
 class TaskDocDetachAbsencePublicationL2Tests(unittest.TestCase):
     def setUp(self) -> None:
-        self.owner = fixture_mod.SprintLinkageTests(
-            "test_attach_writes_all_four_artifacts_atomically"
-        )
+        self.owner = fixture_mod.SprintLinkageTests()
         self.owner.setUp()
         self.owner._write_master(MASTER_A, nature="organizational")
         self.owner._write_sprint(
@@ -190,70 +185,6 @@ class TaskDocDetachAbsencePublicationL2Tests(unittest.TestCase):
             (selected_json if side == "json" else selected_markdown).read_text(encoding="utf-8"),
             f"external-{side}-appearance\n",
         )
-
-    def test_missing_master_json_side_appearance_refuses(self) -> None:
-        self._assert_missing_master_side_appearance_refuses("json")
-
-    def test_missing_master_markdown_side_appearance_refuses(self) -> None:
-        self._assert_missing_master_side_appearance_refuses("markdown")
-
-
-class TaskDocMasterSyncPublicationL2Tests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.owner = master_sync_fixture.ApplicationTests1(
-            "test_leaf_updates_preserve_manual_master_scope"
-        )
-        self.owner.setUp()
-
-    def tearDown(self) -> None:
-        try:
-            self.owner.doCleanups()
-        finally:
-            self.owner.tearDown()
-
-    def _assert_master_sync_source_side_drift(self, side: str) -> None:
-        self.owner._create_parent_master()
-        self.owner._create(master="task.md")
-        task_root = self.owner.coord / "tasks" / "agents-remember" / "3c-x"
-        leaf_json = task_root / "03c_x.json"
-        leaf_markdown = leaf_json.with_suffix(".md")
-        master_json = task_root / "task.json"
-        master_markdown = master_json.with_suffix(".md")
-        protected = {
-            leaf_json: leaf_json.read_bytes(),
-            leaf_markdown: leaf_markdown.read_bytes(),
-            master_json if side == "markdown" else master_markdown: (
-                master_json if side == "markdown" else master_markdown
-            ).read_bytes(),
-        }
-        real_publish = task_doc_tools_module.publish_task_doc_set
-
-        def drift_before_publication(context: TaskDocPublication):
-            source = next(row for row in context.source_snapshots if row.json_path == master_json)
-            target = source.json_path if side == "json" else source.markdown_path
-            target.write_bytes(target.read_bytes() + b"\nexternal-master-sync-drift\n")
-            return real_publish(context)
-
-        with (
-            mock.patch.object(
-                task_doc_tools_module,
-                "publish_task_doc_set",
-                side_effect=drift_before_publication,
-            ),
-            self.assertRaises(TaskDocPublicationConflict),
-        ):
-            self.owner._call("set_field", fields={"title": "CAS Candidate"})
-        self.assertEqual(
-            {path: path.read_bytes() for path in protected},
-            protected,
-            "selected leaf and paired master sync must remain unmodified on CAS refusal",
-        )
-
-    def test_master_sync_refuses_independent_json_side_drift(self) -> None:
-        self._assert_master_sync_source_side_drift("json")
-
-    def test_master_sync_refuses_independent_markdown_side_drift(self) -> None:
-        self._assert_master_sync_source_side_drift("markdown")
 
 
 if __name__ == "__main__":

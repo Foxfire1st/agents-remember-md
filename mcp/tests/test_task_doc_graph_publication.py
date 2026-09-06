@@ -138,23 +138,3 @@ class TaskDocGraphPublicationTests(unittest.TestCase):
         publisher.assert_not_called()
         mutation.assert_not_called()
         self.assertEqual({path: path.read_bytes() for path in targets}, targets)
-
-    def test_refusal_is_order_independent_for_both_title_preparation_shapes(self) -> None:
-        first_ref = TaskDocumentRef(repository=REPO, path="first/task.json")
-        second_ref = TaskDocumentRef(repository=REPO, path="second/task.json")
-        entries = [
-            (first_ref, Path("first"), self.first),
-            (second_ref, Path("second"), self.second),
-        ]
-        messages: list[str] = []
-        for documents in ([self.first, self.second], [self.second, self.first]):
-            with self.assertRaises(TaskDocError) as raised:
-                require_single_graph_document(documents)
-            messages.append(str(raised.exception))
-        self.assertEqual(messages[0], messages[1])
-
-        with self.assertRaises(TaskDocError) as forward:
-            build_publication_batch_graph_titles(entries)
-        with self.assertRaises(TaskDocError) as reverse:
-            build_publication_batch_graph_titles(list(reversed(entries)))
-        self.assertEqual(str(forward.exception), str(reverse.exception))

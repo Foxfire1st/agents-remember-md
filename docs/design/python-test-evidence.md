@@ -23,8 +23,9 @@ surface while taking roughly 39–42 seconds; the equivalent warm Dagger micro-r
 
 The command, cohort manifest, eligibility and effect analyzer, diagnostic bootstrap, direct
 runner, route-measurement implementation, and route-specific self-tests were deleted together.
-The seven unique product assertions remain ordinary Dagger-owned regressions. No compatibility
-command, fallback, or shadow classifier survives.
+The retained product assertions now run in the ordinary isolated pytest suite described in
+`python-pytest-bootstrap.md`. This direct development loop has no certification authority and
+does not recreate the retired analyzer, command, manifest, or proof machinery.
 
 ## Consumer inventory
 
@@ -33,7 +34,7 @@ The executable inventory lives in
 
 | Consumer | Current owner | Required evidence |
 | --- | --- | --- |
-| Coverage | `code_quality.check._pytest_step` | certifying only |
+| Delivery coverage publication | `code_quality.check._pytest_step` | certifying only; metric values are diagnostic |
 | Quality | `worktrees.modules.quality.clean_executor.run_clean_quality` | certifying only |
 | Retry | `agents_remember_test_support.code_quality.retry_proof.prepare` | certifying only; explicit locked Dagger cache |
 | Route review | `worktrees.route_review.require_current_route_review` | independent candidate-bound verdict; no test substitution |
@@ -46,8 +47,8 @@ mints it only after a successful result is published in an immutable generation 
 binds the exact candidate tree and result digest. Recovery revalidates that same generation,
 passed result, and candidate binding before minting the capability again.
 
-Coverage and retry require the opaque `DaggerAdmission` capability before they can plan or publish
-artifacts. Lifecycle, closeout, and integration require candidate-bound certifying evidence. Route
+Certifying coverage and retry publications require the opaque `DaggerAdmission` capability.
+Ordinary development coverage remains diagnostic and cannot be promoted into that authority. Lifecycle, closeout, and integration require candidate-bound certifying evidence. Route
 review remains an independent plane-stamped verdict and exposes no test-evidence input. An
 arbitrary object, copied non-accepting JSON, renamed file, zero exit code, failed Dagger result, or
 manifest for another candidate has no authority.

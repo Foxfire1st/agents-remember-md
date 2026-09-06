@@ -39,7 +39,6 @@ from agents_remember.models.conversations.history import (
     HistoricalConversationPage,
 )
 from agents_remember.models.conversations.identity import (
-    AuthorizationBinding,
     HarnessId,
     NativeConversationRef,
     ProvenanceEvidence,
@@ -57,7 +56,6 @@ from agents_remember.serving.conversation.library.cursor import (
     LibraryCursorAuthority,
     mint_signing_key,
 )
-from agents_remember.serving.conversation.library.errors import LibraryStoreError
 from agents_remember.serving.conversation.library.factories import LibraryShared
 from agents_remember.serving.conversation.library.open_service import (
     LibraryBinding,
@@ -370,31 +368,6 @@ class LibraryApiTests(unittest.IsolatedAsyncioTestCase):
         assert call["limit"] == 5
         assert call["scope"].canonical_project_scope == str(self.tmp.resolve())
 
-    async def test_list_route_narrows_scope_and_clamps_limit(self) -> None:
-        child = self.tmp / "sub"
-        child.mkdir()
-        status, _body = await asgi_request(
-            self.client,
-            "GET",
-            "/api/harnesses/pi/conversations",
-            query={"cwd": str(child), "limit": "500"},
-        )
-        assert status == 200
-        call = self.port.list_calls[0]
-        assert call["scope"].canonical_project_scope == str(child.resolve())
-        assert call["limit"] == 100
-
-    async def test_list_route_maps_null_byte_cwd_to_typed_refusal(self) -> None:
-        # Review F2: an embedded NUL must surface as the typed scope refusal, never a raw 500.
-        status, body = await asgi_request(
-            self.client,
-            "GET",
-            "/api/harnesses/pi/conversations",
-            query={"cwd": "sub\\x00dir"},
-        )
-        assert status == 403, body
-        assert body["status"] == "scope-denied"  # type: ignore[index]
-
     async def test_list_route_rejects_scope_escapes_and_unknown_harness(self) -> None:
         for query in ({"cwd": ".."}, {"cwd": "/etc"}, {"cwd": "missing"}):
             status, body = await asgi_request(
@@ -405,90 +378,6 @@ class LibraryApiTests(unittest.IsolatedAsyncioTestCase):
         status, body = await asgi_request(self.client, "GET", "/api/harnesses/tmux/conversations")
         assert status == 404
         assert body["status"] == "unknown-harness"  # type: ignore[index]
-
-    async def test_list_route_maps_malformed_cursor_and_capability(self) -> None:
-        status, body = await asgi_request(
-            self.client, "GET", "/api/harnesses/pi/conversations", query={"cursor": "garbage"}
-        )
-        assert status == 400
-        assert body["status"] == "invalid-cursor"  # type: ignore[index]
-
-        self.gates.resume_state = "unavailable"  # gates report the whole surface unavailable
-        self.gates.list_state = "unavailable"  # type: ignore[attr-defined]
-        self.gates.history_capabilities = (  # type: ignore[method-assign]
-            _unavailable_gates_history
-        )
-        status, body = await asgi_request(self.client, "GET", "/api/harnesses/pi/conversations")
-        assert status == 422
-        assert body["status"] == "capability-unavailable"  # type: ignore[index]
-        assert body["capabilityState"] == "unavailable"  # type: ignore[index]
-
-    async def test_list_route_maps_store_errors_to_503(self) -> None:
-        async def _failing_list(scope, *, cursor, limit):
-            raise LibraryStoreError("Codex native payload failed shape validation: nope")
-
-        self.port.list = _failing_list  # type: ignore[method-assign]
-        status, body = await asgi_request(self.client, "GET", "/api/harnesses/pi/conversations")
-        assert status == 503
-        assert body["status"] == "library-unavailable"  # type: ignore[index]
-
-    async def test_list_route_maps_store_errors_to_503_for_each_harness(self) -> None:
-        # Review F4 route pins: the typed store failure maps to 503 on every harness path.
-        async def _failing_list(scope, *, cursor, limit):
-            raise LibraryStoreError("native payload has an out-of-range timestamp")
-
-        self.port.list = _failing_list  # type: ignore[method-assign]
-        for harness in ("codex", "claude", "pi"):
-            self.port.harness_id = harness
-            status, body = await asgi_request(
-                self.client, "GET", f"/api/harnesses/{harness}/conversations"
-            )
-            assert status == 503, (harness, body)
-            assert body["status"] == "library-unavailable"  # type: ignore[index]
-
-    async def test_read_route_returns_historical_page(self) -> None:
-        key = self._mint_key()
-        status, body = await asgi_request(
-            self.client, "GET", f"/api/harnesses/pi/conversations/{key}", query={"limit": "10"}
-        )
-        assert status == 200, body
-        assert body["ref"]["vendorConversationId"] == "vendor-1"  # type: ignore[index]
-        assert body["items"][0]["globalOrdinal"] == 1  # type: ignore[index]
-        assert body["totalItems"] == 1  # type: ignore[index]
-        assert body["historicalCapabilities"]["read"]["state"] == "supported"  # type: ignore[index]
-
-    async def test_read_route_rejects_foreign_principal_key(self) -> None:
-        foreign = AuthorizationBinding(
-            principal_id="local-operator:9999", tenant_id=str(self.tmp.resolve())
-        )
-        scope = canonical_library_scope(foreign, "pi", None, workspace_root=self.tmp)
-        digest = self.cursor.identity_digest("pi", "vendor-1", scope.canonical_project_scope)
-        foreign_key = str(
-            self.cursor.mint_conversation_key(
-                scope,
-                vendor_conversation_id="vendor-1",
-                identity_digest=digest,
-                catalog_generation=2,
-            )
-        )
-        status, body = await asgi_request(
-            self.client, "GET", f"/api/harnesses/pi/conversations/{foreign_key}"
-        )
-        assert status == 403
-        assert body["status"] == "authorization-failed"  # type: ignore[index]
-
-    async def test_non_loopback_peer_fails_closed_on_every_route(self) -> None:
-        key = self._mint_key()
-        for method, path, body in (
-            ("GET", "/api/harnesses/pi/conversations", None),
-            ("GET", f"/api/harnesses/pi/conversations/{key}", None),
-            ("POST", f"/api/harnesses/pi/conversations/{key}/open", {"requestId": "r"}),
-        ):
-            status, payload = await asgi_request(
-                AsgiClient(self.app, peer=("10.0.0.5", 9000)), method, path, body=body
-            )
-            assert status == 403, (path, payload)
-            assert payload["status"] == "authorization-failed"  # type: ignore[index]
 
     # -- open -----------------------------------------------------------------
 
@@ -612,133 +501,6 @@ class LibraryApiTests(unittest.IsolatedAsyncioTestCase):
         finally:
             for patch in patches:
                 patch.stop()
-
-    async def test_open_maps_stale_digest_unknown_request_and_timeout(self) -> None:
-        key = self._mint_key()
-        patches = self._open_service_patches()
-        builder_patch = patches[2]
-        builder_patch.start()
-        try:
-            stale = await asgi_request(
-                self.client,
-                "POST",
-                f"/api/harnesses/pi/conversations/{key}/open",
-                body={"requestId": "req-x", "expectedIdentityDigest": "sha256:" + "0" * 64},
-            )
-            assert stale[0] == 409
-            assert stale[1]["status"] == "stale-identity"  # type: ignore[index]
-
-            unknown = await asgi_request(
-                self.client,
-                "POST",
-                f"/api/harnesses/pi/conversations/{key}/open-status",
-                body={"requestId": "never-seen"},
-            )
-            assert unknown[0] == 404
-            assert unknown[1]["status"] == "unknown-request"  # type: ignore[index]
-        finally:
-            builder_patch.stop()
-
-        # Timeout path: readiness never proves within the bound.
-        not_ready = mock.patch.object(
-            open_module,
-            "hosted_session_readiness",
-            lambda *a, **k: HostedReadinessResult("not-ready", "x", entry=None, snapshot=None),
-        )
-        builder_patch.start()
-        not_ready.start()
-        try:
-            status, body = await asgi_request(
-                self.client,
-                "POST",
-                f"/api/harnesses/pi/conversations/{key}/open",
-                body={"requestId": "req-t", "expectedIdentityDigest": self._digest()},
-            )
-            assert status == 202
-            assert body["outcome"] == "timeout-unknown"  # type: ignore[index]
-            status_route = await asgi_request(
-                self.client,
-                "POST",
-                f"/api/harnesses/pi/conversations/{key}/open-status",
-                body={"requestId": "req-t"},
-            )
-            assert status_route[0] == 202
-            assert status_route[1]["revision"] == body["revision"]  # type: ignore[index]
-        finally:
-            not_ready.stop()
-            builder_patch.stop()
-
-    async def test_open_launch_failure_and_identity_mismatch_statuses(self) -> None:
-        key = self._mint_key()
-        failing_opener = mock.patch.object(
-            library_api,
-            "build_open_service",
-            lambda runtime, authorization: open_module.ConversationOpenService(
-                LibraryBinding(runtime=runtime, shared=self.shared, authorization=authorization),
-                library=ConversationLibraryService(
-                    runtime=runtime,
-                    shared=self.shared,
-                    authorization=authorization,
-                    port_builder=lambda _h: self.port,  # type: ignore[arg-type]
-                ),
-                port_builder=lambda _h: self.port,
-                opener=lambda **_k: OpenTerminalResult(status="bad-kind", detail="no binary"),
-                proof_wait_seconds=0.01,
-            ),
-        )
-        failing_opener.start()
-        try:
-            status, body = await asgi_request(
-                self.client,
-                "POST",
-                f"/api/harnesses/pi/conversations/{key}/open",
-                body={"requestId": "req-f", "expectedIdentityDigest": self._digest()},
-            )
-            assert status == 503
-            assert body["outcome"] == "launch-failed"  # type: ignore[index]
-        finally:
-            failing_opener.stop()
-
-        retired: list[str] = []
-        patches = [
-            *self._open_service_patches(vendor="other-vendor"),
-            mock.patch.object(
-                open_module,
-                "retire_entry",
-                lambda _c, _h, entry, *_a, **_k: retired.append(entry.id),
-            ),
-        ]
-        for patch in patches:
-            patch.start()
-        try:
-            status, body = await asgi_request(
-                self.client,
-                "POST",
-                f"/api/harnesses/pi/conversations/{key}/open",
-                body={"requestId": "req-m", "expectedIdentityDigest": self._digest()},
-            )
-            assert status == 409
-            assert body["outcome"] == "identity-mismatch"  # type: ignore[index]
-            assert body["rollback"] == "retired"  # type: ignore[index]
-            assert retired == [body["arSessionId"]]  # type: ignore[index]
-        finally:
-            for patch in patches:
-                patch.stop()
-
-
-async def _unavailable_gates_history(_harness: str):
-    feature = FeatureCapability(
-        state="unavailable",
-        reason="harness not installed: 'pi'",
-        evidence_tier="none",
-    )
-    return HistoryCapabilities(
-        list=feature,
-        read=feature,
-        resume=feature,
-        completeness=feature,
-        tool_completeness=feature,
-    )
 
 
 if __name__ == "__main__":

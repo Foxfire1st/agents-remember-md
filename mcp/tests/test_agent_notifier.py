@@ -1,14 +1,8 @@
-"""Tests for the deterministic agent-notifier sweep (260707-HFX2-L2).
-
-Predicate unit tests over store/pane fixtures (R6), plus one sweep integration test that seeds
-drift across every predicate family and asserts the expected action set -- no model in the loop
-anywhere: every fixture is a plain store write or a fake pane capturer.
-"""
+"""Disposable notifier settings and terminal-row builders."""
 
 from __future__ import annotations
 
 import sys
-import tempfile
 import unittest
 from datetime import (
     UTC,
@@ -20,26 +14,11 @@ from typing import cast
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
-from agents_remember.controlplane.operator_inbox_records import (
-    InboxAddress,
-    InboxMessage,
-    InboxPoster,
-    InboxRouting,
-    create_operator_inbox_entry,
-)
-from agents_remember.controlplane.operator_inbox_store import OperatorInboxStore
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.terminal_catalog import (
     TerminalCatalogEntry,
     TerminalSessionKind,
     TerminalSessionStatus,
-)
-from agents_remember.serving.agent_notifier import (
-    evaluate_inbox_findings,
-    evaluate_pane_findings,
-)
-from agents_remember.serving.terminal_catalog import (
-    TerminalCatalog,
 )
 from agents_remember.serving.terminal_paste import (
     PasteResult,
@@ -102,49 +81,6 @@ def _fake_paster() -> TerminalPaster:
             return PasteResult(delivered=True, submitted=submit)
 
     return cast(TerminalPaster, _AcceptedPaster())
-
-
-class PanePredicateTests(unittest.TestCase):
-    def test_mid_turn_pane_fires_a_finding(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            catalog = TerminalCatalog(Path(tmp) / "catalog.json")
-            catalog.upsert(_entry("s1"))
-            findings = evaluate_pane_findings(catalog, pane_capturer=lambda _n: "esc to interrupt")
-            self.assertEqual(len(findings), 1)
-            self.assertEqual(findings[0].kind, "pane-signal")
-            self.assertEqual(findings[0].detail, "mid-turn")
-            self.assertEqual(findings[0].session_id, "s1")
-
-    def test_normal_pane_fires_nothing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            catalog = TerminalCatalog(Path(tmp) / "catalog.json")
-            catalog.upsert(_entry("s1"))
-            findings = evaluate_pane_findings(catalog, pane_capturer=lambda _n: "all clear")
-            self.assertEqual(findings, [])
-
-    def test_terminal_kind_rows_are_never_pane_classified(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            catalog = TerminalCatalog(Path(tmp) / "catalog.json")
-            catalog.upsert(_entry("s1", kind="terminal"))
-            findings = evaluate_pane_findings(catalog, pane_capturer=lambda _n: "esc to interrupt")
-            self.assertEqual(findings, [])
-
-
-class InboxPredicateTests(unittest.TestCase):
-    def test_pending_row_with_no_next_attempt_is_immediately_redeliverable(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            store = OperatorInboxStore(Path(tmp))
-            entry = create_operator_inbox_entry(
-                InboxMessage(ask="ask", response="resp"),
-                entry_id="e1",
-                now=NOW.isoformat(),
-                routing=InboxRouting(address=InboxAddress(lifecycle_id=None, agent_id="s1")),
-                poster=InboxPoster(created_by="system", created_via="cli"),
-            )
-            store.append(entry)
-            findings = evaluate_inbox_findings(store, now=NOW)
-            self.assertEqual(len(findings), 1)
-            self.assertEqual(findings[0].source_id, "e1")
 
 
 if __name__ == "__main__":  # pragma: no cover

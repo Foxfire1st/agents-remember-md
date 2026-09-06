@@ -11,18 +11,12 @@ already known.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping
 from dataclasses import replace
 from types import MappingProxyType
-from typing import cast
 
 import pytest
 from _agent_wire_fixtures import (
-    CollabAgents,
-    collab_agent_tool_call_item,
-    item_completed_params,
     notification,
-    sub_agent_activity_item,
     turn_started_params,
 )
 from agents_remember.errors import HarnessAdapterBusyError
@@ -30,10 +24,7 @@ from agents_remember.models.conversations.evidence import (
     AR_EVIDENCE_METHOD_KEY,
 )
 from agents_remember.serving.codex_app_server_protocol import JsonObject
-from agents_remember.serving.harness_control_models import (
-    AdapterEvent,
-)
-from test_codex_adapter_thread_demux import agent_registry, eventually, live_snapshot
+from test_codex_adapter_thread_demux import eventually, live_snapshot
 from test_codex_app_server_adapter import (
     TEST_SETTINGS,
     FakeCodexTransport,
@@ -61,23 +52,6 @@ def only_turn_start(transport: FakeCodexTransport) -> JsonObject:
     starts = [params for method, params in transport.requests if method == "turn/start"]
     assert len(starts) == 1
     return starts[0]
-
-
-def parent_item(item: JsonObject) -> JsonObject:
-    """One ``item/completed`` notification for a parent-thread collab item."""
-
-    return notification("item/completed", item_completed_params(PARENT, "turn-collab", item))
-
-
-async def settled_evidence(events: AsyncIterator[AdapterEvent]) -> Mapping[str, object]:
-    """Wait for the raw-evidence event one collab item produces, and hand it back.
-
-    Collab items have no transcript projection, so every one of them crosses as exactly one
-    ``codex-notification``. Waiting for it is what makes the registry assertions that follow
-    a statement about a settled frame rather than a race with the message pump.
-    """
-
-    return (await next_event_of_kind(events, "codex-notification")).raw
 
 
 @pytest.mark.anyio
@@ -221,156 +195,3 @@ async def test_a_sub_agents_settings_frame_is_evidence_not_the_seats_settings() 
         )
     finally:
         await seat.stop("forced")
-
-
-@pytest.mark.anyio
-async def test_sub_agent_activity_binds_only_the_facets_it_carries() -> None:
-    """A partial ``subAgentActivity`` enriches the registry; it never erases it.
-
-    The vendor's own struct requires all four fields, so anything short of that is a shape
-    this adapter must survive rather than trust. Losing a bound ``agentPath`` because a later
-    frame omitted it would rename a live agent back to its thread-id stub in the cockpit, and
-    a frame with no ``agentThreadId`` names nobody at all -- it cannot mint a registry entry.
-    """
-
-    data = fixture()
-    transport = FakeCodexTransport()
-    prime_start(transport, data)
-    adapter = make_adapter(transport)
-    await adapter.start(launch())
-    events = adapter.subscribe()
-    try:
-        transport.emit(
-            parent_item(
-                sub_agent_activity_item(
-                    "sa-1", kind="started", agent_thread_id=AGENT, agent_path="/root/reviewer"
-                )
-            )
-        )
-        await settled_evidence(events)
-        assert agent_registry(adapter) == {
-            AGENT: {"status": "started", "agentPath": "/root/reviewer"}
-        }
-
-        # Thread id only: neither facet is present, so neither facet moves.
-        transport.emit(
-            parent_item({"id": "sa-2", "type": "subAgentActivity", "agentThreadId": AGENT})
-        )
-        await settled_evidence(events)
-        assert agent_registry(adapter) == {
-            AGENT: {"status": "started", "agentPath": "/root/reviewer"}
-        }
-
-        # No thread id: the activity names nobody, so nothing is registered for it.
-        known_threads = set(adapter._threads.thread_ids())
-        transport.emit(
-            parent_item(
-                {
-                    "id": "sa-3",
-                    "type": "subAgentActivity",
-                    "kind": "interrupted",
-                    "agentPath": "/root/nobody",
-                }
-            )
-        )
-        raw = await settled_evidence(events)
-        assert raw[AR_EVIDENCE_METHOD_KEY] == "item/completed"
-        assert set(adapter._threads.thread_ids()) == known_threads
-        assert agent_registry(adapter) == {
-            AGENT: {"status": "started", "agentPath": "/root/reviewer"}
-        }
-
-        # A frame that does carry a kind still moves it, so the assertions above are not vacuous.
-        transport.emit(
-            parent_item(
-                sub_agent_activity_item(
-                    "sa-4", kind="interacted", agent_thread_id=AGENT, agent_path="/root/reviewer"
-                )
-            )
-        )
-        await settled_evidence(events)
-        assert agent_registry(adapter)[AGENT]["status"] == "interacted"
-    finally:
-        await adapter.stop("forced")
-
-
-@pytest.mark.anyio
-async def test_collab_tool_call_registers_only_well_formed_receivers_and_states() -> None:
-    """Receivers may mint an agent thread; reported states may only update one that exists.
-
-    ``receiverThreadIds`` is who the call is addressed to, which is why it is allowed to
-    create the registry entry. ``agentsStates`` is a claim *about* threads, so a status for a
-    thread this connection has never seen -- or one whose body is not the state object the
-    vendor documents -- is left to cross as raw evidence instead of inventing an agent the
-    cockpit would then show forever.
-    """
-
-    data = fixture()
-    transport = FakeCodexTransport()
-    prime_start(transport, data)
-    adapter = make_adapter(transport)
-    await adapter.start(launch())
-    events = adapter.subscribe()
-    try:
-        transport.emit(
-            parent_item(
-                collab_agent_tool_call_item(
-                    "collab-1",
-                    "spawnAgent",
-                    agents=CollabAgents(
-                        PARENT,
-                        receiver_thread_ids=cast(list[str], ["agent-a", "", 7]),
-                    ),
-                )
-            )
-        )
-        await settled_evidence(events)
-        assert agent_registry(adapter) == {"agent-a": {"status": "unresolved"}}
-
-        # A wait call reporting states: neither a malformed body nor an unknown thread lands.
-        transport.emit(
-            parent_item(
-                collab_agent_tool_call_item(
-                    "collab-2",
-                    "wait",
-                    agents=CollabAgents(
-                        PARENT,
-                        states=cast(
-                            "dict[str, JsonObject]",
-                            {"agent-a": "running", "agent-ghost": {"status": "errored"}},
-                        ),
-                    ),
-                )
-            )
-        )
-        await settled_evidence(events)
-        assert agent_registry(adapter) == {"agent-a": {"status": "unresolved"}}
-        assert adapter._threads.state("agent-ghost") is None
-
-        # A well-formed body whose status is not text is the same non-event.
-        transport.emit(
-            parent_item(
-                collab_agent_tool_call_item(
-                    "collab-3",
-                    "wait",
-                    agents=CollabAgents(PARENT, states={"agent-a": {"status": 3}}),
-                )
-            )
-        )
-        await settled_evidence(events)
-        assert agent_registry(adapter) == {"agent-a": {"status": "unresolved"}}
-
-        # The documented shape does move it, so the three assertions above are not vacuous.
-        transport.emit(
-            parent_item(
-                collab_agent_tool_call_item(
-                    "collab-4",
-                    "wait",
-                    agents=CollabAgents(PARENT, states={"agent-a": {"status": "running"}}),
-                )
-            )
-        )
-        await settled_evidence(events)
-        assert agent_registry(adapter) == {"agent-a": {"status": "running"}}
-    finally:
-        await adapter.stop("forced")

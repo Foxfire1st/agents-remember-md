@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
-import unittest
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -58,7 +56,6 @@ SPRINT = TaskDocumentRef(repository=REPO, path="sprint/task.json")
 MASTER_A = TaskDocumentRef(repository=REPO, path="master-a/task.json")
 MASTER_B = TaskDocumentRef(repository=REPO, path="master-b/task.json")
 LEAF_A = TaskDocumentRef(repository=REPO, path="master-a/leaf-a.json")
-LEAF_B = TaskDocumentRef(repository=REPO, path="master-b/leaf-b.json")
 NOW = "2026-08-15T00:00:00+00:00"
 RATIONALE = "Explicit portfolio judgment."
 JUDGMENT_HEADING = "Judgment Register (canonical judgment authority)"
@@ -565,23 +562,3 @@ class QueueFixture:
         write_contract(closed.contract_path, closed)
         self.contracts[master] = closed
         return closed
-
-
-class CloseoutProjectionSurfaceTests(unittest.TestCase):
-    def test_queue_request_has_projection_only_actions(self) -> None:
-        self.assertEqual(
-            CloseoutQueueRequest(action="status", sprint_task_document_ref=SPRINT).action,
-            "status",
-        )
-        with self.assertRaises(ValueError):
-            CloseoutQueueRequest.model_validate(
-                {"action": "select", "sprint_task_document_ref": SPRINT.model_dump()}
-            )
-
-    def test_door_publication_is_the_only_fixture_membership_source(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            fixture = QueueFixture(Path(temporary), memory_mode="internal")
-            self.assertEqual(fixture.status()["members"], [])
-            projected = fixture.declare(MASTER_A)
-            self.assertEqual(len(projected["members"]), 1)
-            self.assertEqual(projected["members"][0]["taskDocumentRef"], LEAF_A.model_dump())

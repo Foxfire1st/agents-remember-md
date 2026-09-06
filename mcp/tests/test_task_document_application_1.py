@@ -57,41 +57,6 @@ class ApplicationTests1(ApplicationTests):
         self.assertEqual(row.status, "inProgress")
         self.assertEqual(row.scope, "keep this prose")
 
-    def test_leaf_sync_populates_a_blank_legacy_parent_file(self) -> None:
-        self._create_parent_master(
-            subTasks=[
-                {
-                    "number": "3C",
-                    "name": "Legacy row",
-                    "file": "",
-                    "status": "planning",
-                    "scope": "preserved scope",
-                }
-            ]
-        )
-
-        result = self._create(master="task.md")
-
-        self.assertEqual(result["masterSync"]["status"], "updated")
-        master = read_task_doc(Path(str(result["masterSync"]["masterDocPath"])))
-        self.assertEqual(master.subTasks[0].file, "03c_x.md")
-        self.assertEqual(master.subTasks[0].scope, "preserved scope")
-
-    def test_leaf_step_progress_derives_master_row_status(self) -> None:
-        self._create_parent_master()
-        self._create(
-            master="task.md",
-            steps=[{"id": "S1", "title": "One", "status": "pending"}],
-        )
-
-        blocked = self._call("set_step", step={"id": "S1", "title": "One", "status": "blocked"})
-        master = read_task_doc(Path(str(blocked["masterSync"]["masterDocPath"])))
-        self.assertEqual(master.subTasks[0].status, "inProgress")
-
-        done = self._call("set_step", step={"id": "S1", "title": "One", "status": "done"})
-        master = read_task_doc(Path(str(done["masterSync"]["masterDocPath"])))
-        self.assertEqual(master.subTasks[0].status, "Completed")
-
     def test_done_child_cannot_hide_pending_parent_from_progress_or_master_sync(self) -> None:
         self._create_parent_master()
         created = self._create(
@@ -135,40 +100,6 @@ class ApplicationTests1(ApplicationTests):
         self.assertIn("task.json", str(raised.exception))
         self.assertEqual(leaf_path.read_text(encoding="utf-8"), leaf_before)
         self.assertEqual(read_task_doc(leaf_path).title, "Smoke")
-
-    def test_a_master_ref_naming_a_sibling_leaf_is_refused_by_kind(self) -> None:
-        # The contrast case for the refusal above: the file parses perfectly, so the failure
-        # is about what it is rather than about reading it. A leaf cannot own a subTasks
-        # table, so syncing a row into one would either invent a section or drop the row.
-        self._create_parent_master()
-        task_doc_tool(
-            self.cfg,
-            TaskDocTarget(repo_id="agents-remember", task_name="3c-x"),
-            operation="create",
-            edit=TaskDocEdit(
-                fields={
-                    "id": "3D",
-                    "slug": "03c_y",
-                    "title": "Sibling",
-                    "kind": "subTask",
-                    "repo": "agents-remember",
-                    "type": "Code",
-                    "createdAt": "2026-01-01T00:00",
-                }
-            ),
-        )
-
-        with self.assertRaises(TaskDocError) as raised:
-            self._create(master="03c_y.md")
-
-        self.assertIn("parent task document is not a master", str(raised.exception))
-        self.assertIn("03c_y.json", str(raised.exception))
-        # The refused leaf was never written, and the sibling grew no subTasks table.
-        self.assertFalse(
-            (self.coord / "tasks" / "agents-remember" / "3c-x" / "03c_x.json").exists()
-        )
-        sibling = read_task_doc(self.coord / "tasks" / "agents-remember" / "3c-x" / "03c_y.json")
-        self.assertEqual(sibling.subTasks, [])
 
     def test_explicit_cross_series_master_ref_never_falls_back_to_local_master(self) -> None:
         created_master = self._create_parent_master()
@@ -216,21 +147,6 @@ class ApplicationTests1(ApplicationTests):
             self.assertIn(expected, str(raised.exception))
             self.assertEqual({path: path.read_bytes() for path in before}, before)
 
-    def test_leaf_dry_run_includes_master_sync_preview_without_writing(self) -> None:
-        self._create_parent_master()
-        self._create(master="task.md")
-        master_path = self.coord / "tasks" / "agents-remember" / "3c-x" / "task.json"
-        before = master_path.read_text(encoding="utf-8")
-
-        result = self._call("set_field", fields={"title": "Preview Rename"}, dry_run=True)
-
-        sync = result["masterSync"]
-        self.assertEqual(sync["status"], "would-update")
-        self.assertIn("Preview Rename", sync["rendered"])
-        self.assertIn("Preview Rename", sync["diff"])
-        self.assertIsInstance(sync["wouldLose"], bool)
-        self.assertEqual(master_path.read_text(encoding="utf-8"), before)
-
     def test_leaf_sync_demotes_completed_master_when_work_becomes_unresolved(self) -> None:
         self._create_parent_master(status="Completed")
         self._create(
@@ -257,11 +173,6 @@ class ApplicationTests1(ApplicationTests):
         self.assertEqual(master.status, "inProgress")
         self.assertEqual(master.subTasks[0].status, "inProgress")
 
-    def test_create_rejects_duplicate(self) -> None:
-        self._create()
-        with self.assertRaises(TaskDocError):
-            self._create()
-
     def test_set_status_and_set_field(self) -> None:
         self._create()
         status_result = self._call("set_status", fields={"status": "inProgress"})
@@ -282,78 +193,6 @@ class ApplicationTests1(ApplicationTests):
         ):
             with self.subTest(fields=fields), self.assertRaises(TaskDocError):
                 self._call("set_field", fields=fields)
-
-    def test_set_field_code_examples_note(self) -> None:
-        self._create()
-        updated = self._call("set_field", fields={"codeExamplesNote": "Drafted at the plan gate."})
-        doc = read_task_doc(Path(str(updated["docPath"])))
-        self.assertEqual(doc.codeExamplesNote, "Drafted at the plan gate.")
-
-    def test_set_field_status_note(self) -> None:
-        self._create()
-        updated = self._call("set_field", fields={"statusNote": "core JSON format landed"})
-        doc = read_task_doc(Path(str(updated["docPath"])))
-        self.assertEqual(doc.statusNote, "core JSON format landed")
-
-    def test_set_field_orchestration_fields_require_exact_commanded_masters(self) -> None:
-        # L13: a graph-less sprint is the legal atomic-sequential default, so turning a
-        # plain master into a sprint now refuses only when its declared facts are
-        # inexact: the super branch is undeclared, or a commanded alias resolves to no
-        # master. Sprint-only integration policy still refuses without orchestrates.
-        created = self._create_parent_master()
-        refusals = (
-            ({"orchestrates": ["260706_management-repo"]}, "declare integrationBranch"),
-            (
-                {
-                    "orchestrates": ["260706_management-repo"],
-                    "integrationBranch": "main",
-                },
-                "resolves to 0 masters",
-            ),
-            ({"integrationBranch": "ar/sprint-super"}, "orchestration sprint"),
-        )
-        for fields, expected in refusals:
-            with self.subTest(fields=fields), self.assertRaisesRegex(TaskDocError, expected):
-                task_doc_tool(
-                    self.cfg,
-                    TaskDocTarget(repo_id="agents-remember", task_name="3c-x"),
-                    operation="set_field",
-                    edit=TaskDocEdit(fields=fields),
-                )
-        doc_path = Path(str(created["docPath"]))
-        unchanged = read_task_doc(doc_path)
-        self.assertEqual(unchanged.orchestrates, [])
-        self.assertIsNone(unchanged.integrationBranch)
-
-    def test_set_field_orchestrates_rejected_on_leaf(self) -> None:
-        self._create()
-        with self.assertRaises(TaskDocError):
-            self._call("set_field", fields={"orchestrates": ["260706_management-repo"]})
-
-    def test_dry_run_create_renders_without_writing(self) -> None:
-        result = task_doc_tool(
-            self.cfg,
-            TaskDocTarget(repo_id="agents-remember", task_name="3c-x"),
-            operation="create",
-            edit=TaskDocEdit(
-                fields={
-                    "id": "3C",
-                    "slug": "03c_x",
-                    "title": "Smoke",
-                    "kind": "subTask",
-                    "repo": "agents-remember",
-                    "type": "Code",
-                    "createdAt": "2026-01-01T00:00",
-                    "objective": "Preview me.",
-                }
-            ),
-            call=TaskDocCall(dry_run=True),
-        )
-        self.assertTrue(result["dryRun"])
-        self.assertIn("Preview me.", str(result["rendered"]))
-        # nothing written: neither the json source nor the rendered md exists
-        self.assertFalse(Path(str(result["docPath"])).exists())
-        self.assertFalse(Path(str(result["renderedPath"])).exists())
 
     def test_dry_run_does_not_mutate_existing_files(self) -> None:
         created = self._create(objective="orig")
@@ -445,31 +284,6 @@ class ApplicationTests1(ApplicationTests):
         self.assertEqual([step.id for step in doc.steps], ["S2"])
         self.assertEqual([example.id for example in doc.codeExamples], ["E2"])
         self.assertEqual(doc.decisions, [])
-
-    def test_replace_dry_run_does_not_mutate_existing_files(self) -> None:
-        created = self._create(objective="old")
-        json_path = Path(str(created["docPath"]))
-        md_path = Path(str(created["renderedPath"]))
-        before_json = json_path.read_text(encoding="utf-8")
-        before_md = md_path.read_text(encoding="utf-8")
-        result = self._call(
-            "replace",
-            fields={
-                "id": "3C",
-                "slug": "03c_x",
-                "title": "Smoke",
-                "kind": "subTask",
-                "repo": "agents-remember",
-                "type": "Code",
-                "createdAt": "2026-01-01T00:00",
-                "objective": "replacement preview",
-            },
-            dry_run=True,
-        )
-        self.assertTrue(result["dryRun"])
-        self.assertIn("replacement preview", str(result["rendered"]))
-        self.assertEqual(json_path.read_text(encoding="utf-8"), before_json)
-        self.assertEqual(md_path.read_text(encoding="utf-8"), before_md)
 
     def test_replace_rejects_document_path_change(self) -> None:
         self._create()

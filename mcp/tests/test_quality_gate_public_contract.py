@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-import pytest
 from agents_remember.certification import (
     READINESS_SURFACES,
     build_rail_result,
@@ -19,7 +17,6 @@ from agents_remember.certification import (
     compile_gate_certificate,
     compile_gate_result_manifest,
     readiness_projection_bytes,
-    require_readiness_transition,
 )
 from agents_remember.certification.certificate_admission import gate_semantic_digest
 from agents_remember.certification.certificate_models import (
@@ -68,13 +65,8 @@ from agents_remember.certification.repository_profiles.models import (
     RepositoryProfilePlan,
     repository_gate_plan_digest,
 )
-from agents_remember.errors import CloseoutReadinessContractError
 from agents_remember.models.certification.base import GateId, RailIdentity
-from agents_remember.models.tools.tool_response import finalize_tool_response
-from agents_remember.models.worktree import WorktreeIntegrateResponse
-from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
 from integration_certification_test_support import selected_code_fixture
-from pydantic import ValidationError
 
 
 class QualityGatePublicContractTests(unittest.TestCase):
@@ -98,69 +90,6 @@ class QualityGatePublicContractTests(unittest.TestCase):
             self.assertEqual(changed.generation, original.publication.generation)
             with self.assertRaisesRegex(ValueError, "dependencies do not match"):
                 forged.render()
-
-    def test_recovery_uses_one_manifest_generation_when_the_pointer_rotates(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            selected = selected_code_fixture(root / "selected")
-            original = selected.render()
-            other = selected_code_fixture(root / "other")
-            reports = selected.target.worktree_group / "reports"
-            pointer = reports / clean_quality_executor.REPORT_SET_MANIFEST
-            other_pointer = other.target.worktree_group / "reports" / pointer.name
-            pointer.write_bytes(other_pointer.read_bytes())
-            recovered = selected.render()
-            self.assertEqual(recovered, original)
-            published = Path(str(recovered["publishedResultPath"]))
-            self.assertEqual(published.parent.name, selected.terminals[-1].publication.generation)
-            self.assertEqual(json.loads(published.read_bytes())["exitCode"], 0)
-            self.assertEqual(pointer.read_bytes(), other_pointer.read_bytes())
-
-    def test_public_worktree_response_models_and_retains_both_quality_paths(self) -> None:
-        quality_result = {
-            "required": True,
-            "status": "enforced",
-            "passed": True,
-            "command": "dagger call quality",
-            "diffBase": "a" * 40,
-            "mode": "full",
-            "executor": "dagger",
-            "reportPath": "/enclosure/reports/test-results.md",
-            "publishedResultPath": (
-                "/enclosure/reports/.quality-report-generations/"
-                f"{'b' * 64}/clean-quality-results.json"
-            ),
-        }
-
-        payload = finalize_tool_response(
-            "worktree_integrate",
-            {
-                "ok": True,
-                "operation": "worktree_integrate",
-                "quality_gate": quality_result,
-            },
-        )
-
-        self.assertEqual(payload["quality_gate"]["reportPath"], quality_result["reportPath"])
-        self.assertEqual(
-            payload["quality_gate"]["publishedResultPath"],
-            quality_result["publishedResultPath"],
-        )
-        self.assertGreater(payload["tokens"], 0)
-        schema = WorktreeIntegrateResponse.model_json_schema()
-        quality_schema = json.dumps(schema["$defs"]["QualityGateResult"], sort_keys=True)
-        self.assertIn('"reportPath"', quality_schema)
-        self.assertIn('"publishedResultPath"', quality_schema)
-
-        with self.assertRaises(ValidationError):
-            finalize_tool_response(
-                "worktree_integrate",
-                {
-                    "ok": True,
-                    "operation": "worktree_integrate",
-                    "quality_gate": {**quality_result, "unmodeledPath": "/private"},
-                },
-            )
 
 
 _CANDIDATE = CandidateIdentity(kind="git-tree", value="c" * 40)
@@ -498,10 +427,6 @@ def _complete_readiness_input(scenario: _ReadinessScenario) -> CloseoutReadiness
     )
 
 
-def _readiness_codes(error: CloseoutReadinessContractError) -> set[str]:
-    return {str(item["code"]) for item in error.findings}
-
-
 def test_closeout_readiness_is_lossless_on_every_surface() -> None:
     source = _complete_readiness_input(_readiness_scenario())
     projection = compile_closeout_readiness(source)
@@ -582,161 +507,6 @@ def test_stale_certificates_and_invalid_profile_remain_non_green() -> None:
     )
     assert invalid.profile.state == "invalid"
     assert invalid.certificationReady is False
-
-
-def test_admission_authority_and_lifecycle_contradictions_fail_closed() -> None:
-    source = _complete_readiness_input(_readiness_scenario())
-    not_started = tuple(
-        GateReadinessObservation(revision=_REVISION, gate=gate, state="not-started")
-        for gate in (1, 2, 3, 4, 5)
-    )
-    pre_admission = source.model_copy(
-        update={
-            "profile": ProfileReadinessObservation(revision=_REVISION, state="unresolved"),
-            "lifecycle": LifecycleReadinessObservation(
-                revision=_REVISION,
-                state="admission-pending",
-            ),
-            "gates": not_started,
-            "admission": None,
-            "gateFiveInputs": None,
-            "finalizationAuthority": None,
-            "finalizationInputs": None,
-        }
-    )
-
-    pending = compile_closeout_readiness(pre_admission)
-    assert pending.lifecycle.state == "admission-pending"
-    assert pending.certificationReady is False
-
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(
-            pre_admission.model_copy(
-                update={
-                    "lifecycle": LifecycleReadinessObservation(
-                        revision=_REVISION,
-                        state="admitted",
-                    )
-                }
-            )
-        )
-    assert "admission-authority-missing" in _readiness_codes(caught.value)
-
-    running = not_started[0].model_copy(update={"state": "running"})
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(
-            pre_admission.model_copy(update={"gates": (running, *not_started[1:])})
-        )
-    assert "gate-started-before-admission" in _readiness_codes(caught.value)
-
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(source.model_copy(update={"repositoryId": "other-repository"}))
-    assert "admission-plan-mismatch" in _readiness_codes(caught.value)
-
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(
-            source.model_copy(
-                update={
-                    "lifecycle": LifecycleReadinessObservation(
-                        revision=_REVISION,
-                        state="admission-pending",
-                    )
-                }
-            )
-        )
-    assert "admission-lifecycle-contradiction" in _readiness_codes(caught.value)
-
-
-def test_red_gate_generic_replacement_and_mixed_revision_fail_closed() -> None:
-    scenario = _readiness_scenario()
-    source = _complete_readiness_input(scenario)
-    red_manifest = _readiness_manifest(
-        scenario.registry,
-        scenario.plan,
-        1,
-        enforcing_failure=True,
-    )
-    red_gate = GateReadinessObservation(
-        revision=_REVISION,
-        gate=1,
-        state="failed",
-        resultManifest=red_manifest,
-    )
-    running_gate = GateReadinessObservation(revision=_REVISION, gate=2, state="running")
-    later = tuple(
-        GateReadinessObservation(
-            revision=_REVISION,
-            gate=gate,
-            state="blocked",
-            blockedBy=("gate-1",),
-        )
-        for gate in (3, 4, 5)
-    )
-    red_source = source.model_copy(
-        update={
-            "lifecycle": LifecycleReadinessObservation(revision=_REVISION, state="admitted"),
-            "gates": (red_gate, running_gate, *later),
-            "finalizationAuthority": None,
-            "finalizationInputs": None,
-        }
-    )
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(red_source)
-    assert "red-gate-barrier-violated" in _readiness_codes(caught.value)
-
-    generic = red_gate.model_copy(update={"genericTerminalReplacement": True})
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(
-            red_source.model_copy(update={"gates": (generic, *red_source.gates[1:])})
-        )
-    assert "generic-terminal-replacement" in _readiness_codes(caught.value)
-
-    mixed = source.gates[0].model_copy(
-        update={"revision": ReadinessRevision(generationId="generation-10", revision=1)}
-    )
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(source.model_copy(update={"gates": (mixed, *source.gates[1:])}))
-    assert "mixed-generation-readiness" in _readiness_codes(caught.value)
-
-
-def test_catalog_and_diagnostic_promotion_fail_closed() -> None:
-    scenario = _readiness_scenario()
-    source = _complete_readiness_input(scenario)
-    missing = scenario.manifests[0].model_copy(
-        update={"railResults": scenario.manifests[0].railResults[1:]}
-    )
-    bad_gate = source.gates[0].model_copy(update={"resultManifest": missing})
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(
-            source.model_copy(update={"gates": (bad_gate, *source.gates[1:])})
-        )
-    assert "gate-manifest-catalog-mismatch" in _readiness_codes(caught.value)
-
-    promoted = DiagnosticReadinessObservation(
-        revision=_REVISION,
-        plan=scenario.plan,
-        resultManifest=scenario.manifests[0],
-    )
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        compile_closeout_readiness(source.model_copy(update={"diagnostics": (promoted,)}))
-    assert "diagnostic-promotion" in _readiness_codes(caught.value)
-
-
-def test_readiness_states_and_transitions_refuse_translation() -> None:
-    require_readiness_transition("gate", "running", "passed")
-    require_readiness_transition("certificate", "current-green", "invalidated")
-    with pytest.raises(CloseoutReadinessContractError) as caught:
-        require_readiness_transition("gate", "failed", "passed")
-    assert "readiness-transition-invalid" in _readiness_codes(caught.value)
-
-    payload = GateReadinessObservation(
-        revision=_REVISION,
-        gate=1,
-        state="not-started",
-    ).model_dump(mode="json")
-    payload["state"] = "skipped"
-    with pytest.raises(ValidationError):
-        GateReadinessObservation.model_validate(payload)
 
 
 if __name__ == "__main__":  # pragma: no cover

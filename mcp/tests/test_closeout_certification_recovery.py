@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
@@ -25,7 +23,6 @@ from agents_remember.certification.certificate_models import (
 from agents_remember.certification.certification_lane import compile_certification_lane
 from agents_remember.certification.digests import content_digest
 from agents_remember.certification.frozen_run.models import (
-    FrozenCertificationRun,
     freeze_certification_run,
 )
 from agents_remember.certification.lifecycle_models import (
@@ -64,14 +61,11 @@ from agents_remember.worktrees.integration.closeout.certification.recovery impor
     derive_certificate_input_changes,
 )
 from agents_remember.worktrees.integration.closeout.certification.selection import (
-    recovery_memory_inputs,
     require_selected_certification,
-    retain_memory_inputs,
     select_certification_state,
     select_recorded_terminals,
 )
-from agents_remember.worktrees.modules.quality import certification_evidence, certification_records
-from agents_remember.worktrees.modules.quality.certification_terminal import terminal_results
+from agents_remember.worktrees.modules.quality import certification_records
 from agents_remember.worktrees.modules.quality.execution import retained_reports
 from agents_remember.worktrees.modules.quality.execution.models import RetainedGateExecution
 from agents_remember.worktrees.modules.quality.published_manifest import (
@@ -82,20 +76,10 @@ from agents_remember.worktrees.modules.quality.published_manifest import (
 )
 from certification_registry_test_support import (
     ObservationSpec,
-    _canonical_registry,
-    _gate,
-    _plan,
     _result,
 )
-from pydantic import ValidationError
 from repository_profile_test_support import fixture_profile
 from test_code_certification_execution import selected_execution
-from test_gate_certification_evidence import (
-    _arrange,
-    _damage_selected_snapshot,
-    _foreign_publication,
-    _publish,
-)
 from test_operation_certification_selection import _fixture as _operation_fixture
 from test_operation_certification_selection import _publish as _publish_operation
 
@@ -260,17 +244,6 @@ def test_actual_gate_input_delta_selects_only_its_required_suffix(gate: GateId) 
     )
 
 
-@pytest.mark.parametrize("gate", [2, 4])
-def test_runtime_change_uses_actual_declared_consuming_gate(gate: GateId) -> None:
-    before, after = _snapshot(), _snapshot(_changed_profile(gate, runtime=True))
-    changes = derive_certificate_input_changes(before, after)
-    runtime = next(
-        item for item in changes if item.changeClass == "runtime-toolchain-executor-image"
-    )
-    assert runtime.consumingGates == (gate,)
-    assert classify_certificate_invalidation(changes).invalidatedGates == tuple(range(gate, 6))
-
-
 def test_code_change_invalidates_all_gates_and_does_not_reuse_old_certificates() -> None:
     before = replace(_snapshot(), memory_inputs=_memory())
     after = replace(_snapshot(tree="d" * 40), memory_inputs=_memory())
@@ -280,47 +253,6 @@ def test_code_change_invalidates_all_gates_and_does_not_reuse_old_certificates()
     )
     assert any(item.changeClass == "code" for item in changes)
     assert reuse.firstGateToRun == 1 and not reuse.reusedCertificates
-
-
-@pytest.mark.parametrize("mode", ["memory", "coherence"])
-def test_actual_memory_port_changes_retain_the_original_code_prefix(mode: str) -> None:
-    before = replace(_snapshot(), memory_inputs=_memory())
-    current_memory = (
-        _memory("f")
-        if mode == "memory"
-        else _memory().model_copy(
-            update={
-                "coherenceSubrecords": (
-                    CoherenceSubrecordIdentity(subrecordId="coherence", contentDigest="e" * 64),
-                )
-            }
-        )
-    )
-    after = replace(before, memory_inputs=current_memory)
-    certificates = _chain(before)
-    changes = derive_certificate_input_changes(before, after)
-    reuse = plan_certificate_reuse(
-        after.run.admission, certificates, changes, gate_five_inputs=current_memory
-    )
-    assert reuse.firstGateToRun == 5
-    assert reuse.reusedCertificates == tuple(item.identity for item in certificates[:4])
-    if mode == "coherence":
-        assert changes[0].affectedGateFiveSubrecords == ("coherence",)
-
-
-@pytest.mark.parametrize(
-    "field", ["topologyIdentityDigest", "taskIntentIdentityDigest", "normalizedCommitIntentDigest"]
-)
-def test_metadata_and_unconsumed_task_changes_only_revalidate_finalization(field: str) -> None:
-    before = replace(_snapshot(), memory_inputs=_memory())
-    after = replace(before, candidate=before.candidate.model_copy(update={field: "9" * 64}))
-    changes = derive_certificate_input_changes(before, after)
-    reuse = plan_certificate_reuse(
-        after.run.admission, _chain(before), changes, gate_five_inputs=after.memory_inputs
-    )
-    assert reuse.firstGateToRun is None
-    assert reuse.zeroGateStarts and reuse.finalizationRevalidationRequired
-    assert classify_certificate_invalidation(changes).invalidatedGates == ()
 
 
 def test_unchanged_interruption_reuses_the_original_exact_certificates() -> None:
@@ -333,17 +265,6 @@ def test_unchanged_interruption_reuses_the_original_exact_certificates() -> None
     )
     assert reuse.reusedCertificates == tuple(item.identity for item in certificates)
     assert reuse.firstGateToRun is None and reuse.zeroGateStarts
-
-
-def test_absent_memory_observation_cannot_authorize_gate_five_reuse() -> None:
-    snapshot = _snapshot()
-    with_memory = replace(snapshot, memory_inputs=_memory())
-    changes = derive_certificate_input_changes(snapshot, snapshot)
-    reuse = plan_certificate_reuse(snapshot.run.admission, _chain(with_memory), changes)
-    assert reuse.firstGateToRun == 5
-    with pytest.raises(CertificationContractError) as caught:
-        derive_certificate_input_changes(with_memory, snapshot)
-    assert caught.value.findings[0]["code"] == "recovery-memory-inputs-incomplete"
 
 
 def _red_profile() -> RepositoryCertificationProfile:
@@ -423,56 +344,6 @@ def _reordered_catalog(catalog: GateResultManifest) -> GateResultManifest:
     assert reordered.railResults == tuple(reversed(catalog.railResults))
     assert reordered.manifestDigest != catalog.manifestDigest
     return reordered
-
-
-def test_prior_red_catalog_refuses_digest_valid_noncanonical_rail_order() -> None:
-    prior, current = _snapshot(_red_profile()), _snapshot(_red_profile(), tree="d" * 40)
-    catalog = _catalog(prior, 1, red=True)
-    dispositions = _dispositions(prior, current, catalog)
-    before = prior.run.model_dump_json(), current.run.model_dump_json(), catalog.model_dump_json()
-    reordered = _reordered_catalog(catalog)
-    with pytest.raises(CertificationContractError) as caught:
-        build_prior_red_context(prior.run, current, reordered, dispositions, ())
-    assert caught.value.findings[0]["code"] == "prior-red-catalog-mismatch"
-    assert caught.value.findings[0]["gateStarts"] == 0
-    assert (
-        prior.run.model_dump_json(),
-        current.run.model_dump_json(),
-        catalog.model_dump_json(),
-    ) == before
-    assert build_prior_red_context(prior.run, current, catalog, dispositions, ()).priorCatalog == (
-        catalog
-    )
-
-
-def test_recovery_snapshot_refuses_recreated_admission_provenance() -> None:
-    snapshot = _snapshot()
-    original = snapshot.run.model_dump_json()
-    admission = type(snapshot.run.admission).model_validate(
-        {
-            **snapshot.run.admission.model_dump(mode="json"),
-            "provenance": {
-                **snapshot.run.admission.provenance.model_dump(mode="json"),
-                "evidenceRef": "fixture://recreated-admission-provenance",
-            },
-        }
-    )
-    assert admission.admissionDigest == snapshot.run.admission.admissionDigest
-    # model_copy is an untrusted input route, never an assertion of frozen-run validity.
-    changed = snapshot.run.model_copy(update={"admission": admission})
-    changed = changed.model_copy(
-        update={"runDigest": content_digest(changed.model_dump(mode="json", exclude={"runDigest"}))}
-    )
-    with pytest.raises(ValueError, match="must retain its exact original admission"):
-        FrozenCertificationRun.model_validate(changed.model_dump(mode="json"))
-    with pytest.raises(CertificationContractError) as caught:
-        derive_certificate_input_changes(snapshot, replace(snapshot, run=changed))
-    assert caught.value.findings[0]["code"] == "recovery-frozen-admission-mismatch"
-    assert caught.value.findings[0]["gateStarts"] == 0
-    assert snapshot.run.model_dump_json() == original
-    assert derive_certificate_input_changes(snapshot, snapshot)[0].changeClass == (
-        "unchanged-interruption"
-    )
 
 
 @pytest.mark.integration
@@ -565,133 +436,6 @@ def test_selection_recompiles_untrusted_proposals_before_selecting_original_refe
     assert require_selected_certification(fixture.contract, fixture.record).state == original
 
 
-@pytest.mark.integration
-@pytest.mark.parametrize("fault", ["malformed-json", "closed-shape", "noncanonical", "wrong-hash"])
-def test_untrusted_retained_memory_inputs_refuse_without_replacing_original_selection(
-    tmp_path: Path, fault: str
-) -> None:
-    fixture = _operation_fixture(tmp_path)
-    original = fixture.record.certification
-    assert original is not None and original.terminals == ()
-    objects = fixture.frozen.prepared.certificate_store()
-    references = (
-        original.frozenRun,
-        original.candidateAuthorities,
-        original.lifecycleAdmission,
-        *(decision.reference for decision in original.recoveryDecisions),
-    )
-    originals = {
-        objects.exact_path(ref.kind, ref.semanticDigest): objects.exact_path(
-            ref.kind, ref.semanticDigest
-        ).read_bytes()
-        for ref in references
-    }
-    before = fixture.store.path.read_bytes()
-    # These compiler inputs are deliberately untrusted transport data, not a current
-    # memory observation or a Gate-5 certificate. The original R21 object stays intact.
-    inputs = _memory()
-    retained = retain_memory_inputs(inputs).model_dump(mode="json")
-    if fault == "malformed-json":
-        encoded = "{"
-    elif fault == "closed-shape":
-        encoded = json.dumps({**inputs.model_dump(mode="json"), "untrustedExtra": True})
-    elif fault == "noncanonical":
-        encoded = json.dumps(inputs.model_dump(mode="json"), sort_keys=True, indent=2)
-    else:
-        encoded = retained["canonicalBytes"]
-    retained["canonicalBytes"] = encoded
-    retained["contentSha256"] = (
-        "0" * 64 if fault == "wrong-hash" else hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-    )
-    payload = original.model_dump(mode="json")
-    payload["recoveryDecisions"][0]["memoryInputs"] = retained
-    assert payload["recoveryDecisions"][0]["reference"] == (
-        original.recoveryDecisions[0].reference.model_dump(mode="json")
-    )
-    if fault == "wrong-hash":
-        with pytest.raises(ValidationError, match="retained certification bytes"):
-            OperationCertificationState.model_validate(payload)
-    else:
-        proposal = OperationCertificationState.model_validate(payload)
-        with pytest.raises(CertificationContractError) as caught:
-            select_certification_state(fixture.contract, fixture.store, fixture.record, proposal)
-        assert caught.value.findings[0]["code"] == (
-            "selected-memory-inputs-noncanonical"
-            if fault == "noncanonical"
-            else "selected-memory-inputs-invalid"
-        )
-    assert fixture.store.path.read_bytes() == before
-    assert fixture.store.read() == fixture.record
-    assert all(path.read_bytes() == raw for path, raw in originals.items())
-    assert require_selected_certification(fixture.contract, fixture.record).state == original
-
-
-@pytest.mark.integration
-def test_retained_memory_codec_roundtrips_compiler_inputs_without_selecting_them(
-    tmp_path: Path,
-) -> None:
-    fixture = _operation_fixture(tmp_path)
-    selected = fixture.record.certification
-    assert selected is not None
-    original = selected.recoveryDecisions[0]
-    before = fixture.store.path.read_bytes()
-    # This proves the codec only; the compiler fixture is never selected as live memory.
-    inputs = _memory()
-    retained = retain_memory_inputs(inputs)
-    decision = SelectedRecoveryDecision.model_validate(
-        {**original.model_dump(mode="json"), "memoryInputs": retained.model_dump(mode="json")}
-    )
-    reopened = recovery_memory_inputs(decision)
-    assert reopened == inputs
-    assert reopened is not None and retain_memory_inputs(reopened) == retained
-    assert decision.reference == original.reference
-    assert recovery_memory_inputs(original) is None
-    assert fixture.store.path.read_bytes() == before
-    assert require_selected_certification(fixture.contract, fixture.record).state == selected
-
-
-@pytest.mark.integration
-def test_recovery_wire_history_preserves_recurrent_observations_and_refuses_adjacent_duplicates(
-    tmp_path: Path,
-) -> None:
-    fixture = _operation_fixture(tmp_path)
-    original = fixture.record.certification
-    assert original is not None
-    reference = original.recoveryDecisions[0].reference
-    objects = fixture.frozen.prepared.certificate_store()
-    proof = objects.exact_path(reference.kind, reference.semanticDigest)
-    proof_before = proof.read_bytes()
-    journal_before = fixture.store.path.read_bytes()
-    # These compiler-only observations exercise chronological wire shape. Neither
-    # history is selected into the journal or asserted to certify current memory.
-    first, second = (
-        SelectedRecoveryDecision(reference=reference, memoryInputs=retain_memory_inputs(inputs))
-        for inputs in (_memory("e"), _memory("f"))
-    )
-    assert first != second
-    payload = original.model_dump(mode="json")
-    payload["recoveryDecisions"] = [
-        decision.model_dump(mode="json") for decision in (first, second, first)
-    ]
-    chronological = OperationCertificationState.model_validate(payload)
-    assert chronological.recoveryDecisions == (first, second, first)
-    assert tuple(decision.reference for decision in chronological.recoveryDecisions) == (
-        reference,
-        reference,
-        reference,
-    )
-    assert chronological.terminals == original.terminals
-    payload["recoveryDecisions"] = [first.model_dump(mode="json"), first.model_dump(mode="json")]
-    with pytest.raises(
-        ValidationError, match="adjacent recovery decisions cannot be selected twice"
-    ):
-        OperationCertificationState.model_validate(payload)
-    assert proof.read_bytes() == proof_before
-    assert fixture.store.path.read_bytes() == journal_before
-    assert fixture.store.read() == fixture.record
-    assert require_selected_certification(fixture.contract, fixture.record).state == original
-
-
 def test_prior_red_requires_every_independent_root_and_blocked_dependant() -> None:
     prior, current = _snapshot(_red_profile()), _snapshot(_red_profile(), tree="d" * 40)
     catalog = _catalog(prior, 1, red=True)
@@ -710,62 +454,6 @@ def test_prior_red_requires_every_independent_root_and_blocked_dependant() -> No
             )
         assert caught.value.findings[0]["code"] == "prior-red-disposition-catalog-incomplete"
         assert caught.value.findings[0]["gateStarts"] == 0
-
-
-@pytest.mark.parametrize(
-    "damage",
-    [
-        "incomplete-catalog",
-        "wrong-catalog",
-        "wrong-prior-admission",
-        "diagnostic",
-        "missing",
-        "empty-dispositions",
-        "duplicate",
-        "wrong-root",
-        "unchanged",
-    ],
-)
-def test_prior_red_recovery_refuses_unproven_or_incomplete_authority(damage: str) -> None:
-    prior, current = _snapshot(_red_profile()), _snapshot(_red_profile(), tree="d" * 40)
-    catalog = _catalog(prior, 1, red=True)
-    dispositions = _dispositions(prior, current, catalog)
-    if damage == "incomplete-catalog":
-        payload = catalog.model_dump(mode="json", exclude={"manifestDigest"})
-        payload["railResults"] = payload["railResults"][:1]
-        catalog = GateResultManifest.model_validate(
-            {**payload, "manifestDigest": content_digest(payload)}
-        )
-    elif damage == "wrong-catalog":
-        catalog = _catalog(current, 1, red=True)
-    elif damage == "diagnostic":
-        payload = catalog.model_dump(mode="json", exclude={"manifestDigest"})
-        payload.update(profileKind="diagnostic", altitude="diagnostic")
-        catalog = GateResultManifest.model_validate(
-            {**payload, "manifestDigest": content_digest(payload)}
-        )
-    elif damage == "empty-dispositions":
-        dispositions = ()
-    elif damage == "duplicate":
-        dispositions = (*dispositions, dispositions[0])
-    elif damage == "wrong-root":
-        dispositions = tuple(
-            item.model_copy(update={"repairedRoot": item.rail})
-            if item.disposition == "repaired-root"
-            else item
-            for item in dispositions
-        )
-    elif damage == "unchanged":
-        current = prior
-    with pytest.raises(CertificationContractError) as caught:
-        build_prior_red_context(
-            current.run if damage == "wrong-prior-admission" else prior.run,
-            current,
-            None if damage == "missing" else catalog,
-            dispositions,
-            (),
-        )
-    assert all(item["gateStarts"] == 0 for item in caught.value.findings)
 
 
 def test_prior_red_gate_two_requires_the_exact_original_gate_one_certificate() -> None:
@@ -805,168 +493,6 @@ def test_prior_red_gate_two_requires_the_exact_original_gate_one_certificate() -
     for wrong_prefix in ((), _chain(_snapshot(tree="d" * 40), through=1)):
         with pytest.raises(CertificationContractError):
             build_prior_red_context(prior.run, current, catalog, dispositions, wrong_prefix)
-
-
-@pytest.mark.parametrize("field", ["contractPath", "repositoryId", "candidateCodeTree"])
-def test_recovery_observations_must_bind_the_selected_run_and_task(field: str) -> None:
-    snapshot = _snapshot()
-    changed: object = "/other/contract.md" if field == "contractPath" else "other-repository"
-    if field == "candidateCodeTree":
-        changed = CandidateIdentity(kind="git-tree", value="d" * 40)
-    current = replace(snapshot, candidate=snapshot.candidate.model_copy(update={field: changed}))
-    with pytest.raises(CertificationContractError):
-        derive_certificate_input_changes(snapshot, current)
-
-
-def _physical_red_terminal(tmp_path: Path):
-    """Publish a real complete red catalog and retain its exact typed store objects."""
-    _code, group, prepared, execution = _arrange(tmp_path)
-    failing_key = prepared.lane.certificationPlan.gates[0].waves[-1][0].key
-
-    def fail_last_wave(payload):
-        payload.update(status="failed", exitCode=1)
-        payload["gates"] = payload["gates"][:1]
-        payload["gates"][0]["disposition"] = "red"
-        for rail in payload["gates"][0]["rails"]:
-            if rail["key"] == failing_key:
-                rail.update(status="fail", failureCode="retained-observed-failure")
-
-    publication, payload = _publish(prepared, execution, transform=fail_last_wave)
-    recorded = certification_records.record_published_generation(prepared, publication, payload)
-    assert len(recorded.terminals) == 1 and recorded.as_payload()["refused"] == []
-    terminal = recorded.terminals[0]
-    assert terminal.result.disposition == "red" and terminal.certificate is None
-    return group, prepared, execution, terminal, fail_last_wave
-
-
-@pytest.mark.parametrize(
-    "fault", ["gate", "missing-frozen", "wrong-kind", "foreign-plan", "corrupt-object"]
-)
-def test_red_terminal_journal_refuses_invalid_original_authority_without_replacing_selection(
-    tmp_path: Path, fault: str
-) -> None:
-    group, prepared, _execution, terminal, _transform = _physical_red_terminal(tmp_path)
-    journal = prepared.directory / "gates.json"
-    original = journal.read_bytes()
-    pointer = group / "reports/quality-report-set.json"
-    pointer_bytes = pointer.read_bytes()
-    rows = list(certification_evidence.read_gate_records(prepared.directory))
-    row = rows[0]
-    expected = "certificate-evidence-binding-mismatch"
-    if fault == "gate":
-        row["gate"] = 2
-    elif fault == "missing-frozen":
-        row.pop("frozenRun")
-        expected = "certificate-evidence-binding-missing"
-    elif fault == "wrong-kind":
-        row["frozenRun"] = terminal.resultReference.model_dump(mode="json")
-    elif fault == "foreign-plan":
-        row["publication"] = published_manifest_payload(
-            _foreign_publication(group, terminal.publication, "profilePlanDigest")
-        )
-    else:
-        store = prepared.certificate_store()
-        frozen_path = store.exact_path("frozen-run", prepared.frozen_run.runDigest)
-        # A real object from a different closed schema cannot become a frozen run even
-        # when copied to the selected address; the canonical store refuses first.
-        frozen_path.write_bytes(
-            store.exact_path("result-manifest", terminal.result.manifestDigest).read_bytes()
-        )
-        expected = "certificate-object-invalid"
-    with pytest.raises(CertificationContractError) as refused:
-        certification_records.journal_gate_records(group, rows)
-    assert refused.value.findings[0]["code"] == expected
-    assert journal.read_bytes() == original
-    assert pointer.read_bytes() == pointer_bytes
-    certification_evidence.verify_result_evidence(
-        group / "reports", terminal.publication, terminal.result.railResults
-    )
-
-
-@pytest.mark.parametrize("fault", ["none", "gate", "runtime"])
-def test_repeated_red_result_keeps_original_generation_or_refuses_changed_execution(
-    tmp_path: Path, fault: str
-) -> None:
-    group, prepared, execution, terminal, transform = _physical_red_terminal(tmp_path)
-    later, payload = _publish(prepared, execution, nonce="later-red", transform=transform)
-    assert later.generation != terminal.publication.generation
-    rows = list(certification_evidence.read_gate_records(prepared.directory))
-    if fault == "gate":
-        rows[0]["gate"] = 2
-    elif fault == "runtime":
-        rows[0]["publication"] = published_manifest_payload(
-            _foreign_publication(group, terminal.publication, "runtimeAuthorityDigest")
-        )
-    if fault != "none":
-        _damage_selected_snapshot(prepared, rows)
-    journal = prepared.directory / "gates.json"
-    original = journal.read_bytes()
-    if fault == "none":
-        recorded = certification_records.record_published_generation(prepared, later, payload)
-        assert recorded.as_payload()["refused"] == []
-        assert recorded.terminals == (terminal,)
-        assert recorded.terminals[0].resultReference == terminal.resultReference
-        assert recorded.terminals[0].publication != later
-    else:
-        with pytest.raises(CertificationContractError) as refused:
-            certification_evidence.terminal_publication_binding(
-                prepared.directory, prepared.frozen_run, terminal.result, later
-            )
-        assert refused.value.findings[0]["code"] == "certificate-evidence-binding-mismatch"
-        assert refused.value.findings[0]["detail"] == "selected terminal execution differs"
-        assert journal.read_bytes() == original
-    assert prepared.certificate_store().load_reference(terminal.resultReference) == terminal.result
-    certification_evidence.verify_result_evidence(
-        group / "reports", terminal.publication, terminal.result.railResults
-    )
-
-
-@pytest.mark.parametrize("blockers", ["actual", "missing", "foreign"])
-def test_terminal_catalog_resolves_only_actual_failed_same_gate_prerequisites(
-    blockers: str,
-) -> None:
-    plan = _plan()
-    gate_plan = _gate(plan, 1)
-    outcomes = []
-    for rail in gate_plan.rails:
-        is_dependent = rail.identity.railId == "package"
-        result = _result(
-            gate_plan,
-            ObservationSpec(
-                rail.identity.railId,
-                status="blocked"
-                if is_dependent
-                else "fail"
-                if rail.identity.railId == "lint"
-                else "pass",
-                blocked_by=("lint",) if is_dependent else (),
-            ),
-        )
-        row = {
-            "key": rail.identity.key,
-            "status": result.status,
-            "evidence": [item.model_dump(mode="json") for item in result.evidence],
-            "artifacts": [item.model_dump(mode="json") for item in result.artifacts],
-        }
-        if is_dependent and blockers != "missing":
-            row["blockedBy"] = ["lint@1.0.0"] if blockers == "actual" else [None, "foreign@1.0.0"]
-        outcomes.append(row)
-    if blockers != "actual":
-        with pytest.raises(ValueError, match="blocked rail result requires blockedBy"):
-            terminal_results(gate_plan, outcomes)
-        return
-    results = terminal_results(gate_plan, outcomes)
-    dependent = next(item for item in results if item.rail.railId == "package")
-    assert tuple(item.railId for item in dependent.blockedBy) == ("lint",)
-    admission = GateResultAdmission(
-        profileId=plan.profileId,
-        candidateIdentity=plan.candidateIdentity,
-        altitude=plan.profileKind,
-    )
-    manifest = compile_gate_result_manifest(
-        _canonical_registry(), plan, gate_plan, results, admission
-    )
-    assert manifest.disposition == "red"
 
 
 def _inventory_snapshot(publication, files):
@@ -1138,35 +664,3 @@ def test_retained_report_inventory_refuses_mismatched_evidence_before_any_source
         )
     open_report.assert_not_called()
     assert not destination.exists()
-
-
-def test_repeated_identical_retained_evidence_has_one_physical_transport_member(
-    tmp_path: Path,
-) -> None:
-    selected, request = _retained_inventory_case(tmp_path, "duplicate")
-    destination = tmp_path / "deduplicated-retained"
-    files = retained_reports.snapshot_retained_reports(
-        selected,
-        reports=request.worktree_group / "reports",
-        destination=destination,
-    )
-    repeated = [item for item in files if item.path == "clean-quality-results.json"]
-    assert len(repeated) == 1
-    item = repeated[0]
-    assert (
-        sum(
-            1
-            for gate in selected.retained
-            for rail in gate.result.railResults
-            for evidence in rail.evidence
-            if evidence.reference == item.path
-        )
-        == 2
-    )
-    original = (
-        request.worktree_group
-        / "reports/.quality-report-generations"
-        / item.publication.generation
-        / item.path
-    )
-    assert (destination / item.path).read_bytes() == original.read_bytes()

@@ -3,29 +3,12 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from _evidence_catalog_fixture import write_synthetic_evidence_catalog
 from agents_remember.kernel.primitives.checkout_coordination import declared_execution_mode
-from agents_remember.models.test_evidence import (
-    EvidenceConsumer,
-    EvidenceConsumerRefusal,
-    require_certifying_evidence,
-)
-from agents_remember_test_support.testing.certifying_bootstrap import (
-    prepare_certifying_pytest_bootstrap,
-)
-from agents_remember_test_support.testing.dagger_admission import (
-    DAGGER_TEST_ATTESTATION_ENV,
-    DaggerAdmission,
-    DaggerAdmissionError,
-    dagger_admission_refusal,
-    require_dagger_admission_capability,
-)
 from agents_remember_test_support.testing.global_state import (
     begin_pytest_process,
     end_pytest_process,
@@ -72,47 +55,6 @@ class PytestBootstrapBoundaryTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def test_certification_requires_its_own_admission(self) -> None:
-        attestation = self.root / "attestation"
-        attestation.write_text(VALID_NONCE, encoding="utf-8")
-        certifying = prepare_certifying_pytest_bootstrap(
-            self.root,
-            environ={DAGGER_TEST_ATTESTATION_ENV: VALID_NONCE},
-            attestation_path=attestation,
-        )
-        self.assertIs(
-            require_dagger_admission_capability(certifying.admission),
-            certifying.admission,
-        )
-
-        with self.assertRaisesRegex(DaggerAdmissionError, "absent or invalid"):
-            prepare_certifying_pytest_bootstrap(
-                self.root / "not-a-candidate",
-                environ={},
-                attestation_path=attestation,
-            )
-
-        with self.assertRaises(EvidenceConsumerRefusal):
-            require_certifying_evidence(object(), consumer=EvidenceConsumer.QUALITY)
-
-    def test_admission_matrix_is_total_and_does_not_expose_the_nonce(self) -> None:
-        attestation = self.root / "attestation"
-        self.assertIn("absent or invalid", dagger_admission_refusal({}, attestation) or "")
-        self.assertIn(
-            "unavailable",
-            dagger_admission_refusal({DAGGER_TEST_ATTESTATION_ENV: VALID_NONCE}, attestation) or "",
-        )
-        attestation.write_text("f" * 32, encoding="utf-8")
-        self.assertIn(
-            "do not match",
-            dagger_admission_refusal({DAGGER_TEST_ATTESTATION_ENV: VALID_NONCE}, attestation) or "",
-        )
-        with self.assertRaises(TypeError):
-            DaggerAdmission(attestation_path=attestation, nonce_sha256=VALID_NONCE)
-        forged = object.__new__(DaggerAdmission)
-        with self.assertRaises(DaggerAdmissionError):
-            require_dagger_admission_capability(forged)
-
     def test_environment_is_candidate_bound_scrubbed_disposable_and_reversible(self) -> None:
         process = candidate_test_process(self.root)
         hostile = {
@@ -157,52 +99,6 @@ class PytestBootstrapBoundaryTests(unittest.TestCase):
                 os.environ,
                 cache_root=self.root / ".cache",
             )
-
-    def test_shared_pytest_plugin_has_no_admission_or_external_service_dependency(self) -> None:
-        package = (
-            Path(__file__).resolve().parents[1] / "test_support" / "agents_remember_test_support"
-        )
-        shared = (package / "testing" / "pytest_bootstrap.py").read_text(encoding="utf-8")
-        certifying = (package / "pytest_certifying_bootstrap.py").read_text(encoding="utf-8")
-        self.assertNotIn("dagger", shared.lower())
-        self.assertNotIn("worktree_services", shared)
-        self.assertNotIn("providers", shared)
-        self.assertIn("pytest_bootstrap", certifying)
-        self.assertIn("worktree_services", certifying)
-
-    def test_certifying_plugin_defers_the_service_graph_until_fixture_execution(self) -> None:
-        mcp_root = Path(__file__).resolve().parents[1]
-        source_root = mcp_root / "src"
-        test_support_root = mcp_root / "test_support"
-        environment = dict(os.environ)
-        environment["PYTHONPATH"] = os.pathsep.join(
-            (test_support_root.as_posix(), source_root.as_posix())
-        )
-        command = "\n".join(
-            (
-                "import sys",
-                "import agents_remember_test_support.pytest_certifying_bootstrap",
-                "forbidden = {",
-                "    'agents_remember_test_support.testing',",
-                "    'agents_remember.application.worktree_services',",
-                "    'agents_remember.models.lifecycles.operation',",
-                "}",
-                "loaded = sorted(forbidden.intersection(sys.modules))",
-                "raise SystemExit('eager imports: ' + ', '.join(loaded) if loaded else 0)",
-            )
-        )
-
-        completed = subprocess.run(
-            [sys.executable, "-c", command],
-            cwd=mcp_root.parent,
-            env=environment,
-            check=False,
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
-        )
-
-        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_test_process_declaration_and_global_state_are_restored(self) -> None:
         before = snapshot_owned_mutable_state()

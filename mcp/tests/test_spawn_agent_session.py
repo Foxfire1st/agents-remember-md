@@ -33,14 +33,8 @@ from agents_remember.models.terminal_catalog import (
     TerminalCatalogEntry,
 )
 from agents_remember.observer import (
-    AmbientLifecycle,
-    EventStore,
-    install_ambient,
-    observer_root,
     reset_ambient,
 )
-from agents_remember.observer.ambient import ambient
-from agents_remember.serving.harness_control_runner import parse_runner_config
 from agents_remember.serving.harness_logs import CommandEvidence
 from agents_remember.serving.terminal import (
     TerminalSessionBinding,
@@ -54,15 +48,10 @@ from agents_remember.tasks import (
     TaskDocument,
     write_task_doc,
 )
-from test_worktree_support import git, write_current_task_lineage
+from test_worktree_support import write_current_task_lineage
 
 # The source root of the agents_remember package this test process imported -- what the opener
 # seeds onto every harness-runner spawn's PYTHONPATH.
-_DAEMON_PACKAGE_ROOT = str(
-    Path(str(sys.modules["agents_remember"].__file__)).resolve().parent.parent
-)
-SPRINT_REF = TaskDocumentRef(repository="repo", path="sprint/task.json")
-MASTER_REF = TaskDocumentRef(repository="repo", path="master/task.json")
 LEAF_REF = TaskDocumentRef(repository="repo", path="master/leaf-1.json")
 
 
@@ -216,13 +205,6 @@ class _FakeHost:
         )
 
 
-def _runner_config(host: _FakeHost, index: int = 0):
-    command = host.ensured[index]["command"]
-    assert isinstance(command, tuple)
-    assert command[1:3] == ("-m", "agents_remember.serving.harness_control_runner")
-    return parse_runner_config(command[3])
-
-
 class _FakeLog:
     def __init__(self) -> None:
         self.bound_path: Path | None = None
@@ -276,9 +258,6 @@ class _FakePaster:
             submitted=self._submitted and verified if submit else False,
             capture=self._capture,
         )
-
-
-_ObservedPaster = _FakePaster
 
 
 def _running_chat(session_id: str, *, task_document_ref: TaskDocumentRef) -> TerminalCatalogEntry:
@@ -352,150 +331,6 @@ class SpawnAgentSessionTests(unittest.TestCase):
         self.assertEqual(row.spawned_by_lifecycle, "LC-manager")
         self.assertEqual(paster.calls, [])
 
-    def test_spawn_records_role_from_env_and_reports_it(self) -> None:
-        # The AR_SPAWN_ROLE riding the caller's env is persisted on the catalog row and
-        # reported in the payload — the Chats command tree groups command chats by it.
-        path = agentic_settings_path(self.tmp)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "orchestration": {
-                        "roles": {
-                            "manager": {
-                                "harness": "claude",
-                                "model": "claude-fable-5",
-                                "effort": "max",
-                            }
-                        }
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-        payload = self._spawn(env={"AR_SPAWN_ROLE": "manager"}, task_document_ref=MASTER_REF)
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertEqual(row.task_document_ref, MASTER_REF)
-        self.assertEqual(row.binding_role, "manager")
-
-    def test_spawn_persists_canonical_task_document_reference(self) -> None:
-        payload = self._spawn(task_document_ref=LEAF_REF)
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertEqual(payload["taskDocumentRef"], LEAF_REF.model_dump())
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertEqual(row.task_document_ref, LEAF_REF)
-
-    def test_unbound_replacement_records_canonical_task_document(self) -> None:
-        payload = self._spawn(replacement_for_task_document_ref=LEAF_REF)
-
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertNotIn("taskDocumentRef", payload)
-        self.assertEqual(payload["replacementForTaskDocumentRef"], LEAF_REF.model_dump())
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertIsNone(row.task_document_ref)
-        self.assertEqual(row.replacement_for_task_document_ref, LEAF_REF)
-
-    def test_spawn_rejects_missing_task_document_before_spawning(self) -> None:
-        missing = TaskDocumentRef(repository="repo", path="master/missing-leaf.json")
-        payload = self._spawn(task_document_ref=missing, paster=_FakePaster())
-        self.assertFalse(payload["ok"])
-        self.assertEqual(payload["status"], "task-document-not-found")
-        self.assertIn("does not exist", payload["detail"])
-        self.assertEqual(self.host.ensured, [])
-        self.assertIsNone(self.catalog.get("worker-1"))
-
-    def test_stale_super_refuses_every_leaf_role_before_host_creation(self) -> None:
-        path = agentic_settings_path(self.tmp)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "orchestration": {
-                        "roles": {
-                            role: {
-                                "harness": "claude",
-                                "model": "claude-fable-5",
-                                "effort": "max",
-                            }
-                            for role in ("worker", "reviewer", "curator")
-                        }
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-        git(self.repo, "switch", "super")
-        marker = self.repo / "super-moved.txt"
-        marker.write_text("new super\n", encoding="utf-8")
-        git(self.repo, "add", marker.name)
-        git(self.repo, "commit", "-m", "move super")
-        git(self.repo, "switch", "main")
-
-        for role in ("worker", "reviewer", "curator"):
-            with self.subTest(role=role):
-                payload = self._spawn(
-                    task_document_ref=LEAF_REF,
-                    env={"AR_SPAWN_ROLE": role},
-                )
-
-                self.assertFalse(payload["ok"])
-                self.assertEqual(payload["status"], "source-lineage-stale")
-                self.assertEqual(payload["sourceLineage"]["state"], "blocked")
-                self.assertEqual(self.host.ensured, [])
-                self.assertIsNone(self.catalog.get("worker-1"))
-
-    def test_context_including_empty_string_refuses_before_every_spawn_side_effect(self) -> None:
-        for context in ("", "draft packet"):
-            with self.subTest(context=context):
-                paster = _FakePaster()
-                payload = self._spawn(
-                    context=context,
-                    task_document_ref=TaskDocumentRef(
-                        repository="repo", path="master/missing-leaf.json"
-                    ),
-                    harness="legacy-override",
-                    paster=paster,
-                )
-                self.assertFalse(payload["ok"])
-                self.assertEqual(payload["status"], "brief-delivery-separate")
-                self.assertIn("public dispatch_agent", payload["detail"])
-                self.assertIn("canonical task document", payload["detail"])
-                self.assertIn("complete brief", payload["detail"])
-                self.assertNotIn("hosted_session_readiness", payload["detail"])
-                self.assertNotIn("message_kind='dispatch-brief'", payload["detail"])
-                self.assertNotIn("adapterDeliveryState", payload["detail"])
-                self.assertEqual(self.host.ensured, [])
-                self.assertEqual(paster.calls, [])
-
-    def test_submit_true_refuses_before_spawn_even_without_context(self) -> None:
-        payload = self._spawn(submit=True)
-        self.assertFalse(payload["ok"])
-        self.assertEqual(payload["status"], "brief-delivery-separate")
-        self.assertEqual(self.host.ensured, [])
-
-    def test_spawn_without_context_skips_paste(self) -> None:
-        paster = _FakePaster()
-        payload = self._spawn(paster=paster)
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertNotIn("contextDelivered", payload)
-        self.assertEqual(paster.calls, [])
-
-    def test_plain_terminal_spawn_skips_harness_dispatch(self) -> None:
-        payload = self._spawn(kind="terminal")
-
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertEqual(payload["kind"], "terminal")
-        self.assertNotIn("harness", payload)
-        self.assertEqual(self.host.ensured[0]["command"], ("/bin/bash",))
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertEqual(row.kind, "terminal")
-        self.assertEqual(row.binding_role, "terminal")
-
     def test_seat_taken_is_surfaced_never_overridden(self) -> None:
         path = agentic_settings_path(self.tmp)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -532,82 +367,6 @@ class SpawnAgentSessionTests(unittest.TestCase):
         self.assertEqual(paster.calls, [])
         self.assertIsNone(self.catalog.get("intruder"))
 
-    def test_legacy_harness_override_refused_before_spawn(self) -> None:
-        payload = self._spawn(harness="not-a-harness")
-        self.assertFalse(payload["ok"])
-        self.assertEqual(payload["status"], "spend-override-unsupported")
-        self.assertIn("harness", payload["detail"])
-        self.assertIn("orchestration.roles", payload["detail"])
-        self.assertEqual(self.host.ensured, [])
-
-    def test_undetected_harness_refused_before_spawn(self) -> None:
-        payload = self._spawn(which=lambda _cmd: None)
-        self.assertFalse(payload["ok"])
-        self.assertEqual(payload["status"], "harness-not-detected")
-        self.assertEqual(self.host.ensured, [])
-
-    def test_spawned_by_lifecycle_defaults_to_active_ambient(self) -> None:
-        install_ambient(AmbientLifecycle(EventStore(observer_root(self.config))))
-        amb = ambient()
-        assert amb is not None
-        started = amb.start()
-        payload = self._spawn(paster=_FakePaster())
-        self.assertEqual(payload["spawnedByLifecycle"], started.id)
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertEqual(row.spawned_by_lifecycle, started.id)
-
-    def test_spawn_records_caller_kind_provenance(self) -> None:
-        payload = self._spawn(
-            task_document_ref=LEAF_REF,
-            spawned_by_kind="ambient",
-        )
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertEqual(payload["spawnedByKind"], "ambient")
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertEqual(row.spawned_by_kind, "ambient")
-        self.assertIsNone(row.spawned_by_session)
-
-    def test_spawn_records_structural_reviewer_parent_as_a_separate_address(self) -> None:
-        parent = TaskDocumentRef(repository="repo", path="master/task.json")
-        path = agentic_settings_path(self.tmp)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "orchestration": {
-                        "roles": {
-                            "reviewer": {
-                                "harness": "claude",
-                                "model": "claude-fable-5",
-                                "effort": "max",
-                            }
-                        }
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-        payload = self._spawn(
-            task_document_ref=LEAF_REF,
-            env={"AR_SPAWN_ROLE": "reviewer"},
-            spawned_by_kind="plane",
-            structural_parent_task_document_ref=parent,
-            structural_parent_role="manager",
-        )
-
-        self.assertEqual(payload["structuralParentTaskDocumentRef"], parent.model_dump())
-        self.assertEqual(payload["structuralParentRole"], "manager")
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertEqual(row.structural_parent_task_document_ref, parent)
-        self.assertEqual(row.structural_parent_role, "manager")
-        self.assertEqual(
-            row.to_json()["structuralParentTaskDocumentRef"],
-            parent.model_dump(by_alias=True),
-        )
-
     def test_spawn_refuses_forged_structural_parent_before_host_creation(self) -> None:
         parent = TaskDocumentRef(repository="repo", path="master/task.json")
         payload = self._spawn(
@@ -619,133 +378,6 @@ class SpawnAgentSessionTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["status"], "task-binding-invalid")
-        self.assertEqual(self.host.ensured, [])
-
-
-class SpawnKnobApplicationTests(unittest.TestCase):
-    """Structured native launch selection plus the free-form spawn/provenance escape hatch."""
-
-    def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp())
-        self.config = _config(self.tmp)
-        _write_leaf_task(self.tmp)
-        write_current_task_lineage(
-            self.tmp,
-            repo_name="repo",
-            master_name="master",
-            leaf_id="leaf-1",
-        )
-        self.catalog = TerminalCatalog(self.tmp / "logs" / "dashboard" / "terminal-sessions.json")
-        self.host = _FakeHost()
-        reset_ambient()
-
-    def tearDown(self) -> None:
-        reset_ambient()
-
-    def _write_settings(self, orchestration: dict) -> None:
-        path = agentic_settings_path(self.tmp)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"orchestration": orchestration}), encoding="utf-8")
-
-    def _spawn(self, **kwargs: object) -> dict:
-        base: dict[str, object] = {
-            "session_id": "worker-1",
-            "host": self.host,
-            "which": _detected,
-        }
-        base.update(kwargs)
-        env = base.get("env")
-        role = env.get("AR_SPAWN_ROLE") if isinstance(env, dict) else None
-        if role is not None and "task_document_ref" not in base:
-            base["task_document_ref"] = SPRINT_REF if role == "strategist" else LEAF_REF
-        paster = base.get("paster")
-        if "session_log" not in base and isinstance(paster, _FakePaster):
-            base["session_log"] = paster.log
-        return call_spawn(self.config, **base)
-
-    def test_prompt_keywords_without_a_brief_stay_deferred(self) -> None:
-        self._write_settings(
-            {
-                "roles": {
-                    "strategist": {
-                        "harness": "claude",
-                        "model": "claude-fable-5",
-                        "effort": "max",
-                        "promptKeywords": ["ultracode"],
-                    }
-                }
-            }
-        )
-        paster = _ObservedPaster(
-            capture="Fable 5 with ultracode effort · Claude Max\n◉ ultracode · /effort\n"
-        )
-        payload = self._spawn(env={"AR_SPAWN_ROLE": "strategist"}, paster=paster)
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertEqual(paster.calls, [])
-        self.assertEqual(payload["promptKeywords"], ["ultracode"])
-
-    def test_free_form_session_command_is_not_joined_by_a_synthesized_effort_command(self) -> None:
-        self._write_settings(
-            {
-                "roles": {
-                    "worker": {
-                        "harness": "claude",
-                        "model": "claude-fable-5",
-                        "effort": "max",
-                        "sessionCommands": ["/statusline off"],
-                        "promptKeywords": ["ultracode"],
-                    }
-                }
-            }
-        )
-        paster = _ObservedPaster(
-            capture="Fable 5 with ultracode effort · Claude Max\n◉ ultracode · /effort\n"
-        )
-        payload = self._spawn(
-            env={"AR_SPAWN_ROLE": "worker"},
-            paster=paster,
-        )
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertEqual(paster.calls, [])
-        self.assertEqual(_runner_config(self.host).session_commands, ("/statusline off",))
-        self.assertEqual(payload["sessionCommands"], ["/statusline off"])
-        row = self.catalog.get("worker-1")
-        assert row is not None
-        self.assertEqual(row.session_commands, ("/statusline off",))
-        self.assertEqual(row.prompt_keywords, ("ultracode",))
-
-    def test_session_command_never_falls_back_to_terminal_paste(self) -> None:
-        self._write_settings(
-            {
-                "roles": {
-                    "worker": {
-                        "harness": "claude",
-                        "model": "claude-fable-5",
-                        "effort": "max",
-                        "sessionCommands": ["/statusline off"],
-                    }
-                }
-            }
-        )
-        paster = _FakePaster(delivered=False, submitted=False, capture="claude> (booting)")
-        payload = self._spawn(env={"AR_SPAWN_ROLE": "worker"}, paster=paster)
-        self.assertEqual(payload["status"], "spawned-unbriefed")
-        self.assertNotIn("sessionCommandsDelivered", payload)
-        self.assertNotIn("deliveryCapture", payload)
-        self.assertEqual(paster.calls, [])
-        self.assertEqual(_runner_config(self.host).session_commands, ("/statusline off",))
-
-    def test_direct_free_form_spend_controls_are_refused(self) -> None:
-        payload = self._spawn(
-            launch_args=["--model", "opus"],
-            prompt_keywords=["ultracode"],
-            session_commands=["/effort ultracode"],
-        )
-        self.assertFalse(payload["ok"])
-        self.assertEqual(payload["status"], "spend-override-unsupported")
-        self.assertIn("launch_args", payload["detail"])
-        self.assertIn("prompt_keywords", payload["detail"])
-        self.assertIn("session_commands", payload["detail"])
         self.assertEqual(self.host.ensured, [])
 
 

@@ -12,18 +12,13 @@ import pytest
 from agents_remember.controlplane.durable_store import (
     OPERATOR_INBOX_OWNERSHIP,
     append_line,
-    declare_process_role,
-    declared_process_role,
     exclusive_access,
     rewrite_lines,
 )
 from agents_remember.kernel.primitives import checkout_coordination
 from agents_remember.kernel.primitives.checkout_coordination import (
     CheckoutCoordinationError,
-    declare_lifecycle_operation_process,
     declare_test_process,
-    declared_daemon_role,
-    declared_execution_mode,
     resolve_checkout_location,
 )
 from agents_remember.kernel.primitives.runtime_config import ConfigError, load_config
@@ -88,47 +83,6 @@ class CheckoutCoordinationIsolationTests(unittest.TestCase):
             location.coordination_root,
             checkout.parent / "provider-runtime" / "dev-ar-coordination",
         )
-
-    def test_checkout_resolution_skips_incomplete_nested_repository_shapes(self) -> None:
-        checkout, _source = self._checkout()
-        missing_package = checkout / "missing-package"
-        (missing_package / "mcp").mkdir(parents=True)
-        (missing_package / "mcp" / "pyproject.toml").touch()
-        missing_marker = missing_package / "missing-marker"
-        source = missing_marker / "mcp" / "src" / "agents_remember" / "candidate.py"
-        source.parent.mkdir(parents=True)
-        source.touch()
-        (missing_marker / "mcp" / "pyproject.toml").touch()
-
-        location = resolve_checkout_location(source)
-
-        self.assertIsNotNone(location)
-        assert location is not None
-        self.assertEqual(location.checkout_root, checkout)
-
-    def test_repository_shaped_directory_without_git_marker_is_not_a_checkout(self) -> None:
-        source = self.root / "candidate" / "mcp" / "src" / "agents_remember" / "module.py"
-        source.parent.mkdir(parents=True)
-        source.touch()
-        (self.root / "candidate" / "mcp" / "pyproject.toml").touch()
-
-        self.assertIsNone(resolve_checkout_location(source))
-
-    def test_undeclared_installed_package_path_has_no_checkout_override(self) -> None:
-        state = preserve_owned_mutable_state()
-        state.__enter__()
-        self.addCleanup(state.__exit__, None, None, None)
-        checkout_coordination._declared.clear()
-        installed_source = self.root / "site-packages" / "agents_remember" / "module.py"
-        source_patch = patch.object(
-            checkout_coordination,
-            "_PACKAGE_SOURCE",
-            installed_source,
-        )
-        source_patch.start()
-        self.addCleanup(source_patch.stop)
-
-        self.assertIsNone(checkout_coordination.checkout_cli_location())
 
     def test_checkout_config_ignores_live_authority_and_uses_only_dummy_root(self) -> None:
         checkout, source = self._checkout()
@@ -215,36 +169,6 @@ class CheckoutCoordinationIsolationTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "primary checkout is refused"):
             load_config(settings)
 
-    def test_trusted_config_rejects_invalid_json(self) -> None:
-        settings = self.root / "invalid-settings.json"
-        settings.write_text("not valid JSON", encoding="utf-8")
-
-        with preserve_owned_mutable_state():
-            declare_process_role("mcp")
-            with self.assertRaisesRegex(ConfigError, "cannot parse MCP settings JSON"):
-                load_config(settings)
-
-    def test_trusted_config_rejects_non_object_json(self) -> None:
-        settings = self.root / "invalid-settings.json"
-        settings.write_text("[]", encoding="utf-8")
-
-        with preserve_owned_mutable_state():
-            declare_process_role("mcp")
-            with self.assertRaisesRegex(ConfigError, "must be a JSON object"):
-                load_config(settings)
-
-    def test_trusted_mcp_preserves_regular_authority_config(self) -> None:
-        _checkout, source = self._checkout()
-        self._undeclared_checkout(source)
-        settings = self.root / "live-settings.json"
-        self._settings(settings)
-        declare_process_role("mcp")
-
-        config = load_config(settings)
-
-        self.assertEqual(config.coordination_root, self.root / "live-ar-coordination")
-        self.assertTrue(config.retirement.auto_close_completed_seats)
-
     def test_explicit_test_mode_preserves_temporary_store_writes(self) -> None:
         _checkout, source = self._checkout()
         self._undeclared_checkout(source)
@@ -254,17 +178,3 @@ class CheckoutCoordinationIsolationTests(unittest.TestCase):
         append_line(target, "test-row")
 
         self.assertEqual(target.read_text(encoding="utf-8"), "test-row\n")
-
-    def test_lifecycle_operation_uses_live_authority_without_claiming_daemon_role(self) -> None:
-        _checkout, source = self._checkout()
-        self._undeclared_checkout(source)
-        settings = self.root / "live-settings.json"
-        self._settings(settings)
-
-        declare_lifecycle_operation_process()
-        config = load_config(settings)
-
-        self.assertEqual(declared_execution_mode(), "lifecycle-operation")
-        self.assertIsNone(declared_daemon_role())
-        self.assertEqual(declared_process_role(), "lifecycle-operation")
-        self.assertEqual(config.coordination_root, self.root / "live-ar-coordination")

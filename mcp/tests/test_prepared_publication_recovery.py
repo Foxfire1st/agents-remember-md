@@ -29,7 +29,7 @@ def test_real_gate_five_prepares_then_publishes_memory_and_ledger(tmp_path: Path
             "from agents_remember.worktrees.services import bind_worktree_services",
             "begin_pytest_process()",
             "bind_worktree_services(build_default_worktree_services())",
-            "from test_prepared_publication_recovery import _prepare_memory_output_scenario",
+            f"from test_prepared_publication_recovery import {_prepare_memory_output_scenario.__name__}",
             "_prepare_memory_output_scenario(Path(sys.argv[1]))",
         )
     )
@@ -73,7 +73,7 @@ def _prepare_memory_output_scenario(root: Path) -> None:
     )
 
     with pytest.MonkeyPatch.context() as patch:
-        fixture = _fixture(root, patch, live_worker=True, publish_memory=False)
+        fixture = _fixture(root, patch)
     # Restore the scheduler-only code-view stub before exercising the actual owner.
     handoff, view = prepare_code_view(fixture.handoff)
     assert view.disposition == "existing"

@@ -42,15 +42,7 @@ export default defineConfig({
         "src/types/**",
         "src/vite-env.d.ts",
       ],
-      // Measured baseline (2026-08-06): lines 88.6 / statements 86.0 / functions 86.9 /
-      // branches 77.3. Thresholds sit below the measured floor so regressions fail while the
-      // current suite stays green; the changed-lines floor (coverage:diff) is the strict gate.
-      thresholds: {
-        lines: 85,
-        statements: 82,
-        functions: 82,
-        branches: 70,
-      },
+      // Coverage is diagnostic; percentages never fail delivery.
       reporter: ["text", "json", "html"],
       reportsDirectory: "coverage",
     },

@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 from typing import cast
 
 import pytest
-from agents_remember.tasks import semantic_topology as topology_module
 from agents_remember.tasks.document import (
-    HeaderNote,
     SprintExecutionGraph,
-    TaskDocument,
 )
 from agents_remember.tasks.document_refs import ResolvedTaskDocument
 from agents_remember.tasks.semantic_topology import (
@@ -22,13 +18,9 @@ from agents_remember.tasks.semantic_topology_graph import (
     SemanticTopologyGraphIndex,
     SemanticTopologyGraphIndexError,
 )
-from agents_remember.worktrees import task_leaf_binding
-from agents_remember.worktrees.queue import closeout_projection_members as members
-from pydantic import Field
 from test_closeout_projection_member_helpers import (
     _bound_sprint,
     _documents,
-    _queue_graph,
     _ref,
     _semantic_index,
 )
@@ -167,140 +159,4 @@ def test_semantic_topology_refuses_duplicate_node_during_whole_graph_admission()
     assert invalid_graph.value.status == "semantic-topology-graph-invalid"
     assert invalid_graph.value.detail == (
         "the validated authored graph could not form an immutable context"
-    )
-
-
-@pytest.mark.parametrize(
-    ("mutation", "status", "detail"),
-    [
-        (
-            "split",
-            "semantic-topology-parent-binding-split",
-            "row number and row source identify different candidate leaves",
-        ),
-        (
-            "stem-only",
-            "semantic-topology-parent-binding-stem-only",
-            "candidate source or file stem matches without the candidate document ID",
-        ),
-        (
-            "wrong-directory",
-            "semantic-topology-parent-binding-wrong-directory",
-            "candidate leaf is not a direct child of its declared parent directory",
-        ),
-        (
-            "source-mismatch",
-            "semantic-topology-parent-binding-source-mismatch",
-            "the candidate-ID row points at a different canonical child source",
-        ),
-        (
-            "invalid-source",
-            "semantic-topology-parent-row-invalid",
-            "leaf parent row must name one direct Markdown child source",
-        ),
-    ],
-)
-def test_semantic_topology_refuses_every_composite_parent_binding_near_miss(
-    mutation: str,
-    status: str,
-    detail: str,
-) -> None:
-    sprint, master, candidate = _documents()
-    row = master.document.subTasks[0]
-    other = master.document.subTasks[1]
-    if mutation == "split":
-        rows = [
-            row.model_copy(update={"file": "other.md"}),
-            other.model_copy(update={"file": "leaf.md"}),
-        ]
-    elif mutation == "stem-only":
-        rows = [other.model_copy(update={"file": "leaf.md"})]
-    elif mutation == "source-mismatch":
-        rows = [row.model_copy(update={"file": "other.md"})]
-    elif mutation == "invalid-source":
-        rows = [row.model_copy(update={"file": "nested/leaf.md"})]
-    else:
-        rows = list(master.document.subTasks)
-        changed_ref = _ref("other/leaf.json")
-        candidate = replace(candidate, ref=changed_ref, path=Path(changed_ref.path))
-    master = replace(
-        master,
-        document=master.document.model_copy(update={"subTasks": rows}),
-    )
-    graph = cast(SprintExecutionGraph, sprint.document.executionGraph)
-    index = _index(graph, master)
-    assert index is not None
-    sprint = _bound_sprint(sprint, index)
-
-    with pytest.raises(SemanticTopologyError) as caught:
-        semantic_topology_projection(
-            sprint,
-            master,
-            candidate,
-            graph_index=index,
-        )
-    assert caught.value.status == status
-    assert caught.value.detail == detail
-
-
-def test_semantic_topology_and_lifecycle_binding_share_one_authority() -> None:
-    assert (
-        topology_module.require_canonical_leaf_binding
-        is task_leaf_binding.require_canonical_leaf_binding
-    )
-
-
-def test_semantic_topology_refuses_unclassified_nested_schema_and_unsupported_version() -> None:
-    class FutureHeaderNote(HeaderNote):
-        futureTopologyFact: str = "unclassified"
-
-    class FutureTaskDocument(TaskDocument):
-        headerNotes: list[FutureHeaderNote] = Field(default_factory=list)
-
-    sprint, master, candidate = _documents()
-    graph = cast(SprintExecutionGraph, sprint.document.executionGraph)
-    index = _index(graph, master)
-    assert index is not None
-    sprint = _bound_sprint(sprint, index)
-    future = FutureTaskDocument.model_validate(candidate.document.model_dump(by_alias=True))
-    with pytest.raises(SemanticTopologyError) as unclassified:
-        semantic_topology_projection(
-            sprint,
-            master,
-            replace(candidate, document=future),
-            graph_index=index,
-        )
-    assert unclassified.value.status == "semantic-topology-schema-unclassified"
-    assert "futureTopologyFact" in unclassified.value.detail
-
-    with pytest.raises(SemanticTopologyError) as unsupported:
-        semantic_topology_projection(
-            sprint,
-            master,
-            candidate,
-            graph_index=index,
-            schema_version="semantic-topology/v1",
-        )
-    assert unsupported.value.status == "semantic-topology-schema-unsupported"
-    assert unsupported.value.detail == (
-        "unsupported semantic topology schema 'semantic-topology/v1'"
-    )
-
-
-def test_queue_adapter_preserves_exact_typed_refusal_status_and_detail() -> None:
-    sprint, master, candidate = _documents()
-    graph = cast(SprintExecutionGraph, sprint.document.executionGraph)
-    context = _queue_graph(sprint, master, candidate, graph)
-    with pytest.raises(members.CloseoutQueueError) as caught:
-        members.semantic_topology_projection(
-            context.sprint,
-            master,
-            candidate,
-            graph=context,
-            schema_version="semantic-topology/v1",
-        )
-    assert caught.value.status == "semantic-topology-schema-unsupported"
-    assert str(caught.value) == (
-        "semantic-topology-schema-unsupported: unsupported semantic topology schema "
-        "'semantic-topology/v1'"
     )

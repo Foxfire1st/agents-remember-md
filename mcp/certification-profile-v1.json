@@ -179,7 +179,7 @@
       ]
     }
   ],
-  "profileDigest": "32ae69f59178957399523a4cce7687ec1795c7bdca26eb045acb4cacb751751e",
+  "profileDigest": "5096c06a017e237a6a3f3cb6b9e1c703e2304d44831716cbfaf898699f9bfb1d",
   "profileId": "agents-remember-certification",
   "publishedArtifacts": [
     {
@@ -3639,7 +3639,7 @@
         "--output",
         "{selector-output}"
       ],
-      "configurationDigest": "26f6558dc7b8571ef816dd9eadb07d9d09a365e6121d6832b2fcac9d7773341e",
+      "configurationDigest": "e6fe17146ba4ac8ee68c3d94fc076f1de4d69c61f05080e405d12a2eef3fdc72",
       "externalInputs": [],
       "inputUniverse": [
         "configuration and generated projections",

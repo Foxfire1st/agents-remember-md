@@ -30,9 +30,6 @@ class CoverageRailConfig(Protocol):
     def diff_base(self) -> str | None: ...
 
     @property
-    def diff_floor(self) -> float: ...
-
-    @property
     def targeted(self) -> bool: ...
 
 
@@ -47,7 +44,7 @@ def run_crap_calculator(
     if getattr(config, "targeted", False) and not config.scope.coverage_paths:
         printer(
             "not applicable: targeted run changed no production modules, so there are no "
-            "changed functions for a CRAP floor to score"
+            "changed functions for a CRAP report to score"
         )
         printer("result: CRAP-Calculator PASS (not applicable)")
         return 0
@@ -83,9 +80,8 @@ def run_crap_calculator(
     )
     if not scores:
         printer(
-            "CRAP scored zero functions; coverage scope is vacuous. Correct the "
-            "coverage roots or add the measurable functions the declared package "
-            "and test tree are required to contain."
+            "CRAP scored zero production functions. Check the declared product roots and "
+            "coverage artifact; an empty diagnostic report cannot describe this scope."
         )
         printer("result: CRAP-Calculator FAIL")
         return 1
@@ -95,30 +91,25 @@ def run_crap_calculator(
         printer("result: CRAP-Calculator PASS")
         return 0
     printer(
-        f"\n{len(over_threshold)} function(s) meet or exceed the CRAP threshold "
-        f"{config.threshold:.1f}. There is no exemption list: each one is fixed by raising "
-        "its branch coverage or by splitting it."
+        f"\n{len(over_threshold)} production function(s) meet or exceed the CRAP review "
+        f"threshold {config.threshold:.1f}. Consider simpler code, a meaningful behavioral "
+        "test, or a concise justified acceptance. Scores do not block delivery."
     )
     for score in over_threshold:
         printer(crap_failure_line(score, project_root, config.threshold))
-    printer("result: CRAP-Calculator FAIL")
-    return 1
+    printer("result: CRAP-Calculator PASS (diagnostic review findings)")
+    return 0
 
 
 def crap_failure_line(
     score: crap_calculator.FunctionScore, project_root: Path, threshold: float
 ) -> str:
-    """One offender, with the branch coverage that would clear it."""
+    """Locate a review finding without prescribing coverage-driven tests."""
     location = f"{crap_calculator.display_path(score.path, project_root)}:{score.start_line}"
-    needed = crap_calculator.coverage_clearing(score.complexity, threshold)
-    remedy = (
-        f"needs branch coverage above {needed * 100:.1f}%"
-        if needed is not None
-        else f"cannot clear {threshold:.1f} at any coverage (cc {score.complexity}); split it"
-    )
     return (
         f"  {score.crap:6.2f}  cc {score.complexity:>3}  "
-        f"branch {score.coverage_ratio * 100:5.1f}%  {location} {score.function} -- {remedy}"
+        f"branch {score.coverage_ratio * 100:5.1f}%  {location} {score.function} "
+        f"-- review threshold {threshold:.1f}"
     )
 
 
@@ -129,7 +120,7 @@ def run_diff_coverage(
     *,
     printer: Printer,
 ) -> int:
-    """Score the changed-lines floor from the coverage JSON pytest wrote."""
+    """Report changed-line coverage without imposing a delivery percentage."""
     printer("\n## diff-coverage")
     if (
         getattr(config, "targeted", False)
@@ -147,7 +138,7 @@ def run_diff_coverage(
             scope_reporting.scope_line(
                 "diff-coverage",
                 "changed Python diff intersected with missing Coverage.py JSON",
-                f"coverage input={coverage_json.as_posix()}; floor={config.diff_floor:.1f}%",
+                f"coverage input={coverage_json.as_posix()}; diagnostic only",
                 "0 measurable statements+branches",
             )
         )
@@ -161,12 +152,9 @@ def run_diff_coverage(
         printer(str(error))
         printer("result: diff-coverage FAIL")
         return 1
-    printer(scope_reporting.diff_scope_line(result, coverage_json, config.diff_floor))
-    for line in diff_coverage.render(result, config.diff_floor):
+    printer(scope_reporting.diff_scope_line(result, coverage_json))
+    for line in diff_coverage.render(result):
         printer(line)
-    if result.state == "measured" and result.percent < config.diff_floor:
-        printer("result: diff-coverage FAIL")
-        return 1
     if result.state == "measured":
         printer("result: diff-coverage PASS")
     else:

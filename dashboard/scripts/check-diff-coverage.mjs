@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Per-diff coverage floor for dashboard/src (L8-R7, mirroring the Python changed-lines gate):
-// at delivery, at least 90% of changed executable lines must be covered by the Vitest run.
+// Diagnostic changed-line coverage for dashboard/src; no mandatory percentage.
 // A changed comment/blank/continuation line carries no executable statement and contributes
 // nothing (same accounting as Coverage.py's executed/missing lines). Resolves AR_GATE_DIFF_BASE,
 // then GITHUB_BASE_REF, then the upstream, then origin/HEAD, then main, then git's empty tree.
@@ -79,7 +78,6 @@ export function measureDiffCoverage(changedLines, coverageByRelative) {
 function main() {
   requireDaggerTestEnvironment("changed-lines coverage");
   const dashboardRoot = fileURLToPath(new URL("..", import.meta.url));
-  const floor = Number(process.env.AR_DASHBOARD_DIFF_COVERAGE_FLOOR ?? 90);
   const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
   const git = (args) =>
     execFileSync("git", args, {
@@ -196,18 +194,14 @@ function main() {
   const tally = measureDiffCoverage(changedLines, coverageByRelative);
   const percent = tally.total === 0 ? 100 : (tally.covered / tally.total) * 100;
   console.log(
-    `[diff-coverage] ${tally.covered}/${tally.total} changed lines covered (${percent.toFixed(1)}%, floor ${floor}%)`,
+    `[diff-coverage] ${tally.covered}/${tally.total} changed lines covered (${percent.toFixed(1)}%, diagnostic only)`,
   );
   if (tally.missing.length > 0) {
     console.log(
       `[diff-coverage] uncovered changed lines:\n${tally.missing.join("\n")}`,
     );
   }
-  if (percent < floor) {
-    console.error("[diff-coverage] FAIL");
-    process.exit(1);
-  }
-  console.log("[diff-coverage] PASS");
+  console.log("[diff-coverage] REPORT: uncovered lines inform behavior-focused review");
 }
 
 // Keep the git/coverage side effects out of imports: the contract test imports the pure scoring

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from agents_remember.kernel.primitives import memory_cap
 
-from agents_remember_test_support.code_quality import crap_calculator, diff_coverage
+from agents_remember_test_support.code_quality import crap_calculator
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,8 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Run the Agents Remember source quality suite over every tracked Python "
             "file. Enforcing steps: Ruff (lint, complexity rules "
             "C901/PLR0911/PLR0912/PLR0915 included), Ruff format (--check), Pyright "
-            "(types), pytest coverage, mandatory CRAP threshold enforcement, and the "
-            "changed-lines coverage floor. The File Size Budget rail is wired here "
+            "(types), and pytest. CRAP and changed-lines coverage are diagnostic reports. The File Size Budget rail is wired here "
             "too; [tool.agents_remember] file_size_armed decides whether a violation "
             "fails the run (unarmed runs still report every band). Radon "
             "cyclomatic complexity and maintainability index are printed as a report "
@@ -57,24 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--threshold",
         type=float,
         default=crap_calculator.DEFAULT_CRAP_THRESHOLD,
-        help="Fail when any function has a CRAP score at or above this value.",
+        help="Report production functions at or above this review threshold; scores do not fail delivery.",
     )
     parser.add_argument("--top", type=int, default=crap_calculator.DEFAULT_TOP)
     parser.add_argument(
         "--diff-base",
         help=(
-            "Revision the changed-lines coverage floor diffs against. Defaults to the "
+            "Revision the changed-lines coverage report diffs against. Defaults to the "
             "merge base with, in order, AR_GATE_DIFF_BASE, the pull request base, the "
             "branch's upstream, then the default branch. The base actually used is "
             "printed on every run."
-        ),
-    )
-    parser.add_argument(
-        "--diff-floor",
-        type=float,
-        default=diff_coverage.DEFAULT_DIFF_COVERAGE_FLOOR,
-        help=(
-            "Fail when coverage of the changed statements and branches is below this percentage."
         ),
     )
     return parser

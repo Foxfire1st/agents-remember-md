@@ -70,6 +70,10 @@ _INTEGRATION_FILES = pytest.StashKey[frozenset[Path]]()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addini("unit_case_budget", "maximum selected unit cases", type="int", default=1000)
+    parser.addini(
+        "integration_case_budget", "maximum selected integration cases", type="int", default=100
+    )
     parser.addoption(
         "--certify",
         action="store_true",
@@ -118,6 +122,20 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if item.path in config.stash[_INTEGRATION_FILES]:
             item.add_marker(pytest.mark.integration)
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """Enforce maintenance budgets on collected parametrized cases, without another scan."""
+    integration = sum(item.get_closest_marker("integration") is not None for item in session.items)
+    populations = {"unit": len(session.items) - integration, "integration": integration}
+    for lane, count in populations.items():
+        budget = session.config.getini(f"{lane}_case_budget")
+        if budget < 1 or count > budget:
+            raise pytest.UsageError(
+                f"{lane} suite has {count} cases; budget is {budget}. "
+                "Consolidate overlapping protection first. Budget growth requires an explicit "
+                "behavior, case-count, size and runtime tradeoff in the change description."
+            )
 
 
 @pytest.fixture(autouse=True)

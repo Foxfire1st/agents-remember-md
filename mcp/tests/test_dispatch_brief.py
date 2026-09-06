@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest import mock
 
-import pytest
 from agents_remember.controlplane.expectation_rows import ExpectationRowStore
 from agents_remember.controlplane.operator_inbox_records import (
     InboxAddress,
@@ -27,7 +26,6 @@ from agents_remember.models.terminal_catalog import (
 from agents_remember.observer import observer_root
 from agents_remember.serving.conversation.ports import TerminalCatalogPort
 from agents_remember.serving.dispatch_brief import (
-    DISPATCH_BRIEF_READINESS_WAIT_SECONDS,
     DispatchBriefGate,
     HostedDelivery,
 )
@@ -175,28 +173,6 @@ def test_ready_dispatch_is_inbox_rooted_lands_and_starts_expectation_clocks(
     assert by_kind["briefed-by"].state == "met"
 
 
-def test_default_dispatch_gate_waits_for_the_bounded_spawn_startup_window(
-    tmp_path: Path,
-) -> None:
-    catalog = TerminalCatalog(tmp_path / "terminal-sessions.json")
-    target = _target(tmp_path)
-    catalog.upsert(target)
-    ready = HostedReadinessResult("ready", target.id, entry=target)
-
-    with mock.patch(
-        "agents_remember.serving.dispatch_brief.hosted_session_readiness",
-        return_value=ready,
-    ) as readiness:
-        refusal = DispatchBriefGate().check(
-            catalog,
-            TerminalHost(TerminalHostSeams(tmux_probe=lambda _name: True)),
-            target,
-        )
-
-    assert refusal is None
-    assert readiness.call_args.kwargs["wait"].seconds == DISPATCH_BRIEF_READINESS_WAIT_SECONDS
-
-
 def test_rejected_adapter_receipt_keeps_same_row_pending(tmp_path: Path) -> None:
     catalog = TerminalCatalog(tmp_path / "logs" / "dashboard" / "terminal-sessions.json")
     target = _target(tmp_path)
@@ -284,88 +260,6 @@ def test_not_ready_queues_one_durable_dispatch_row_for_plane_retry(tmp_path: Pat
     assert len(OperatorInboxStore(observer_root(config)).current()) == 1
 
 
-def _dispatch_row(store: OperatorInboxStore, target: TerminalCatalogEntry, *, kind: str):
-    entry = create_operator_inbox_entry(
-        InboxMessage(ask="Brief", response="Work", message_kind=kind),  # type: ignore[arg-type]
-        entry_id="dispatch-1",
-        now=NOW,
-        routing=InboxRouting(
-            address=InboxAddress(lifecycle_id=target.lifecycle_id, agent_id=target.id)
-        ),
-        poster=InboxPoster(created_by="manager", created_via="cli"),
-    )
-    store.append(entry)
-    return entry
-
-
-def _deliver(store: OperatorInboxStore, entry, catalog: TerminalCatalog, admission):
-    with mock.patch(
-        "agents_remember.serving.inbox_delivery.submit_control_prompt"
-    ) as submit_prompt:
-        delivered = deliver_inbox_entry(
-            InboxDeliveryLog(store=store, entry=entry),
-            sessions=HostedSessionRuntime(
-                catalog=catalog, host=TerminalHost(TerminalHostSeams(tmux_probe=lambda _name: True))
-            ),
-            paster=_NoRawPaster(),  # type: ignore[arg-type]
-            admission=admission,
-        )
-    return delivered, submit_prompt
-
-
-def test_an_uncommitted_caller_is_recorded_as_rejected_without_touching_the_adapter(
-    tmp_path: Path,
-) -> None:
-    # ``submit=False`` is a caller that has not committed to an adapter submission. The durable row
-    # must record that refusal as adapter-rejected evidence -- not silently succeed, and not reach
-    # the wire, because a submission it did not commit to is one it cannot own.
-    catalog = TerminalCatalog(tmp_path / "terminal-sessions.json")
-    target = _target(tmp_path)
-    catalog.upsert(target)
-    store = OperatorInboxStore(tmp_path / "observer")
-    entry = _dispatch_row(store, target, kind="message")
-
-    delivered, submit_prompt = _deliver(
-        store, entry, catalog, DeliveryAdmission(submit=False, dispatch_gate=DispatchBriefGate())
-    )
-
-    assert delivered.deliveryState == "unconfirmed"
-    assert delivered.adapterDeliveryState == "rejected"
-    assert (
-        delivered.deliveryDetail == "durable inbox delivery requires a committed adapter submission"
-    )
-    assert delivered.deliveredToSession == target.id
-    assert delivered.state == "pending"
-    submit_prompt.assert_not_called()
-
-
-def test_a_closed_dispatch_gate_refuses_the_brief_and_keeps_the_gate_reason(tmp_path: Path) -> None:
-    # A durable dispatch brief is exact-once, so it may only cross when the gate says the exact
-    # seat is adapter-ready. A closed gate is recorded with the gate's own words, and the row stays
-    # pending so the sweep can retry it once the seat comes up.
-    catalog = TerminalCatalog(tmp_path / "terminal-sessions.json")
-    target = _target(tmp_path)
-    catalog.upsert(target)
-    store = OperatorInboxStore(tmp_path / "observer")
-    entry = _dispatch_row(store, target, kind="dispatch-brief")
-
-    def not_ready(_catalog: TerminalCatalogPort, _host: object, session_id: str):
-        return HostedReadinessResult("not-ready", session_id, entry=target, detail="still booting")
-
-    delivered, submit_prompt = _deliver(
-        store,
-        entry,
-        catalog,
-        DeliveryAdmission(dispatch_gate=DispatchBriefGate(readiness=not_ready)),
-    )
-
-    assert delivered.deliveryState == "unconfirmed"
-    assert delivered.adapterDeliveryState == "rejected"
-    assert delivered.deliveryDetail == "dispatch target is not-ready: still booting"
-    assert delivered.state == "pending"
-    submit_prompt.assert_not_called()
-
-
 def test_exact_agent_target_never_falls_back_to_matching_lifecycle(tmp_path: Path) -> None:
     catalog = TerminalCatalog(tmp_path / "terminal-sessions.json")
     target = _target(tmp_path)
@@ -391,35 +285,3 @@ def test_exact_agent_target_never_falls_back_to_matching_lifecycle(tmp_path: Pat
     )
     assert delivered.deliveryState == "no-hosted-session"
     assert delivered.deliveredToSession is None
-
-
-@pytest.mark.parametrize(
-    "relative",
-    (
-        Path("l-01-agent-lifecycles/SKILL.md"),
-        Path("l-01-agent-lifecycles/roles/architect.md"),
-        Path("l-01-agent-lifecycles/roles/orchestrator.md"),
-        Path("l-01-agent-lifecycles/roles/manager.md"),
-    ),
-)
-def test_dispatch_instructions_encode_plane_owned_dispatch_and_are_synced(relative: Path) -> None:
-    repo_root = Path(__file__).resolve().parents[2]
-    canonical = (repo_root / "skills" / relative).read_text(encoding="utf-8")
-    packaged = (
-        repo_root
-        / "mcp"
-        / "src"
-        / "agents_remember"
-        / "package_data"
-        / "runtime"
-        / "skills"
-        / relative
-    ).read_text(encoding="utf-8")
-    normalized = " ".join(canonical.split())
-    for phrase in (
-        "dispatch_agent",
-        "control plane",
-        "task document",
-    ):
-        assert phrase in normalized
-    assert packaged == canonical

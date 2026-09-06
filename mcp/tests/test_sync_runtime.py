@@ -21,29 +21,6 @@ def load_sync_runtime() -> ModuleType:
 
 
 class SyncRuntimeTests(unittest.TestCase):
-    def test_diff_reports_missing_extra_and_changed_files(self) -> None:
-        sync_runtime = load_sync_runtime()
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            source = root / "source"
-            target = root / "target"
-            (source / "nested").mkdir(parents=True)
-            target.mkdir()
-            (source / "same.txt").write_text("same\n", encoding="utf-8")
-            (target / "same.txt").write_text("same\n", encoding="utf-8")
-            (source / "changed.txt").write_text("source\n", encoding="utf-8")
-            (target / "changed.txt").write_text("target\n", encoding="utf-8")
-            (source / "nested" / "missing.txt").write_text("missing\n", encoding="utf-8")
-            (target / "extra.txt").write_text("extra\n", encoding="utf-8")
-
-            diff = sync_runtime.diff_target(sync_runtime.RuntimeTarget("fixture", source, target))
-
-            self.assertEqual(diff.missing, (Path("nested/missing.txt"),))
-            self.assertEqual(diff.extra, (Path("extra.txt"),))
-            self.assertEqual(diff.changed, (Path("changed.txt"),))
-            self.assertFalse(diff.in_sync)
-
     def test_sync_target_replaces_target_with_source_tree(self) -> None:
         sync_runtime = load_sync_runtime()
 

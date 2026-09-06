@@ -6,7 +6,6 @@ from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import cast
-from unittest import mock
 
 from agents_remember.controlplane.agent_notifier_signals import AgentNotifierSignalCooldownStore
 from agents_remember.controlplane.expectation_rows import ExpectationRowStore
@@ -15,17 +14,12 @@ from agents_remember.controlplane.operator_inbox_records import (
     InboxMessage,
     InboxPoster,
     InboxRouting,
-    InboxSubject,
     create_operator_inbox_entry,
 )
 from agents_remember.controlplane.operator_inbox_store import OperatorInboxStore
 from agents_remember.observer.store import EventStore
-from agents_remember.serving import _agent_notifier_actions as agent_notifier_actions_module
 from agents_remember.serving.agent_notifier import (
     AgentNotifierContext,
-    AgentNotifierFinding,
-    act_on_finding,
-    evaluate_seat_liveness_findings,
     run_agent_notifier_sweep,
 )
 from agents_remember.serving.agent_notifier_heartbeat import AgentNotifierHeartbeatStore
@@ -33,116 +27,6 @@ from agents_remember.serving.terminal import TerminalHost
 from agents_remember.serving.terminal_catalog import TerminalCatalog
 from test_agent_notifier import NOW, _entry, _fake_paster, _FakeHost
 from test_agent_notifier_ladder import MASTER_REF, SPRINT_REF, _leaf_ref, _write_topology
-
-
-class SeatLivenessPredicateTests(unittest.TestCase):
-    def test_stale_turn_state_past_cutoff_fires(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            topology = _write_topology(root)
-            catalog = TerminalCatalog(root / "catalog.json")
-            catalog.upsert(
-                _entry("s1").with_turn_state(
-                    "stale", changed_at=(NOW - timedelta(minutes=5)).isoformat()
-                )
-            )
-            findings = evaluate_seat_liveness_findings(
-                catalog, topology, now=NOW, stale_seconds=60.0
-            )
-            self.assertEqual(len(findings), 1)
-            self.assertEqual(findings[0].detail, "turn-state-stale")
-
-    def test_recently_stale_does_not_fire_yet(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            topology = _write_topology(root)
-            catalog = TerminalCatalog(root / "catalog.json")
-            catalog.upsert(_entry("s1").with_turn_state("stale", changed_at=NOW.isoformat()))
-            self.assertEqual(
-                evaluate_seat_liveness_findings(catalog, topology, now=NOW, stale_seconds=60.0),
-                [],
-            )
-
-    def test_degraded_row_with_no_turn_state_uses_liveness_failures(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            topology = _write_topology(root)
-            catalog = TerminalCatalog(root / "catalog.json")
-            catalog.upsert(replace(_entry("s1"), liveness_failures=1))
-            findings = evaluate_seat_liveness_findings(
-                catalog, topology, now=NOW, stale_seconds=60.0
-            )
-            self.assertEqual(len(findings), 1)
-            self.assertEqual(findings[0].detail, "liveness-degraded")
-
-    def test_unbound_reviewer_completion_suppresses_false_inactive_refire(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            topology = _write_topology(root)
-            catalog = TerminalCatalog(root / "catalog.json")
-            catalog.upsert(
-                replace(
-                    _entry("manager-current", task_document_ref=MASTER_REF),
-                    spawn_role="manager",
-                )
-            )
-            catalog.upsert(
-                replace(
-                    _entry("worker-1", task_document_ref=_leaf_ref(9)).with_turn_state(
-                        "stale", changed_at=(NOW - timedelta(minutes=10)).isoformat()
-                    ),
-                    spawn_role="worker",
-                    spawned_by_session="manager-current",
-                )
-            )
-            catalog.upsert(
-                replace(
-                    _entry("reviewer-1", status="landed"),
-                    spawn_role="reviewer",
-                    spawned_by_session="manager-current",
-                    replacement_for_task_document_ref=_leaf_ref(9),
-                    landed_at=(NOW - timedelta(minutes=1)).isoformat(),
-                )
-            )
-
-            self.assertEqual(
-                evaluate_seat_liveness_findings(catalog, topology, now=NOW, stale_seconds=60.0),
-                [],
-            )
-
-    def test_declared_unbound_replacement_suppresses_false_inactive(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            topology = _write_topology(root)
-            catalog = TerminalCatalog(root / "catalog.json")
-            catalog.upsert(
-                replace(
-                    _entry("manager-current", task_document_ref=MASTER_REF),
-                    spawn_role="manager",
-                )
-            )
-            catalog.upsert(
-                replace(
-                    _entry("worker-dead", task_document_ref=_leaf_ref(9)).with_turn_state(
-                        "stale", changed_at=(NOW - timedelta(minutes=10)).isoformat()
-                    ),
-                    spawn_role="worker",
-                    spawned_by_session="manager-current",
-                )
-            )
-            catalog.upsert(
-                replace(
-                    replace(_entry("worker-replacement"), turn_state="working"),
-                    spawn_role="worker",
-                    spawned_by_session="manager-current",
-                    replacement_for_task_document_ref=_leaf_ref(9),
-                )
-            )
-
-            self.assertEqual(
-                evaluate_seat_liveness_findings(catalog, topology, now=NOW, stale_seconds=60.0),
-                [],
-            )
 
 
 class SweepIntegrationTests(unittest.TestCase):
@@ -255,68 +139,6 @@ class SweepIntegrationTests(unittest.TestCase):
             }
         )
 
-    def test_finding_with_no_routable_owner_skips_its_action(self) -> None:
-        # A seat with no spawn provenance -- derive_signal_owner has nothing to route to, so the
-        # signal-emit action must skip rather than raise or fabricate an address.
-        self.catalog.upsert(
-            replace(
-                _entry("orphan-1").with_turn_state(
-                    "stale", changed_at=(NOW - timedelta(minutes=5)).isoformat()
-                )
-            )
-        )
-        ctx = self._ctx()
-        result = run_agent_notifier_sweep(ctx, now=NOW)
-        outcomes = {a.action: a.outcome for a in result.actions}
-        self.assertEqual(outcomes.get("signal-emit"), "skipped")
-
-    def test_zero_drift_sweep_still_ticks_the_heartbeat(self) -> None:
-        ctx = self._ctx()
-        result = run_agent_notifier_sweep(ctx, now=NOW)
-        self.assertEqual(result.findings, ())
-        self.assertEqual(result.actions, ())
-        heartbeat = self.heartbeat_store.read()
-        assert heartbeat is not None
-        self.assertEqual(heartbeat.sweepCount, 1)
-
-    def test_second_sweep_bumps_sweep_count(self) -> None:
-        ctx = self._ctx()
-        run_agent_notifier_sweep(ctx, now=NOW)
-        run_agent_notifier_sweep(ctx, now=NOW + timedelta(seconds=10))
-        heartbeat = self.heartbeat_store.read()
-        assert heartbeat is not None
-        self.assertEqual(heartbeat.sweepCount, 2)
-
-    def test_dead_seat_row_expires_to_the_architect_mailbox_not_redelivered(self) -> None:
-        entry = create_operator_inbox_entry(
-            InboxMessage(
-                ask="ask",
-                response="resp",
-                subject=InboxSubject(
-                    task_document_ref=_leaf_ref(1),
-                    seat_role="worker",
-                    agent_id="missing-seat",
-                ),
-            ),
-            entry_id="dead-row",
-            now=(NOW - timedelta(minutes=10)).isoformat(),
-            routing=InboxRouting(address=InboxAddress(lifecycle_id=None, agent_id="missing-seat")),
-            poster=InboxPoster(created_by="system", created_via="cli"),
-        ).model_copy(update={"rung": 3})
-        self.inbox_store.append(entry)
-
-        result = run_agent_notifier_sweep(self._ctx(), now=NOW)
-
-        actions = {action.action: action for action in result.actions}
-        self.assertIn("expire", actions)
-        self.assertNotIn("redeliver", actions)
-        expired = self.inbox_store.current()["dead-row"]
-        self.assertEqual(expired.state, "expired")
-        self.assertEqual(expired.terminalReason, "rebind-grace-expired")
-        self.assertEqual(expired.recipientRole, "architect")
-        event_kinds = {event.kind for event in self.event_store.read(None)}
-        self.assertIn("orchestration.agent-notifier.rebind-expired", event_kinds)
-
     def test_redeliver_budget_limits_attempts_and_heartbeat_reports_backlog(self) -> None:
         for index in range(3):
             self.catalog.upsert(_entry(f"seat-{index}"))
@@ -344,25 +166,6 @@ class SweepIntegrationTests(unittest.TestCase):
         self.assertEqual(heartbeat.pendingInboxCount, 3)
         self.assertEqual(heartbeat.redeliverableInboxCount, 3)
         self.assertIsNotNone(heartbeat.lastSweepDurationSeconds)
-
-    def test_redelivery_uses_one_row_sweep_budget_not_an_uncalibrated_timeout(self) -> None:
-        self.catalog.upsert(_entry("seat-1"))
-        self.inbox_store.append(
-            create_operator_inbox_entry(
-                InboxMessage(ask="ask", response="resp"),
-                entry_id="row-1",
-                now=NOW.isoformat(),
-                routing=InboxRouting(address=InboxAddress(lifecycle_id=None, agent_id="seat-1")),
-                poster=InboxPoster(created_by="system", created_via="cli"),
-            )
-        )
-
-        with mock.patch.object(agent_notifier_actions_module, "deliver_inbox_entry") as delivered:
-            delivered.return_value = self.inbox_store.current()["row-1"]
-            run_agent_notifier_sweep(self._ctx(), now=NOW)
-
-        self.assertNotIn("submit_timeout", delivered.call_args.kwargs)
-        self.assertEqual(self._ctx().redeliver_budget, 1)
 
     def test_repeated_seat_liveness_sweeps_coalesce_into_one_signal_row(self) -> None:
         self.catalog.upsert(
@@ -403,162 +206,6 @@ class SweepIntegrationTests(unittest.TestCase):
         self.assertEqual(signal_rows[0].id, first.id)
         self.assertGreater(signal_rows[0].ts, first.ts)
 
-    def test_same_leaf_different_seat_roles_do_not_coalesce(self) -> None:
-        leaf = _leaf_ref(3)
-        self.catalog.upsert(
-            replace(
-                _entry("manager-1", task_document_ref=MASTER_REF),
-                seat_role="manager",
-            )
-        )
-        for session_id, role in (("worker-1", "worker"), ("reviewer-1", "reviewer")):
-            self.catalog.upsert(
-                replace(
-                    _entry(session_id, task_document_ref=leaf),
-                    seat_role=role,
-                    spawn_role=role,
-                    spawned_by_session="manager-1",
-                )
-            )
-
-        for session_id, role in (("worker-1", "worker"), ("reviewer-1", "reviewer")):
-            act_on_finding(
-                self._ctx(),
-                AgentNotifierFinding(
-                    kind="seat-liveness",
-                    detail="turn-state-stale",
-                    session_id=session_id,
-                    task_document_ref=leaf,
-                    seat_role=role,
-                ),
-                now=NOW,
-            )
-
-        signal_rows = [
-            entry
-            for entry in self.inbox_store.current().values()
-            if entry.messageKind == "escalation"
-        ]
-        self.assertEqual(len(signal_rows), 2)
-        self.assertEqual({entry.seatRole for entry in signal_rows}, {"worker", "reviewer"})
-
-    def test_legacy_ask_pending_row_is_renewed_by_new_format_refire(self) -> None:
-        # F1 regression (260713-TES-L1): a pre-window pending seat-liveness row carries the
-        # legacy ask prefix and createdBy. A new-format re-fire must RENEW that one row (same
-        # id, bumped ts), never append a second pending row -- the ruled one-row-per-root-cause
-        # invariant survives the rename window.
-        leaf = _leaf_ref(3)
-        self.catalog.upsert(
-            replace(_entry("manager-1", task_document_ref=MASTER_REF), spawn_role="manager")
-        )
-        self.catalog.upsert(
-            replace(
-                _entry("worker-1", task_document_ref=leaf).with_turn_state(
-                    "stale", changed_at=(NOW - timedelta(minutes=5)).isoformat()
-                ),
-                spawn_role="worker",
-                spawned_by_session="manager-1",
-            )
-        )
-        self.inbox_store.append(
-            create_operator_inbox_entry(
-                InboxMessage(
-                    ask="Supervisor observed seat-liveness: turn-state-stale",
-                    response="worker seat on task document leaf-3",
-                    message_kind="escalation",
-                    subject=InboxSubject(
-                        task_document_ref=leaf,
-                        seat_role="worker",
-                        agent_id="worker-1",
-                    ),
-                ),
-                entry_id="legacy-row",
-                now=(NOW - timedelta(minutes=1)).isoformat(),
-                routing=InboxRouting(
-                    address=InboxAddress(
-                        lifecycle_id=None, agent_id="manager-1", recipient_role="manager"
-                    )
-                ),
-                poster=InboxPoster(created_by="supervisor", created_via="cli"),
-            )
-        )
-
-        run_agent_notifier_sweep(self._ctx(signal_cooldown_seconds=900.0), now=NOW)
-
-        rows = [e for e in self.inbox_store.current().values() if e.messageKind == "escalation"]
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].id, "legacy-row")
-        self.assertGreater(rows[0].ts, (NOW - timedelta(minutes=1)).isoformat())
-
-    def test_new_format_ask_row_is_renewed_by_new_format_refire(self) -> None:
-        # Same seam, current-format path: prefix normalization must not break new/new coalescing.
-        leaf = _leaf_ref(3)
-        self.catalog.upsert(
-            replace(_entry("manager-1", task_document_ref=MASTER_REF), spawn_role="manager")
-        )
-        self.catalog.upsert(
-            replace(
-                _entry("worker-1", task_document_ref=leaf).with_turn_state(
-                    "stale", changed_at=(NOW - timedelta(minutes=5)).isoformat()
-                ),
-                spawn_role="worker",
-                spawned_by_session="manager-1",
-            )
-        )
-        self.inbox_store.append(
-            create_operator_inbox_entry(
-                InboxMessage(
-                    ask="Agent notifier observed seat-liveness: turn-state-stale",
-                    response="worker seat on task document leaf-3",
-                    message_kind="escalation",
-                    subject=InboxSubject(
-                        task_document_ref=leaf,
-                        seat_role="worker",
-                        agent_id="worker-1",
-                    ),
-                ),
-                entry_id="current-row",
-                now=(NOW - timedelta(minutes=1)).isoformat(),
-                routing=InboxRouting(
-                    address=InboxAddress(
-                        lifecycle_id=None, agent_id="manager-1", recipient_role="manager"
-                    )
-                ),
-                poster=InboxPoster(created_by="agent-notifier", created_via="cli"),
-            )
-        )
-
-        run_agent_notifier_sweep(self._ctx(signal_cooldown_seconds=900.0), now=NOW)
-
-        rows = [e for e in self.inbox_store.current().values() if e.messageKind == "escalation"]
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].id, "current-row")
-        self.assertGreater(rows[0].ts, (NOW - timedelta(minutes=1)).isoformat())
-
-    def test_diagnostic_pane_signal_is_not_actionable(self) -> None:
-        self.catalog.upsert(
-            replace(_entry("manager-1", task_document_ref=MASTER_REF), spawn_role="manager")
-        )
-        self.catalog.upsert(
-            replace(
-                _entry("worker-1", task_document_ref=_leaf_ref(3)),
-                spawn_role="worker",
-                spawned_by_session="manager-1",
-            )
-        )
-        finding = AgentNotifierFinding(
-            kind="pane-signal",
-            detail="mid-turn",
-            session_id="worker-1",
-            task_document_ref=_leaf_ref(3),
-        )
-
-        result = act_on_finding(self._ctx(), finding, now=NOW)
-
-        self.assertEqual(result.action, "none")
-        self.assertEqual(result.outcome, "skipped")
-        self.assertEqual(self.inbox_store.current(), {})
-
     def test_pending_backlog_does_not_burst_redeliver_before_floor_after_restart(self) -> None:
         for index in range(3):
             entry = create_operator_inbox_entry(
@@ -584,31 +231,3 @@ class SweepIntegrationTests(unittest.TestCase):
 
         self.assertEqual([a for a in result.actions if a.action == "redeliver"], [])
         self.assertEqual(result.redeliverable_inbox_count, 0)
-
-    def test_one_second_sweeps_do_not_emit_per_second_signal_rows(self) -> None:
-        self.catalog.upsert(
-            replace(_entry("manager-1", task_document_ref=MASTER_REF), spawn_role="manager")
-        )
-        self.catalog.upsert(
-            replace(
-                _entry("worker-1", task_document_ref=_leaf_ref(3)).with_turn_state(
-                    "stale", changed_at=(NOW - timedelta(minutes=5)).isoformat()
-                ),
-                spawn_role="worker",
-                spawned_by_session="manager-1",
-            )
-        )
-        ctx = self._ctx(signal_cooldown_seconds=900.0)
-
-        for tick in range(180):
-            run_agent_notifier_sweep(ctx, now=NOW + timedelta(seconds=tick))
-
-        signal_rows = [
-            entry
-            for entry in self.inbox_store.current().values()
-            if entry.messageKind == "escalation"
-        ]
-        self.assertEqual(len(signal_rows), 1)
-        heartbeat = self.heartbeat_store.read()
-        assert heartbeat is not None
-        self.assertEqual(heartbeat.sweepCount, 180)

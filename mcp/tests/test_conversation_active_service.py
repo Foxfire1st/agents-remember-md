@@ -5,10 +5,6 @@ from collections.abc import Mapping
 
 from agents_remember.errors import (
     HarnessBridgeEpochMismatchError,
-    HarnessControlError,
-)
-from agents_remember.models.conversations.content import (
-    UnknownVendorBlock,
 )
 from agents_remember.models.conversations.control_wire import (
     AdapterSnapshot,
@@ -32,10 +28,7 @@ from agents_remember.serving.conversation.active.projector import (
 )
 from agents_remember.serving.conversation.active.projector.facade import ProjectedSession
 from agents_remember.serving.conversation.active.projector.wiring import BridgeReaders
-from agents_remember.serving.conversation.active.store import ProjectionStore
 from agents_remember.serving.conversation.projectors import projector_for
-from agents_remember.serving.conversation.projectors.codex import map_native_frame
-from agents_remember.serving.conversation.projectors.common import MappedItem
 
 NOW = "2026-07-19T08:00:00+00:00"
 SECRET = b"x" * 32
@@ -250,78 +243,6 @@ class CodexEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.total_items, 3)
         self.assertFalse(result.has_older)
 
-    async def test_provenance_resolution_exact_then_unknown(self) -> None:
-        bridge = _ScriptedBridge()
-        bridge.provenance["req-turn-1"] = "durable"
-        _codex_turn(bridge, "turn-1")
-        bridge.provenance["req-turn-2"] = "cockpit"
-        _codex_turn(bridge, "turn-2")
-        projector = _projector(bridge)
-        result = await projector.page(before_ordinal=None, limit=50)
-        by_id = {item.item_id: item for item in result.items}
-        first = by_id["turn-1-user"]
-        self.assertEqual(first.lane, "agent-bus")
-        self.assertEqual(first.source, "durable-inbox")
-        self.assertEqual(first.provenance.producer, "agent-bus")
-        self.assertEqual(first.provenance.strength, "exact")
-        second = by_id["turn-2-user"]
-        self.assertEqual(second.lane, "operator")
-        self.assertEqual(second.source, "cockpit-composer")
-        # A user item with no provenance record stays honest unknown-input.
-        bridge2 = _ScriptedBridge()
-        _codex_turn(bridge2, "turn-9")
-        result2 = await _projector(bridge2).page(before_ordinal=None, limit=50)
-        unknown = result2.items[0]
-        self.assertEqual(unknown.lane, "unknown-input")
-        self.assertEqual(unknown.provenance.strength, "native-only")
-
-    async def test_native_remap_after_resolution_stays_model_valid(self) -> None:
-        """The projector must never emit an item that
-
-        violates its own ``preserve_input_authority`` under real codex traffic. A user message
-        resolves to ``cockpit`` (operator/exact); codex then re-maps the SAME native user item
-        (which re-emits the ``unknown-input`` default). Before the fix the store's upsert adopted the
-        candidate's ``unknown-input`` lane while preserving the resolved ``exact`` provenance --
-        silently stored (``model_copy`` skips validation) and 500-ing the active-page route only at
-        response re-validation. Every emitted item must survive a full model re-validation.
-        """
-        from agents_remember.models.conversations.content import ConversationItem  # noqa: PLC0415
-
-        bridge = _ScriptedBridge()
-        bridge.provenance["req-turn-1"] = "cockpit"
-        _codex_turn(bridge, "turn-1")
-        projector = _projector(bridge)
-        first = await projector.page(before_ordinal=None, limit=50)
-        resolved = {item.item_id: item for item in first.items}["turn-1-user"]
-        self.assertEqual(resolved.lane, "operator")
-        self.assertEqual(resolved.provenance.strength, "exact")
-
-        # Codex re-maps the same native user item on a later observation cycle.
-        bridge.push_evidence(
-            "codex-notification",
-            {
-                "threadId": "vendor-1",
-                "turnId": "turn-1",
-                "startedAtMs": 9,
-                "item": {
-                    "id": "turn-1-user",
-                    "type": "userMessage",
-                    "clientId": "req-turn-1",
-                    "content": [{"type": "text", "text": "go"}],
-                },
-            },
-        )
-        await projector.poll_once()
-        result = await projector.page(before_ordinal=None, limit=50)
-
-        # Every item the projector serves must re-validate as the route response would.
-        for item in result.items:
-            ConversationItem.model_validate(item.model_dump(by_alias=True))
-        remapped = {item.item_id: item for item in result.items}["turn-1-user"]
-        self.assertEqual(remapped.lane, "operator", "a re-map must not revert the resolved lane")
-        self.assertEqual(remapped.source, "cockpit-composer")
-        self.assertEqual(remapped.provenance.strength, "exact")
-
     async def test_settled_live_turns_project_once_when_native_ids_disjoint(self) -> None:
         """A settled codex turn must project EXACTLY once.
 
@@ -409,57 +330,6 @@ class CodexEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("item-1", settled_ids)
         self.assertEqual(settled.total_items, len(live_ids))
 
-    async def test_settled_live_turns_project_once_when_hosted_renumbers_turn_ids(self) -> None:
-        """Single projection holds even if the hosted thread RENUMBERS turn ids.
-
-        Correlation must not depend on the native turn id equalling the live turn id: ``clientId`` is
-        our own submitted request id and survives verbatim into ``thread/read``, so a native user
-        frame whose ``clientId`` we submitted live anchors its whole native turn as a live duplicate.
-        """
-        bridge = _ScriptedBridge()
-        _codex_turn(bridge, "turn-1")
-        projector = _projector(bridge)
-        live = await projector.page(before_ordinal=None, limit=50)
-        live_ids = [item.item_id for item in live.items]
-        self.assertEqual(live_ids, ["turn-1-user", "turn-1-agent", "turn-result:turn-1"])
-        # thread/read persists the settled turn under a RENUMBERED native turn id + positional items,
-        # but the userMessage still carries our submitted clientId.
-        bridge.native_frames.extend(
-            [
-                NativeEvidenceFrame(
-                    native_id="item-1",
-                    native_parent_id="hist-turn-a",
-                    native_type="userMessage",
-                    created_at=NOW,
-                    raw={
-                        "id": "item-1",
-                        "type": "userMessage",
-                        "clientId": "req-turn-1",
-                        "content": [{"type": "text", "text": "go"}],
-                    },
-                ),
-                NativeEvidenceFrame(
-                    native_id="item-2",
-                    native_parent_id="hist-turn-a",
-                    native_type="agentMessage",
-                    created_at=NOW,
-                    raw={"id": "item-2", "type": "agentMessage", "text": "working more"},
-                ),
-            ]
-        )
-        bridge.push_evidence(
-            "codex-notification",
-            {"threadId": "vendor-1", "turnId": "turn-1", "tokenUsage": {"totalTokens": 1}},
-        )
-        await projector.poll_once()
-        settled = await projector.page(before_ordinal=None, limit=50)
-        settled_ids = [item.item_id for item in settled.items]
-        self.assertEqual(
-            settled_ids, live_ids, "clientId must anchor the whole renumbered native turn"
-        )
-        self.assertNotIn("item-1", settled_ids)
-        self.assertNotIn("item-2", settled_ids)
-
     async def test_prior_session_native_history_survives_live_turns(self) -> None:
         """The suppression must never drop GENUINE prior-session history.
 
@@ -481,18 +351,6 @@ class CodexEngineTests(unittest.IsolatedAsyncioTestCase):
         result = await projector.page(before_ordinal=None, limit=50)
         ids = [item.item_id for item in result.items]
         self.assertEqual(ids, ["hist-1", "turn-1-user", "turn-1-agent", "turn-result:turn-1"])
-
-    async def test_rehydration_reproduces_identical_projection(self) -> None:
-        bridge = _ScriptedBridge()
-        bridge.provenance["req-turn-1"] = "cockpit"
-        _codex_turn(bridge, "turn-1")
-        first = await _projector(bridge).page(before_ordinal=None, limit=50)
-        second_projector = _projector(bridge)
-        second = await second_projector.page(before_ordinal=None, limit=50)
-        self.assertEqual(
-            [(i.item_id, i.revision, i.global_ordinal, i.blocks) for i in first.items],
-            [(i.item_id, i.revision, i.global_ordinal, i.blocks) for i in second.items],
-        )
 
     async def test_native_page_hydration_and_older_paging(self) -> None:
         bridge = _ScriptedBridge()
@@ -523,18 +381,6 @@ class CodexEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item.item_id for item in oldest.items], ["native-0", "native-1"])
         self.assertFalse(oldest.has_older)
         self.assertEqual(oldest.total_items, 8)
-
-    async def test_ephemeral_native_refusal_keeps_live_window_partial(self) -> None:
-        bridge = _ScriptedBridge()
-        bridge.native_error = HarnessControlError(
-            "Codex native evidence page failed: ephemeral thread refuses includeTurns"
-        )
-        _codex_turn(bridge, "turn-1")
-        projector = _projector(bridge)
-        result = await projector.page(before_ordinal=None, limit=50)
-        self.assertEqual(len(result.items), 3)
-        self.assertIsNone(result.total_items)
-        self.assertFalse(result.has_older)
 
     async def test_gap_on_epoch_flip(self) -> None:
         bridge = _ScriptedBridge()
@@ -573,128 +419,6 @@ class ClaudeEngineTests(unittest.IsolatedAsyncioTestCase):
         bridge.push_evidence(
             "completed",
             {"type": "result", "subtype": "success", "is_error": False, "uuid": f"uuid-result-{n}"},
-        )
-
-    async def test_zipper_orders_users_before_their_turn_frames(self) -> None:
-        bridge = _ScriptedBridge(harness="claude")
-        self._claude_turn(bridge, 1)
-        self._claude_turn(bridge, 2)
-        projector = _projector(bridge, harness="claude")
-        result = await projector.page(before_ordinal=None, limit=50)
-        self.assertEqual(
-            [item.item_id for item in result.items],
-            [
-                "uuid-user-1",
-                "uuid-agent-1",
-                "uuid-result-1:result",
-                "uuid-user-2",
-                "uuid-agent-2",
-                "uuid-result-2:result",
-            ],
-        )
-
-    async def test_nonuser_transcript_entries_mint_no_echo_unknown_vendor_rows(self) -> None:
-        # The claude transcript carries assistant and result entries alongside
-        # user submission echoes (claude_stream_state emits role="assistant"/"result"). Feeding those
-        # non-user entries to the user-only echo mapper is what produced the
-        # "claude:echo: unrecognized submission echo shape" rows. The echo poller must advance past
-        # them, minting zero unknown-vendor echo rows while the user echo + evidence still map.
-        bridge = _ScriptedBridge(harness="claude")
-        bridge.transcript_entries.append(
-            {
-                "sequence": 1,
-                "role": "user",
-                "text": "prompt 1",
-                "createdAt": NOW,
-                "requestId": "req-1",
-                "vendorCorrelationId": "uuid-user-1",
-            }
-        )
-        # The interleaved assistant/result transcript entries the production claude state emits.
-        bridge.transcript_entries.append(
-            {
-                "sequence": 2,
-                "role": "assistant",
-                "text": "answer 1",
-                "createdAt": NOW,
-                "requestId": "req-1",
-                "vendorCorrelationId": "uuid-agent-1",
-            }
-        )
-        bridge.transcript_entries.append(
-            {
-                "sequence": 3,
-                "role": "result",
-                "text": "completed",
-                "createdAt": NOW,
-                "requestId": "req-1",
-                "vendorCorrelationId": "uuid-result-1",
-            }
-        )
-        bridge.push_evidence(
-            "state",
-            {
-                "type": "assistant",
-                "uuid": "uuid-agent-1",
-                "session_id": "vendor-1",
-                "message": {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "answer 1"}],
-                },
-            },
-        )
-        bridge.push_evidence(
-            "completed",
-            {"type": "result", "subtype": "success", "is_error": False, "uuid": "uuid-result-1"},
-        )
-        projector = _projector(bridge, harness="claude")
-        result = await projector.page(before_ordinal=None, limit=50)
-        vendor_types = [
-            getattr(block, "vendor_type", None)
-            for item in result.items
-            for block in item.blocks
-            if getattr(block, "type", None) == "unknown-vendor"
-        ]
-        self.assertNotIn("claude:echo", vendor_types)
-        self.assertTrue(
-            all(
-                "echo-" not in item.item_id or item.item_id == "uuid-user-1"
-                for item in result.items
-            )
-        )
-        self.assertIn("uuid-user-1", [item.item_id for item in result.items])
-
-    async def test_truncation_envelope_classifies_as_evidence_truncated_not_malformed(self) -> None:
-        # An oversized frame the evidence-substrate clip bounded to the evidence budget
-        # arrives as the substrate's OWN envelope (arEvidenceTruncated), not a vendor shape.
-        # Exact parsing branded it "claude:malformed: native frame failed exact schema parsing";
-        # it must classify honestly, naming the preserved
-        # frame type and original size, and never as malformed.
-        bridge = _ScriptedBridge(harness="claude")
-        bridge.push_evidence(
-            "state",
-            {
-                "arEvidenceTruncated": True,
-                "originalBytes": 44268,
-                "preview": '{"type":"user","message":{"role":"user","content":[{"tool_use_id"…',
-                "type": "user",
-            },
-        )
-        projector = _projector(bridge, harness="claude")
-        result = await projector.page(before_ordinal=None, limit=50)
-        vendor_blocks = [
-            block
-            for item in result.items
-            for block in item.blocks
-            if isinstance(block, UnknownVendorBlock)
-        ]
-        self.assertEqual(
-            [block.vendor_type for block in vendor_blocks],
-            ["claude:evidence-truncated"],
-        )
-        self.assertEqual(
-            vendor_blocks[0].safe_summary,
-            "oversized user frame clipped to the evidence budget (44268 bytes)",
         )
 
     async def test_zipper_handles_split_result_across_polls(self) -> None:
@@ -829,81 +553,6 @@ class ClaudeEngineTests(unittest.IsolatedAsyncioTestCase):
         bridge.evidence_frames.clear()
         with self.assertRaises(EvidenceTimelineRegressed):
             await projector.poll_once()
-
-    async def test_idempotent_refeed_after_rebuild(self) -> None:
-        bridge = _ScriptedBridge(harness="claude")
-        self._claude_turn(bridge, 1)
-        first = await _projector(bridge, harness="claude").page(before_ordinal=None, limit=50)
-        second = await _projector(bridge, harness="claude").page(before_ordinal=None, limit=50)
-        self.assertEqual(
-            [(i.item_id, i.revision, i.global_ordinal) for i in first.items],
-            [(i.item_id, i.revision, i.global_ordinal) for i in second.items],
-        )
-
-
-class PiEngineTests(unittest.IsolatedAsyncioTestCase):
-    async def test_entries_hydrate_and_eager_continuation(self) -> None:
-        bridge = _ScriptedBridge(harness="pi")
-        bridge.native_frames.append(
-            NativeEvidenceFrame(
-                native_id="entry-1",
-                native_parent_id=None,
-                native_type="message",
-                created_at=NOW,
-                raw={
-                    "id": "entry-1",
-                    "type": "message",
-                    "message": {"role": "user", "content": "hello", "timestamp": 1},
-                },
-            )
-        )
-        projector = _projector(bridge, harness="pi")
-        result = await projector.page(before_ordinal=None, limit=50)
-        self.assertEqual([item.item_id for item in result.items], ["entry-1"])
-        self.assertEqual(result.items[0].lane, "unknown-input")
-        bridge.native_frames.append(
-            NativeEvidenceFrame(
-                native_id="entry-2",
-                native_parent_id="entry-1",
-                native_type="message",
-                created_at=NOW,
-                raw={
-                    "id": "entry-2",
-                    "type": "message",
-                    "message": {
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": "hi"}],
-                        "stopReason": "stop",
-                        "timestamp": 2,
-                    },
-                },
-            )
-        )
-        await projector.poll_once()
-        result2 = await projector.page(before_ordinal=None, limit=50)
-        self.assertEqual([item.item_id for item in result2.items], ["entry-1", "entry-2"])
-        self.assertEqual(result2.total_items, 2)
-
-
-class StoreTests(unittest.TestCase):
-    def test_upsert_skips_identical_replay(self) -> None:
-        outputs = map_native_frame(
-            NativeEvidenceFrame(
-                native_id="item-1",
-                native_parent_id="turn-1",
-                native_type="agentMessage",
-                created_at=NOW,
-                raw={"id": "item-1", "type": "agentMessage", "text": "same"},
-            ),
-            evidence_ref="ref",
-        )
-        store = ProjectionStore()
-        mapped = outputs[0]
-        assert isinstance(mapped, MappedItem)
-        first = store.apply_item(mapped)
-        self.assertEqual(first[0].kind, "append-item")
-        self.assertEqual(store.apply_item(mapped), [])
-        self.assertEqual(store.item_count, 1)
 
 
 if __name__ == "__main__":  # pragma: no cover

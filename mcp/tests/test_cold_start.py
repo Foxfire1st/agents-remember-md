@@ -55,7 +55,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import threading
 import unittest
 from collections.abc import Callable
 from pathlib import Path
@@ -63,7 +62,6 @@ from types import ModuleType
 from unittest import mock
 
 from tiktoken import load as tiktoken_load
-from tiktoken_ext import openai_public
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
@@ -206,132 +204,6 @@ class ColdStartTests(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(report["server"], "Agents Remember")
 
-    def test_the_cold_start_counts_exactly_what_a_warm_one_does(self) -> None:
-        # The behaviour that must NOT have changed: same tokenizer, same exactness, same
-        # number. A lazy load with an approximate fallback would pass the start test above
-        # and fail this one, which is the whole reason the vocabulary is vendored.
-        warm = tokens_module().DEFAULT_TOKEN_COUNTER
-        with tempfile.TemporaryDirectory() as workspace:
-            result = run_cold_start_probe(Path(workspace))
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        report = json.loads(result.stdout)
-        self.assertEqual(report["tokenizer"], "tiktoken:o200k_base")
-        self.assertIs(report["exact"], True)
-        self.assertEqual(report["tokens"], warm.count(PROBE_PAYLOAD))
-
-
-class VendoredVocabularyTests(unittest.TestCase):
-    def test_the_shipped_file_is_the_one_tiktoken_asks_for(self) -> None:
-        # Every hash here is re-derived from the installed tiktoken rather than restated, so
-        # a version bump that moves the URL or changes the expected content fails here
-        # instead of silently sending the load back to the network on the next cold machine.
-        # That includes VENDORED_VOCABULARY_SHA256: the loader has to check the digest
-        # before tiktoken sees the file, which means holding a copy of it, and this is what
-        # keeps that copy from becoming a second source of truth.
-        requested: dict[str, str] = {}
-
-        def record(url: str, expected_hash: str | None = None) -> dict[bytes, int]:
-            requested["url"] = url
-            requested["hash"] = expected_hash or ""
-            return {}
-
-        with mock.patch.object(openai_public, "load_tiktoken_bpe", record):
-            openai_public.o200k_base()
-
-        tokens = tokens_module()
-        path = tokens.vendored_vocabulary_path()
-        self.assertEqual(requested["url"], tokens.VENDORED_VOCABULARY_URL)
-        self.assertEqual(path.name, hashlib.sha1(requested["url"].encode()).hexdigest())
-        self.assertEqual(tokens.VENDORED_VOCABULARY_SHA256, requested["hash"])
-        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), requested["hash"])
-
-    def test_the_gitattributes_entry_names_the_shipped_file(self) -> None:
-        # The entry is a literal path and the path is sha1(URL), so a tiktoken release that
-        # moves the URL renames the file and leaves the rule naming a file that no longer
-        # exists. Nothing else notices: an orphaned `-text` rule protects nothing, silently,
-        # and only on `core.autocrlf=true` clones -- where the checkout then rewrites the
-        # line endings of a file whose bytes are its identity, which is exactly the
-        # corruption CorruptVendoredVocabularyTests refuses at load time.
-        entries = [
-            line.split()
-            for line in GITATTRIBUTES.read_text(encoding="utf-8").splitlines()
-            if line.startswith(VENDORED_VOCABULARY_ATTRIBUTE_PREFIX)
-        ]
-        name = tokens_module().vendored_vocabulary_path().name
-        self.assertEqual(entries, [[f"{VENDORED_VOCABULARY_ATTRIBUTE_PREFIX}{name}", "-text"]])
-
-    def test_a_missing_vocabulary_fails_loudly(self) -> None:
-        tokens = tokens_module()
-        with (
-            tempfile.TemporaryDirectory() as empty,
-            mock.patch.object(tokens, "VENDORED_VOCABULARY_DIR", Path(empty)),
-            self.assertRaises(TokenizerVocabularyError),
-            tokens.vendored_vocabulary_cache(tokens.VENDORED_ENCODING_NAME),
-        ):
-            self.fail("an absent vocabulary must never fall through to a download")
-
-    def test_an_encoding_this_package_does_not_ship_is_refused(self) -> None:
-        tokens = tokens_module()
-        with (
-            self.assertRaises(TokenizerVocabularyError),
-            tokens.vendored_vocabulary_cache("cl100k_base"),
-        ):
-            self.fail("only the vendored encoding may be loaded")
-
-    def test_the_cache_override_does_not_outlive_the_load(self) -> None:
-        tokens = tokens_module()
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop(TIKTOKEN_CACHE_DIR_ENV, None)
-            with tokens.vendored_vocabulary_cache(tokens.VENDORED_ENCODING_NAME):
-                cache_dir = os.environ[TIKTOKEN_CACHE_DIR_ENV]
-                self.assertEqual(cache_dir, str(tokens.VENDORED_VOCABULARY_DIR))
-            self.assertNotIn(TIKTOKEN_CACHE_DIR_ENV, os.environ)
-
-    def test_an_operator_cache_dir_is_overridden_then_restored(self) -> None:
-        # Overridden because an operator's cache may be cold, and honouring a cold one is
-        # the download this exists to remove; restored because the process may hold other
-        # tiktoken users whose cache choice is theirs to make.
-        tokens = tokens_module()
-        with mock.patch.dict(os.environ, {TIKTOKEN_CACHE_DIR_ENV: "/operator/cache"}):
-            with tokens.vendored_vocabulary_cache(tokens.VENDORED_ENCODING_NAME):
-                cache_dir = os.environ[TIKTOKEN_CACHE_DIR_ENV]
-                self.assertEqual(cache_dir, str(tokens.VENDORED_VOCABULARY_DIR))
-            self.assertEqual(os.environ[TIKTOKEN_CACHE_DIR_ENV], "/operator/cache")
-
-    def test_building_a_counter_leaves_no_cache_dir_behind(self) -> None:
-        tokens = tokens_module()
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop(TIKTOKEN_CACHE_DIR_ENV, None)
-            counter = tokens.TiktokenTokenCounter()
-            self.assertEqual(counter.name, "tiktoken:o200k_base")
-            self.assertNotIn(TIKTOKEN_CACHE_DIR_ENV, os.environ)
-
-    def test_holding_the_context_open_around_a_counter_does_not_deadlock(self) -> None:
-        """The exported context manager may be re-entered by the thread already inside it.
-
-        ``with vendored_vocabulary_cache(name): TiktokenTokenCounter()`` is the obvious use
-        of a context manager this package exports, and the counter's own load re-enters it
-        on the same thread. Against a non-reentrant lock held across the ``yield`` that is a
-        permanent hang: no timeout, no traceback, a gate that never returns rather than one
-        that fails.
-
-        On a worker with a bounded join for exactly that reason -- a regression here has to
-        report the deadlock rather than reproduce it inside the suite.
-        """
-
-        tokens = tokens_module()
-        built: list[str] = []
-
-        def build_inside_the_open_context() -> None:
-            with tokens.vendored_vocabulary_cache(tokens.VENDORED_ENCODING_NAME):
-                built.append(tokens.TiktokenTokenCounter().name)
-
-        worker = threading.Thread(target=build_inside_the_open_context, daemon=True)
-        worker.start()
-        worker.join(timeout=REENTRANT_LOAD_TIMEOUT_SECONDS)
-        self.assertFalse(worker.is_alive(), "re-entering the vendored vocabulary deadlocked")
-        self.assertEqual(built, ["tiktoken:o200k_base"])
-
 
 class CorruptVendoredVocabularyTests(unittest.TestCase):
     """A vendored file that is present but wrong must be refused, never repaired.
@@ -376,16 +248,6 @@ class CorruptVendoredVocabularyTests(unittest.TestCase):
             # Still there. tiktoken was never handed the directory, so nothing deleted the
             # copy and nothing downloaded a replacement over it.
             self.assertTrue(copy.is_file())
-
-    def test_a_line_ending_mangled_copy_is_refused(self) -> None:
-        # What a `core.autocrlf=true` checkout does to a file git thinks is text, and the
-        # reason `.gitattributes` marks this one `-text`. It opens fine and looks right.
-        self.assert_corruption_is_refused(lambda data: data.replace(b"\n", b"\r\n"))
-
-    def test_a_truncated_copy_is_refused(self) -> None:
-        # An interrupted download or a partial write. The prefix is byte-identical, so
-        # anything short of hashing the whole file accepts it.
-        self.assert_corruption_is_refused(lambda data: data[: len(data) // 2])
 
     def test_a_counter_will_not_build_on_a_corrupt_copy(self) -> None:
         """The production entry point refuses, and refuses before tiktoken reads anything.

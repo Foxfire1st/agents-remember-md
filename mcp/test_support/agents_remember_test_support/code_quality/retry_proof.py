@@ -105,7 +105,6 @@ class RetryInputs:
     base_revision: str
     threshold: float
     top: int
-    diff_floor: float
     coverage_paths: tuple[Path, ...]
     test_arguments: tuple[Path, ...]
     untracked_paths: tuple[Path, ...]
@@ -444,7 +443,6 @@ def _compatibility_key(inputs: RetryInputs) -> str:
         "baseRevision": inputs.base_revision,
         "threshold": inputs.threshold,
         "top": inputs.top,
-        "diffFloor": inputs.diff_floor,
         "coveragePaths": [path.as_posix() for path in inputs.coverage_paths],
         "laneDigest": inputs.lane_digest,
         "laneTrigger": inputs.lane_trigger,

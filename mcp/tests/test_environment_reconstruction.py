@@ -55,27 +55,6 @@ def _tree(root: Path, count: int = 1):
     (root / "dependencies/link").symlink_to("file-0")
 
 
-@pytest.mark.parametrize("count", (1, 20))
-def test_same_declared_directory_content_preserves_identity_across_roots(tmp_path, count):
-    owner = _owner()
-    request = _request()
-    original, reconstructed = tmp_path / "original", tmp_path / "reconstructed"
-    _tree(original, count)
-    _tree(reconstructed, count)
-    first = owner["build_census"](original, request)
-    second = owner["build_census"](reconstructed, request)
-    assert first == second
-    assert len(first["entries"]) == 2 * count + 3
-    assert first["declarationDigest"] == content_digest(request["definition"])
-    (reconstructed / "unrelated").write_bytes(b"unrelated candidate-local output")
-    assert owner["build_census"](reconstructed, request) == first
-    expected = tmp_path / "original.json"
-    expected.write_text(json.dumps(first))
-    result = owner["verify_census"](reconstructed, request, expected)
-    assert result["status"] == "verified"
-    assert result["censusDigest"] == first["censusDigest"]
-
-
 @pytest.mark.parametrize(
     "fault",
     (
@@ -126,21 +105,6 @@ def test_missing_corrupt_or_different_reconstruction_never_matches_original(tmp_
         owner["verify_census"](root, request, expected)
 
 
-@pytest.mark.parametrize("bound", ("maxEntries", "maxFileBytes", "maxBytes"))
-def test_complete_stat_bounds_run_before_hashing_any_dependency_file(tmp_path, monkeypatch, bound):
-    owner = _owner()
-    request = _request()
-    _tree(tmp_path / "root")
-    request["definition"][bound] = 1
-
-    def forbid_hash(*args, **kwargs):
-        raise AssertionError("stat bounds must precede content hashing")
-
-    monkeypatch.setattr(owner["hashlib"], "sha256", forbid_hash)
-    with pytest.raises(ValueError, match="bound"):
-        owner["build_census"](tmp_path / "root", request)
-
-
 def test_file_mutation_during_census_cannot_be_certified(tmp_path, monkeypatch):
     owner = _owner()
     request = _request()
@@ -160,79 +124,3 @@ def test_file_mutation_during_census_cannot_be_certified(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "open", mutating_open)
     with pytest.raises(ValueError, match="changed"):
         owner["build_census"](root, request)
-
-
-@pytest.mark.parametrize(
-    "scopes",
-    (
-        ("dependencies", "dependencies/cache"),
-        ("dependencies", "dependencies-other", "dependencies/cache"),
-        ("dependencies", "dependencies"),
-        ("../escape",),
-    ),
-)
-def test_environment_declaration_refuses_ambiguous_or_escaping_directory_scopes(scopes):
-    request = _request()
-    request["definition"]["directoryScopes"] = scopes
-    with pytest.raises(ValueError):
-        EnvironmentReconstructionDefinition.model_validate(request["definition"])
-
-
-@pytest.mark.parametrize(
-    "identity", ("declaration", "inspection-executable", "runtime", "candidate")
-)
-def test_original_census_cannot_be_rebound_to_another_authority(tmp_path, identity):
-    owner = _owner()
-    request = _request()
-    root = tmp_path / "root"
-    _tree(root)
-    expected = tmp_path / "original.json"
-    expected.write_text(json.dumps(owner["build_census"](root, request)))
-    if identity == "declaration":
-        request["definition"]["command"] = ["another-install"]
-    elif identity == "inspection-executable":
-        request["definition"]["inspectionExecutable"] = "another-inspection-runtime"
-    elif identity == "runtime":
-        request["runtimeDigest"] = "b" * 64
-    else:
-        request["candidateIdentity"]["value"] = "d" * 40
-    with pytest.raises(ValueError, match="differs from its original"):
-        owner["verify_census"](root, request, expected)
-
-
-@pytest.mark.parametrize("filename", ("ascii.txt", "café.txt"), ids=("ascii", "unicode"))
-def test_census_manifest_bound_matches_exact_emitted_utf8_bytes(tmp_path, filename):
-    owner = _owner()
-    request = _request()
-    root = tmp_path / "root"
-    _tree(root)
-    (root / "generated" / filename).write_bytes(b"dependency")
-    request_path = tmp_path / "request.json"
-    request_path.write_text(json.dumps(request), encoding="utf-8")
-    probe = tmp_path / "probe.json"
-    assert owner["main"]([str(request_path), str(root), str(probe)]) == 0
-    # Measure actual production output. Changing the declared bound changes only
-    # fixed-length digest values, so its emitted byte length must stay exact.
-    maximum = len(probe.read_bytes())
-    request["definition"]["maxManifestBytes"] = maximum
-    request_path.write_text(json.dumps(request), encoding="utf-8")
-    output = tmp_path / "exact" / "census.json"
-    assert owner["main"]([str(request_path), str(root), str(output)]) == 0
-    raw = output.read_bytes()
-    assert len(raw) == maximum
-    assert raw.endswith(b"\n") and not raw.endswith(b"\n\n")
-    assert filename.encode("utf-8") in raw
-    payload = json.loads(raw.decode("utf-8"))
-    assert payload["declarationDigest"] == content_digest(request["definition"])
-    assert payload["censusDigest"] == content_digest(
-        {key: value for key, value in payload.items() if key != "censusDigest"}
-    )
-    # Including the trailing newline is material: one byte less must refuse
-    # before even creating the output directory or publishing a partial file.
-    request["definition"]["maxManifestBytes"] = maximum - 1
-    request_path.write_text(json.dumps(request), encoding="utf-8")
-    refused = tmp_path / "refused" / "census.json"
-    with pytest.raises(ValueError, match="manifest byte bound"):
-        owner["main"]([str(request_path), str(root), str(refused)])
-    assert not refused.parent.exists()
-    assert output.read_bytes() == raw

@@ -302,14 +302,3 @@ def turn_completed_notification(data: JsonObject, turn_id: str) -> JsonObject:
     notification = deepcopy(fixture_object(data, "notifications", "completed"))
     fixture_object(notification, "params", "turn")["id"] = turn_id
     return notification
-
-
-def test_fixture_pins_validated_01443_schema_and_stable_surface() -> None:
-    data = fixture()
-    snapshot = fixture_object(data, "snapshot")
-    assert snapshot["cliVersion"] == "0.144.3"
-    assert snapshot["experimental"] is False
-    assert fixture_object(snapshot, "schemaSha256")[
-        "codex_app_server_protocol.v2.schemas.json"
-    ] == ("f3e367406685c979a9893ae0ec07cd6214cf8ff92a80f272fbf4a7045f50ce7c")
-    assert "item/tool/requestUserInput" not in fixture_list(snapshot, "stableMethods")

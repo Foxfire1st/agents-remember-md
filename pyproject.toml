@@ -119,10 +119,11 @@ ignore = ".git,.hg,.mypy_cache,.pytest_cache,.ruff_cache,.venv,venv,node_modules
 no_assert = false
 
 [tool.pytest.ini_options]
-# The first pytest configuration this repository has ever had. There was no
-# `pytest.ini`, `setup.cfg` or `tox.ini` either, so every strictness switch below was
-# off by default and there was nowhere to declare a marker.
 minversion = "9.0"
+# Count parametrized items. Budget growth needs a documented protection/cost tradeoff,
+# not coverage-driven additions or silently raising these limits.
+unit_case_budget = 1000
+integration_case_budget = 150
 
 # The single declaration of where the suite lives. `code_quality/check.py` reads this
 # key to build its pytest step, so the wrapper no longer carries a second copy that can
@@ -161,16 +162,6 @@ xfail_strict = true
 # Each ignore is pinned to a message *and* a category, so an ignore can only ever silence
 # the exact notice it was measured against and never a class of them.
 #
-# Every entry left is third party and unreachable from here. The two that were ours were
-# fixed rather than ignored, in this same change: `providers/grepai/seed.py` now enters its
-# `Popen` as a context manager, so a `stdout=PIPE` caller's read end is closed by the code
-# that opened it (test_seed_timeouts StallWatchdogTests, 4 tests); `_spawn_sleeper` in
-# test_dashboard_daemon.py closes the readiness pipe it reads one line from (StopTests, 2
-# tests); and the dashboard sim's throwaway coordination root is now closed by its owner --
-# `cli/dashboard.py::run` after the server stops, and `SimReplayTests._build_sim` via
-# addCleanup (test_serving.py, 5 tests). `mcp/tests/test_code_quality_check.py::
-# test_the_warning_ignore_list_is_capped` asserts the exact remaining count, so an entry
-# cannot be added or paid off without a visible edit to a test.
 filterwarnings = [
   "error",
 
@@ -190,7 +181,6 @@ filterwarnings = [
 # Optional live boundaries require explicit environment opt-ins and delivery execution.
 # Ordinary pytest defaults to -m 'not integration'; use -m integration for boundary
 # checks or -m '' for the combined population. --certify adds Dagger evidence services.
-# scripts/run-gated-integration.py selects the separately enabled live routes.
 markers = [
   "integration: real publication, interruption, ownership, application wiring or repository boundary",
   "evidence_unit: retained delivery evidence category",
@@ -204,13 +194,5 @@ markers = [
   # architecture surface. It is explicit here so strict collection never depends on another
   # plugin incidentally registering the same word.
   "fitness: inherited S1-S4 architecture selector; evidence category remains manifest-owned",
-  "ar_run_pi_rpc_smoke: opt in with AR_RUN_PI_RPC_SMOKE=1 -- installs and drives the pinned Pi RPC build (test_pi_rpc_real_smoke.py: 1 class)",
-  "ar_run_control_plane_installed: opt in with AR_RUN_CONTROL_PLANE_INSTALLED=1 -- drives installed Codex and Pi runtimes through the control-plane seam (test_harness_control_plane_installed.py: 2 classes)",
-  "ar_run_control_installed: opt in with AR_RUN_CONTROL_INSTALLED=1 -- drives installed runtimes through the L3 control routes (test_conversation_control_installed.py: 2 classes)",
-  "ar_run_evidence_installed: opt in with AR_RUN_EVIDENCE_INSTALLED=1 -- drives installed runtimes through the production evidence seam (test_harness_control_evidence_installed.py: 2 classes)",
-  "ar_claude_stream_smoke: opt in with AR_CLAUDE_STREAM_SMOKE=1 -- live Claude stream-json smoke against the installed binary (test_harness_control_claude_smoke.py: 1 class)",
-  "ar_codex_app_server_live_smoke: opt in with AR_CODEX_APP_SERVER_LIVE_SMOKE=1 -- credential-safe live Codex app-server handshake, sends no prompt (test_codex_app_server_live.py: 1 test)",
-  "ar_codex_app_server_live_conformance: opt in with AR_CODEX_APP_SERVER_LIVE_CONFORMANCE=1 -- bounded live Codex conformance, sends two tiny turns (test_codex_app_server_live.py: 1 test)",
-  # Same hazard, older naming: an environment-gated integration path that predates the AR_ prefix.
-  "agents_remember_real_mcp_config: opt in by pointing AGENTS_REMEMBER_REAL_MCP_CONFIG at a real MCP config -- real MCP server integration (test_tools.py: 1 class)",
+
 ]

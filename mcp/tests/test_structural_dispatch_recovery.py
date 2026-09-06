@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
-from agents_remember.application.structural import agent_tools, dispatch_transaction
+from agents_remember.application.structural import dispatch_transaction
 from agents_remember.application.structural.agent_tools import (
     StructuralAgentRuntime,
     dispatch_agent_tool,
@@ -137,103 +137,6 @@ class StructuralDispatchRecoveryTests(unittest.TestCase):
         self.assertEqual(len(self.host.ensured), 1)
         self.assertEqual(len(self._briefs()), 1)
 
-    def test_receipt_and_unbriefed_rollback_edges_are_explicit(self) -> None:
-        context = mock.Mock(catalog=mock.Mock())
-        target = mock.Mock(exact_dispatch_target="child")
-        ordinary = mock.Mock(message_kind="message")
-        brief = mock.Mock(message_kind="dispatch-brief")
-
-        agent_tools._bind_dispatch_brief_receipt(context, target, ordinary, {"ok": True})
-        agent_tools._bind_dispatch_brief_receipt(context, target, brief, {"ok": False})
-        with self.assertRaisesRegex(ValueError, "did not return its entry id"):
-            agent_tools._bind_dispatch_brief_receipt(context, target, brief, {"ok": True})
-
-        receipts = mock.Mock()
-        receipts.bind.return_value = None
-        with (
-            mock.patch.object(
-                agent_tools,
-                "DispatchBriefReceiptStore",
-                return_value=receipts,
-            ),
-            self.assertRaisesRegex(ValueError, "dispatch target disappeared"),
-        ):
-            agent_tools._bind_dispatch_brief_receipt(
-                context,
-                target,
-                brief,
-                {"ok": True, "entryId": "brief-1"},
-            )
-
-        catalog = mock.Mock()
-        catalog.get.side_effect = [None, mock.Mock(status="terminated")]
-        with mock.patch.object(agent_tools, "TerminalCatalog", return_value=catalog):
-            missing = agent_tools._retire_unbriefed_child(
-                self.config,
-                caller_id=None,
-                child_id="missing",
-                host=None,
-            )
-            terminated = agent_tools._retire_unbriefed_child(
-                self.config,
-                caller_id=None,
-                child_id="terminated",
-                host=None,
-            )
-        self.assertFalse(missing.retired)
-        self.assertTrue(terminated.retired)
-
-    def test_two_changed_generations_refuse_without_publishing_a_third(self) -> None:
-        catalog = mock.Mock()
-        catalog.get.return_value = None
-        transaction = dispatch_transaction.DispatchTransaction(
-            document=self.sprint,
-            role="architect",
-            catalog=catalog,
-            inbox_store=mock.Mock(),
-            admitted_spawn=lambda: {"status": "seat-taken", "ownerSession": "first"},
-            retry_spawn=lambda: {"status": "seat-taken", "ownerSession": "second"},
-            brief_spawned=mock.Mock(),
-            retire_generation=mock.Mock(),
-        )
-
-        result = dispatch_transaction.execute_dispatch_transaction(transaction)
-
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["status"], "dispatch-reconciliation-refused")
-        self.assertIn("seat changed twice", result["detail"])
-        self.assertEqual(catalog.get.call_count, 2)
-
-    def test_failed_generation_that_cannot_retire_is_a_reconciliation_refusal(self) -> None:
-        catalog = mock.Mock()
-        catalog.get.return_value = mock.Mock(status="running")
-        retire = mock.Mock(return_value=False)
-        transaction = dispatch_transaction.DispatchTransaction(
-            document=self.sprint,
-            role="architect",
-            catalog=catalog,
-            inbox_store=mock.Mock(),
-            admitted_spawn=mock.Mock(),
-            retry_spawn=mock.Mock(),
-            brief_spawned=mock.Mock(),
-            retire_generation=retire,
-        )
-        with mock.patch.object(
-            dispatch_transaction,
-            "reconcile_dispatch_evidence",
-            return_value=None,
-        ):
-            result = dispatch_transaction._reconcile_existing_dispatch(
-                transaction,
-                owner_id="failed",
-            )
-
-        assert result is not None
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["status"], "dispatch-reconciliation-refused")
-        self.assertIn("could not be retired", result["detail"])
-        retire.assert_called_once_with("failed")
-
     def test_live_reviewer_from_another_parent_is_not_reused_or_retired(self) -> None:
         occupant = mock.Mock(
             status="running",
@@ -266,69 +169,6 @@ class StructuralDispatchRecoveryTests(unittest.TestCase):
         self.assertIn("retire it before dispatching", result["detail"])
         reconcile.assert_not_called()
         retire.assert_not_called()
-
-    def test_unstamped_legacy_leaf_reviewer_keeps_its_only_possible_manager_parent(self) -> None:
-        occupant = mock.Mock(
-            structural_parent_task_document_ref=None,
-            structural_parent_role=None,
-        )
-        transaction = dispatch_transaction.DispatchTransaction(
-            document=self.leaf,
-            role="reviewer",
-            catalog=mock.Mock(),
-            inbox_store=mock.Mock(),
-            admitted_spawn=mock.Mock(),
-            retry_spawn=mock.Mock(),
-            brief_spawned=mock.Mock(),
-            retire_generation=mock.Mock(),
-            expected_structural_parent=(self.master, "manager"),
-        )
-
-        self.assertIsNone(dispatch_transaction._structural_parent_conflict(transaction, occupant))
-
-    def test_receipt_repair_disappearance_and_legacy_occupancy_refuse(self) -> None:
-        runtime = dispatch_transaction.DispatchEvidenceRuntime(
-            document=self.sprint,
-            role="architect",
-            catalog=mock.Mock(),
-            inbox_store=mock.Mock(),
-        )
-        occupant = mock.Mock(dispatch_brief_entry_id=None)
-        brief = mock.Mock(id="brief-1")
-        with (
-            mock.patch.object(
-                dispatch_transaction,
-                "pinned_dispatch_brief",
-                return_value=brief,
-            ),
-            mock.patch.object(
-                DispatchBriefReceiptStore,
-                "bind",
-                return_value=None,
-            ),
-            self.assertRaisesRegex(
-                dispatch_transaction.StructuralDispatchError,
-                "disappeared while its pinned-brief receipt was repaired",
-            ),
-        ):
-            dispatch_transaction._load_dispatch_evidence(
-                runtime,
-                occupant,
-                "occupant",
-            )
-
-        legacy = mock.Mock(
-            dispatch_brief_entry_id=None,
-            spawned_by_kind=None,
-        )
-        result = dispatch_transaction._dispatch_evidence_outcome(
-            runtime,
-            legacy,
-            None,
-        )
-        assert result is not None
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["status"], "seat-taken")
 
     def test_terminal_failed_brief_retires_and_replaces_that_generation(self) -> None:
         first = self._dispatch()

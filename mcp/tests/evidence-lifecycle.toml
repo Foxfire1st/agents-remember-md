@@ -7,54 +7,9 @@ owner = "mcp/src/agents_remember/controlplane/durable_store.py"
 evidence_node = "mcp/tests/test_provider_store_durability.py::ProviderStoreDurabilityTests::test_no_record_is_lost_when_an_append_races_a_compaction"
 
 [[contract]]
-id = "codex-agent-wire-version-matrix"
-owner = "mcp/src/agents_remember/serving/codex_app_server_protocol.py"
-evidence_node = "mcp/tests/test_codex_app_server_adapter.py::test_fixture_pins_validated_01443_schema_and_stable_surface"
-
-[[contract]]
 id = "conversation-control-public-route-contract"
 owner = "mcp/src/agents_remember/serving/conversation/control/api.py"
 evidence_node = "mcp/tests/test_conversation_control_api.py::ControlApiTests::test_interrupt_ack_settle_replay_and_single_write"
-
-[[contract]]
-id = "cs6-scaling-fitness"
-owner = "mcp/tests/_scaling.py"
-evidence_node = "mcp/tests/test_projection_scaling_cs6.py::GateReadFoldTests::test_read_gates_reads_each_log_once_per_tick"
-
-[[contract]]
-id = "dagger-admission-capability"
-owner = "mcp/test_support/agents_remember_test_support/testing/dagger_admission.py"
-evidence_node = "mcp/tests/test_python_test_evidence_firewall.py::PythonTestEvidenceFirewallTests::test_coverage_and_retry_require_the_opaque_admission_capability"
-
-[[contract]]
-id = "durability-historical-sensitivity"
-owner = "mcp/tests/_store_durability_source.py"
-evidence_node = "mcp/tests/test_provider_store_durability.py::ProviderHarnessSensitivityTests::test_the_forced_scenario_detects_loss_in_the_base_commit"
-
-[[contract]]
-id = "durability-stress-non-vacuity"
-owner = "mcp/tests/_durability_measurement.py"
-evidence_node = "mcp/tests/test_durability_measurement.py::DurabilityMeasurementTests::test_zero_attempts_are_refused_even_when_zero_loss_would_be_reported"
-
-[[contract]]
-id = "immutable-clean-quality-generation-consumer"
-owner = "mcp/src/agents_remember/models/quality.py"
-evidence_node = "mcp/tests/test_python_test_evidence_firewall.py::PythonTestEvidenceFirewallTests::test_verified_dagger_generation_mints_evidence_for_lifecycle_consumers"
-
-[[contract]]
-id = "repository-ruff-policy-evidence"
-owner = "pyproject.toml"
-evidence_node = "mcp/tests/test_code_quality_tool_signature_exemption.py::ToolSignatureExemptionTests::test_the_registration_modules_are_the_only_path_exempt_from_plr0913"
-
-[[contract]]
-id = "next-supported-claude-runtime-fixture"
-owner = "mcp/tests/test_conversation_foundation.py"
-evidence_node = "mcp/tests/test_conversation_foundation.py::test_installed_runtime_fixtures_are_allowlisted_evidence_not_enablement"
-
-[[contract]]
-id = "next-supported-codex-runtime-fixture"
-owner = "mcp/tests/test_conversation_foundation.py"
-evidence_node = "mcp/tests/test_conversation_foundation.py::test_installed_runtime_fixtures_are_allowlisted_evidence_not_enablement"
 
 [[contract]]
 id = "next-supported-pi-rpc-activity-recording"
@@ -62,44 +17,9 @@ owner = "mcp/src/agents_remember/serving/pi_rpc_events.py"
 evidence_node = "mcp/tests/test_pi_rpc_adapter_ops_2.py::PiRpcAdapterTests2::test_get_state_drives_stream_compaction_and_pending_activity"
 
 [[contract]]
-id = "next-supported-pi-rpc-capability-recording"
-owner = "mcp/tests/_pi_rpc_capabilities.py"
-evidence_node = "mcp/tests/test_pi_rpc_adapter.py::PiRpcProtocolTests::test_capability_fixture_documents_the_smoke_baseline"
-
-[[contract]]
-id = "next-supported-pi-runtime-fixture"
-owner = "mcp/tests/test_conversation_foundation.py"
-evidence_node = "mcp/tests/test_conversation_foundation.py::test_installed_runtime_fixtures_are_allowlisted_evidence_not_enablement"
-
-[[contract]]
-id = "provider-specific-recorded-frame-contracts"
-owner = "mcp/tests/_adapter_event_scripts.py"
-evidence_node = "mcp/tests/test_conversation_control_operations.py::CodexInterruptTests::test_accepted_acknowledgement_is_not_settlement_and_writes_once"
-
-[[contract]]
-id = "recorded-frame-for-next-supported-codex-app-server-version"
-owner = "mcp/src/agents_remember/serving/codex_app_server_adapter.py"
-evidence_node = "mcp/tests/test_codex_app_server_adapter.py::test_fixture_pins_validated_01443_schema_and_stable_surface"
-
-[[contract]]
-id = "serving-sim-replay-contract"
-owner = "mcp/src/agents_remember/serving/sim.py"
-evidence_node = "mcp/tests/test_serving_cli.py::SimReplayTests::test_replay_is_deterministic"
-
-[[contract]]
-id = "supported-claude-stream-version-matrix"
-owner = "mcp/src/agents_remember/serving/harness_control_claude.py"
-evidence_node = "mcp/tests/test_harness_control_claude_stream_1.py::ClaudeStreamJsonAdapterTests1::test_compatible_patch_version_is_accepted_after_structured_negotiation"
-
-[[contract]]
 id = "synthetic-test-evidence-candidate"
 owner = "mcp/test_support/agents_remember_test_support/testing/evidence_lifecycle.py"
 evidence_node = "mcp/tests/test_dependency_ownership_ast_helpers.py::test_repository_inputs_reach_their_supported_consumers"
-
-[[contract]]
-id = "ambient-role-chat-e2e"
-owner = "scripts/e2e_harness/run.py"
-evidence_node = "mcp/tests/test_agents_remember_quality.py::test_dagger_quality_executes_the_exact_targeted_profile_plan"
 
 [[artifact]]
 path = "mcp/tests/_control_plane.py"
@@ -118,12 +38,7 @@ consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_conversation_control_api.py",
   "mcp/tests/test_conversation_control_attachments.py",
-  "mcp/tests/test_conversation_control_installed.py",
-  "mcp/tests/test_conversation_control_operations.py",
-  "mcp/tests/test_conversation_control_projector_edges.py",
   "mcp/tests/test_conversation_control_queue.py",
-  "mcp/tests/test_serving_app_routes.py",
-  "mcp/tests/test_serving_response_conformance_live.py",
 ]
 
 [[artifact]]
@@ -142,7 +57,6 @@ replacement_contract = "contract:ar-durable-store/1.0-process-race-evidence"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_controlplane_store_durability.py",
-  "mcp/tests/test_gate_replay_window.py",
   "mcp/tests/test_provider_store_durability.py",
 ]
 
@@ -158,11 +72,10 @@ source_version_or_generator = "caller-owned Codex, Pi, and Claude terminal frame
 introduced_by = "260824-PDLS-L7"
 lifetime = "permanent"
 permanence_rationale = "Provider frames remain independent from the production reducers that consume them."
-replacement_contract = "contract:provider-specific-recorded-frame-contracts"
+replacement_contract = "node:mcp/tests/test_conversation_control_api.py::ControlApiTests::test_interrupt_ack_settle_replay_and_single_write"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_conversation_control_api.py",
-  "mcp/tests/test_conversation_control_operations.py",
 ]
 
 [[artifact]]
@@ -177,16 +90,11 @@ source_version_or_generator = "independent minimal frames derived from the vendo
 introduced_by = "260718-CHATS"
 lifetime = "versioned"
 permanence_rationale = "The synthetic frames independently pin provider field names and event ordering."
-replacement_contract = "contract:codex-agent-wire-version-matrix"
+replacement_contract = "node:mcp/tests/test_codex_app_server_adapter_reconnect.py::test_reconnect_resumes_reads_and_reconciles_without_resend"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_codex_adapter_thread_demux.py",
   "mcp/tests/test_codex_adapter_thread_routing_and_registry.py",
   "mcp/tests/test_codex_app_server_adapter_reconnect.py",
-  "mcp/tests/test_codex_history_production_path.py",
-  "mcp/tests/test_conversation_projector_codex_agents.py",
-  "mcp/tests/test_conversation_projector_codex_agents_engine_1.py",
-  "mcp/tests/test_conversation_projector_codex_agents_engine_2.py",
 ]
 
 [[artifact]]
@@ -205,30 +113,8 @@ replacement_contract = "contract:synthetic-test-evidence-candidate"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_code_quality_targeted.py",
-  "mcp/tests/test_dependency_ownership_ast_helpers.py",
   "mcp/tests/test_pytest_bootstrap_boundaries.py",
   "mcp/tests/test_quality_retry_proof.py",
-]
-
-[[artifact]]
-path = "mcp/tests/_durability_measurement.py"
-kind = "shared-support"
-authority = "internal-hand-authored"
-owner = "durability-measurement-validity"
-category = "stress-durability"
-fidelity = "process-race"
-cadence = "scheduled-release"
-source_version_or_generator = "bounded non-vacuity rules for process durability measurements"
-introduced_by = "260731-EFA-L7"
-lifetime = "permanent"
-permanence_rationale = "The stress instrument must reject runs that did not execute enough work to support a claim."
-replacement_contract = "contract:durability-stress-non-vacuity"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_controlplane_store_durability.py",
-  "mcp/tests/test_durability_measurement.py",
-  "mcp/tests/test_gate_replay_window.py",
-  "mcp/tests/test_provider_store_durability.py",
 ]
 
 [[artifact]]
@@ -243,133 +129,12 @@ source_version_or_generator = "explicit modeled admission input for quality-plan
 introduced_by = "260731-EFA-L7"
 lifetime = "permanent"
 permanence_rationale = "Focused quality-plan tests share a modeled admission input; real delivery still requires its own Dagger admission."
-replacement_contract = "contract:dagger-admission-capability"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_python_suite_refuses_missing_or_mismatched_dagger_attestation"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_causal_quality_preflight.py",
-  "mcp/tests/test_code_quality_check.py",
-  "mcp/tests/test_code_quality_check_scope.py",
-  "mcp/tests/test_code_quality_environment_guard.py",
-  "mcp/tests/test_code_quality_memory_cap.py",
-  "mcp/tests/test_code_quality_targeted.py",
-  "mcp/tests/test_code_quality_tool_signature_exemption.py",
-  "mcp/tests/test_diff_coverage.py",
   "mcp/tests/test_file_size_detector.py",
-  "mcp/tests/test_gate_scope.py",
-  "mcp/tests/test_l6_diff_coverage_code_quality.py",
-  "mcp/tests/test_layering.py",
   "mcp/tests/test_quality_retry_proof.py",
-  "mcp/tests/test_quality_scope_reporting.py",
-  "mcp/tests/test_repository_certification_profiles.py",
-]
-
-[[artifact]]
-path = "mcp/tests/_ruff_repository_evidence.py"
-kind = "shared-support"
-authority = "internal-canonical"
-owner = "repository-ruff-policy"
-category = "architecture-fitness"
-fidelity = "repository-structure"
-cadence = "affected"
-source_version_or_generator = "repository Ruff configuration and tracked Python inventory"
-introduced_by = "260824-PDLS-L12"
-lifetime = "permanent"
-permanence_rationale = "Complexity and public-tool signature policy tests share one exact repository-configured Ruff boundary."
-replacement_contract = "contract:repository-ruff-policy-evidence"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_code_quality_check.py",
-  "mcp/tests/test_code_quality_check_scope.py",
-  "mcp/tests/test_code_quality_tool_signature_exemption.py",
-  "mcp/tests/test_file_size_detector.py",
-]
-
-[[artifact]]
-path = "mcp/tests/_quality_evidence_fixture.py"
-kind = "shared-support"
-authority = "internal-canonical"
-owner = "immutable-quality-generation-consumer-contract"
-category = "integration"
-fidelity = "local-composition"
-cadence = "affected"
-source_version_or_generator = "production quality-report publisher bound to the exact Git candidate tree"
-introduced_by = "260824-PDLS-L7"
-lifetime = "permanent"
-permanence_rationale = "Closeout consumer tests need one canonical successful evidence generation instead of hand-authored result dictionaries."
-replacement_contract = "contract:immutable-clean-quality-generation-consumer"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
-  "mcp/tests/test_worktree_closeout_quality_gate.py",
-  "mcp/tests/test_worktree_quality_gate_runner.py",
-]
-
-[[artifact]]
-path = "mcp/tests/_scaling.py"
-kind = "shared-support"
-authority = "internal-hand-authored"
-owner = "scaling-architecture-fitness"
-category = "architecture-fitness"
-fidelity = "repository-structure"
-cadence = "affected"
-source_version_or_generator = "deterministic growth and bounded-store assertion helpers"
-introduced_by = "260707-HFX2-L12"
-lifetime = "permanent"
-permanence_rationale = "Shared growth ceilings keep scaling assertions comparable across durable stores and projections."
-replacement_contract = "contract:cs6-scaling-fitness"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_agent_notifier_ladder.py",
-  "mcp/tests/test_agent_notifier_seat.py",
-  "mcp/tests/test_compound_idle_relay.py",
-  "mcp/tests/test_inbox_arrival_guarantee.py",
-  "mcp/tests/test_inbox_rebinding_mechanics.py",
-  "mcp/tests/test_projection_scaling_cs6.py",
-  "mcp/tests/test_store_scaling_cs6.py",
-  "mcp/tests/test_structural_notifier_ambiguity.py",
-]
-
-[[artifact]]
-path = "mcp/tests/_store_durability_source.py"
-kind = "shared-support"
-authority = "internal-hand-authored"
-owner = "durability-historical-sensitivity"
-category = "stress-durability"
-fidelity = "process-race"
-cadence = "scheduled-release"
-source_version_or_generator = "git archive of durability base commit e52edaf5 with an explicit module-rename adapter"
-introduced_by = "260731-EFA-L7"
-lifetime = "permanent"
-permanence_rationale = "Release evidence retains a reproducible known-bad control proving the process harness remains sensitive."
-replacement_contract = "contract:durability-historical-sensitivity"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_controlplane_store_durability.py",
-  "mcp/tests/test_gate_replay_window.py",
-  "mcp/tests/test_provider_store_durability.py",
-]
-
-[[artifact]]
-path = "mcp/tests/_pi_rpc_capabilities.py"
-kind = "recording-generator"
-authority = "external-spec-derived"
-owner = "pi-rpc-provider-conformance"
-category = "provider-conformance"
-fidelity = "independent-boundary"
-cadence = "provider-bump"
-source_version_or_generator = "independent installed Pi RPC probe"
-introduced_by = "260718-CHATS"
-lifetime = "versioned"
-permanence_rationale = "Retained while a committed Pi capability recording is supported."
-replacement_contract = "contract:next-supported-pi-rpc-capability-recording"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_pi_rpc_adapter.py",
-  "mcp/tests/test_pi_rpc_adapter_ledger.py",
-  "mcp/tests/test_pi_rpc_adapter_ops_1.py",
-  "mcp/tests/test_pi_rpc_adapter_ops_2.py",
-  "mcp/tests/test_pi_rpc_real_smoke.py",
 ]
 
 [[artifact]]
@@ -384,98 +149,14 @@ source_version_or_generator = "Codex app-server 0.144.3 observed wire frames"
 introduced_by = "260718-CHATS"
 lifetime = "versioned"
 permanence_rationale = "Retained while the 0.144.3 protocol shape remains a supported compatibility input."
-replacement_contract = "contract:recorded-frame-for-next-supported-codex-app-server-version"
+replacement_contract = "node:mcp/tests/test_codex_app_server_adapter_reconnect.py::test_reconnect_resumes_reads_and_reconciles_without_resend"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_codex_adapter_thread_demux.py",
   "mcp/tests/test_codex_adapter_thread_routing_and_registry.py",
   "mcp/tests/test_codex_app_server_adapter.py",
-  "mcp/tests/test_codex_app_server_adapter_basic.py",
   "mcp/tests/test_codex_app_server_adapter_correlation.py",
   "mcp/tests/test_codex_app_server_adapter_reconnect.py",
   "mcp/tests/test_codex_app_server_adapter_turns.py",
-  "mcp/tests/test_harness_control_evidence.py",
-  "mcp/tests/test_harness_control_evidence_ipc.py",
-  "mcp/tests/test_harness_control_evidence_other.py",
-  "mcp/tests/test_harness_control_plane.py",
-  "mcp/tests/test_harness_control_plane_assets.py",
-  "mcp/tests/test_harness_control_plane_channels.py",
-  "mcp/tests/test_harness_control_plane_recovery.py",
-]
-
-[[artifact]]
-path = "mcp/tests/fixtures/conversation_runtime/codex-0.144.5.json"
-kind = "recording"
-authority = "external-recorded"
-owner = "conversation-runtime-provider-conformance"
-category = "provider-conformance"
-fidelity = "independent-boundary"
-cadence = "provider-bump"
-source_version_or_generator = "installed Codex 0.144.5 runtime observation"
-introduced_by = "260718-CHATS"
-lifetime = "versioned"
-permanence_rationale = "Retained while Codex 0.144.5 remains in the supported runtime matrix."
-replacement_contract = "contract:next-supported-codex-runtime-fixture"
-consumer_scope = "exact"
-consumers = ["mcp/tests/test_conversation_foundation.py"]
-
-[[artifact]]
-path = "mcp/tests/fixtures/conversation_runtime/pi-0.80.7.json"
-kind = "recording"
-authority = "external-recorded"
-owner = "conversation-runtime-provider-conformance"
-category = "provider-conformance"
-fidelity = "independent-boundary"
-cadence = "provider-bump"
-source_version_or_generator = "installed Pi 0.80.7 runtime observation"
-introduced_by = "260718-CHATS"
-lifetime = "versioned"
-permanence_rationale = "Retained while Pi 0.80.7 remains in the supported runtime matrix."
-replacement_contract = "contract:next-supported-pi-runtime-fixture"
-consumer_scope = "exact"
-consumers = ["mcp/tests/test_conversation_foundation.py"]
-
-[[artifact]]
-path = "mcp/tests/fixtures/conversation_runtime/claude-2.1.211.json"
-kind = "recording"
-authority = "external-recorded"
-owner = "conversation-runtime-provider-conformance"
-category = "provider-conformance"
-fidelity = "independent-boundary"
-cadence = "provider-bump"
-source_version_or_generator = "installed Claude 2.1.211 runtime observation"
-introduced_by = "260718-CHATS"
-lifetime = "versioned"
-permanence_rationale = "Retained while Claude 2.1.211 remains in the supported runtime matrix."
-replacement_contract = "contract:next-supported-claude-runtime-fixture"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_conversation_control_installed.py",
-  "mcp/tests/test_conversation_foundation.py",
-  "mcp/tests/test_harness_control_evidence_installed.py",
-  "mcp/tests/test_harness_control_plane_installed.py",
-]
-
-[[artifact]]
-path = "mcp/tests/fixtures/pi_rpc/0.80.7-capabilities.json"
-kind = "recording"
-authority = "external-recorded"
-owner = "pi-rpc-provider-conformance"
-category = "provider-conformance"
-fidelity = "independent-boundary"
-cadence = "provider-bump"
-source_version_or_generator = "independent installed Pi RPC 0.80.7 capability probe"
-introduced_by = "260718-CHATS"
-lifetime = "versioned"
-permanence_rationale = "Retained while Pi RPC 0.80.7 is pinned and supported."
-replacement_contract = "contract:next-supported-pi-rpc-capability-recording"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_pi_rpc_adapter.py",
-  "mcp/tests/test_pi_rpc_adapter_ledger.py",
-  "mcp/tests/test_pi_rpc_adapter_ops_1.py",
-  "mcp/tests/test_pi_rpc_adapter_ops_2.py",
-  "mcp/tests/test_pi_rpc_real_smoke.py",
 ]
 
 [[artifact]]
@@ -492,23 +173,9 @@ lifetime = "versioned"
 permanence_rationale = "Retained while the recorded Pi activity frames are supported parser inputs."
 replacement_contract = "contract:next-supported-pi-rpc-activity-recording"
 consumer_scope = "exact"
-consumers = ["mcp/tests/test_pi_rpc_adapter_ops_2.py"]
-
-[[artifact]]
-path = "mcp/tests/fixtures/sim/logs/observer/lifecycles/sim-replay-lifecycle/events.jsonl"
-kind = "fixture"
-authority = "internal-hand-authored"
-owner = "dashboard-sim-projection"
-category = "integration"
-fidelity = "local-composition"
-cadence = "demo-smoke"
-source_version_or_generator = "minimal hand-authored observer event replay"
-introduced_by = "dashboard-sim"
-lifetime = "demo-only"
-permanence_rationale = "The file is the minimal checked-in event replay used by the simulator."
-replacement_contract = "contract:serving-sim-replay-contract"
-consumer_scope = "exact"
-consumers = ["mcp/tests/test_serving_cli.py"]
+consumers = [
+  "mcp/tests/test_pi_rpc_adapter_ops_2.py",
+]
 
 [[artifact]]
 path = "mcp/tests/fixtures/claude_stream_json/2.1.210/initialization.jsonl"
@@ -522,16 +189,13 @@ source_version_or_generator = "Claude CLI 2.1.210 stream-json initialization"
 introduced_by = "260718-CHATS"
 lifetime = "versioned"
 permanence_rationale = "Retained as the primary Claude initialization conformance shape."
-replacement_contract = "contract:supported-claude-stream-version-matrix"
+replacement_contract = "node:mcp/tests/test_harness_control_claude_stream_1.py::ClaudeStreamJsonAdapterTests1::test_launch_preserves_arguments_environment_and_requires_structured_init"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_harness_control_claude.py",
   "mcp/tests/test_harness_control_claude_interrupt.py",
   "mcp/tests/test_harness_control_claude_stream_1.py",
   "mcp/tests/test_harness_control_claude_stream_2.py",
-  "mcp/tests/test_harness_control_evidence.py",
-  "mcp/tests/test_harness_control_evidence_ipc.py",
-  "mcp/tests/test_harness_control_evidence_other.py",
 ]
 
 [[artifact]]
@@ -546,28 +210,7 @@ source_version_or_generator = "Claude CLI 2.1.210 stream-json interaction"
 introduced_by = "260718-CHATS"
 lifetime = "versioned"
 permanence_rationale = "Retained as the primary Claude interaction conformance shape."
-replacement_contract = "contract:supported-claude-stream-version-matrix"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_harness_control_claude.py",
-  "mcp/tests/test_harness_control_claude_interrupt.py",
-  "mcp/tests/test_harness_control_claude_stream_1.py",
-  "mcp/tests/test_harness_control_claude_stream_2.py",
-]
-
-[[artifact]]
-path = "mcp/tests/fixtures/claude_stream_json/2.1.210/interactions-multi.jsonl"
-kind = "recording"
-authority = "external-recorded"
-owner = "claude-stream-provider-conformance"
-category = "provider-conformance"
-fidelity = "independent-boundary"
-cadence = "provider-bump"
-source_version_or_generator = "Claude CLI 2.1.210 multi-interaction stream"
-introduced_by = "260718-CHATS"
-lifetime = "versioned"
-permanence_rationale = "Retained to prove ordered multiple-interaction projection."
-replacement_contract = "contract:supported-claude-stream-version-matrix"
+replacement_contract = "node:mcp/tests/test_harness_control_claude_stream_1.py::ClaudeStreamJsonAdapterTests1::test_permissions_and_ask_user_question_use_durable_interaction_response"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_harness_control_claude.py",
@@ -588,7 +231,7 @@ source_version_or_generator = "Claude CLI 2.1.210 stream-json turn"
 introduced_by = "260718-CHATS"
 lifetime = "versioned"
 permanence_rationale = "Retained as the primary Claude turn conformance shape."
-replacement_contract = "contract:supported-claude-stream-version-matrix"
+replacement_contract = "node:mcp/tests/test_harness_control_claude_stream_1.py::ClaudeStreamJsonAdapterTests1::test_correlated_acceptance_retry_activity_and_terminal_result_are_distinct"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_harness_control_claude.py",
@@ -609,7 +252,7 @@ source_version_or_generator = "Claude CLI 2.1.217 interrupted stream-json turn"
 introduced_by = "260718-CHATS"
 lifetime = "versioned"
 permanence_rationale = "Retained to prove native interrupt settlement for the supported Claude shape."
-replacement_contract = "contract:supported-claude-stream-version-matrix"
+replacement_contract = "node:mcp/tests/test_harness_control_claude_interrupt.py::ClaudeInterruptTests::test_accepted_interrupt_settles_interrupted_not_failed"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_harness_control_claude.py",
@@ -630,64 +273,14 @@ source_version_or_generator = "typed closeout and lifecycle fixture composition"
 introduced_by = "260824-closeout-liveness-recovery"
 lifetime = "permanent"
 permanence_rationale = "The helper owns the shared closeout repository topology used by eighteen lifecycle suites."
-replacement_contract = "node:mcp/tests/test_closeout_execution_input_guards.py::test_closeout_apply_refuses_missing_normalized_input_before_candidate_work"
+replacement_contract = "node:mcp/tests/test_closeout_certification_recovery.py::test_selection_recompiles_untrusted_proposals_before_selecting_original_references"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_tool_response_conformance.py",
-  "mcp/tests/test_worktree_closeout_quality_gate.py",
-  "mcp/tests/test_worktree_quality_gate_runner.py",
 ]
 
 [[artifact]]
@@ -702,150 +295,40 @@ source_version_or_generator = "typed closeout input and repository authority bui
 introduced_by = "260824-PDLS"
 lifetime = "permanent"
 permanence_rationale = "The helper is the single test-side composition root for closeout inputs across lifecycle and tool boundaries."
-replacement_contract = "node:mcp/tests/test_atomic_series_activation.py::AtomicSeriesActivationTests::test_absence_is_vacant_even_when_multiple_live_contracts_exist"
+replacement_contract = "node:mcp/tests/test_prepared_publication_recovery.py::test_real_gate_five_prepares_then_publishes_memory_and_ledger"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_atomic_series_activation.py",
   "mcp/tests/test_atomic_series_landing_l3.py",
   "mcp/tests/test_author_execution_graph.py",
-  "mcp/tests/test_cleanup_carryover.py",
-  "mcp/tests/test_cleanup_carryover_cache_1.py",
-  "mcp/tests/test_cleanup_carryover_cache_2.py",
-  "mcp/tests/test_cleanup_carryover_terminal.py",
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_claim_l3.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_ledger_evidence_order.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
   "mcp/tests/test_closeout_queue.py",
-  "mcp/tests/test_closeout_queue_lifecycle.py",
-  "mcp/tests/test_closeout_queue_projection.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
   "mcp/tests/test_compact_content.py",
   "mcp/tests/test_config.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
   "mcp/tests/test_context_packet.py",
-  "mcp/tests/test_controlplane_gates_seam.py",
-  "mcp/tests/test_curator_coherence.py",
-  "mcp/tests/test_curator_coherence_edges.py",
   "mcp/tests/test_direct_landing.py",
-  "mcp/tests/test_direct_landing_input_boundary.py",
-  "mcp/tests/test_direct_landing_operation_recovery.py",
-  "mcp/tests/test_dispatch_agent_ambient_reviewer.py",
-  "mcp/tests/test_dispatch_expectation_rows.py",
-  "mcp/tests/test_durable_store_contract.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_gate_certification_records.py",
-  "mcp/tests/test_gate_replay_window.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
   "mcp/tests/test_lifecycle_finalize.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
-  "mcp/tests/test_mcp_registration_wiring.py",
-  "mcp/tests/test_mcp_registration_wiring_tests_1.py",
-  "mcp/tests/test_mcp_registration_wiring_tests_2.py",
   "mcp/tests/test_mcp_stdio_transport.py",
-  "mcp/tests/test_memory_candidate_pair.py",
-  "mcp/tests/test_memory_citation_fix_operations.py",
-  "mcp/tests/test_memory_citation_migration_guard.py",
-  "mcp/tests/test_memory_quality.py",
-  "mcp/tests/test_memory_tool_enclosure_scope.py",
-  "mcp/tests/test_onboarding_drift.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_orchestration_comms.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_provider_async.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_provider_current_state.py",
-  "mcp/tests/test_public_surface_conformance.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_read_ar_files.py",
-  "mcp/tests/test_register_scaffold.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_sequential_default_mode.py",
-  "mcp/tests/test_serving_app_routes.py",
   "mcp/tests/test_spawn_agent_session.py",
-  "mcp/tests/test_spawn_agent_session_knobs_1.py",
-  "mcp/tests/test_spawn_agent_session_resolution.py",
-  "mcp/tests/test_spawn_agent_session_settings.py",
-  "mcp/tests/test_structural_agent_tools.py",
   "mcp/tests/test_task_doc_structural_publication_l2.py",
-  "mcp/tests/test_task_doc_wire_shape.py",
-  "mcp/tests/test_task_execution_topology.py",
-  "mcp/tests/test_task_execution_topology_l15.py",
-  "mcp/tests/test_task_execution_topology_segments.py",
   "mcp/tests/test_task_reopen.py",
-  "mcp/tests/test_task_reopen_authority.py",
-  "mcp/tests/test_task_reopen_guards.py",
   "mcp/tests/test_task_sprint_linkage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_terminal_leaf_assignment.py",
-  "mcp/tests/test_terminal_opener.py",
-  "mcp/tests/test_terminal_ws.py",
-  "mcp/tests/test_terminal_ws_misc.py",
-  "mcp/tests/test_terminal_ws_websocket_1.py",
-  "mcp/tests/test_terminal_ws_websocket_2.py",
-  "mcp/tests/test_tool_response_conformance.py",
   "mcp/tests/test_tools.py",
-  "mcp/tests/test_topology_publication_authority.py",
-  "mcp/tests/test_worktree_abandon.py",
-  "mcp/tests/test_worktree_and_observer_helpers.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
   "mcp/tests/test_worktree_closeout_quality_gate.py",
-  "mcp/tests/test_worktree_closeout_recovery.py",
-  "mcp/tests/test_worktree_edge_paths.py",
   "mcp/tests/test_worktree_integrate_quality_gate.py",
-  "mcp/tests/test_worktree_organizational_start.py",
   "mcp/tests/test_worktree_quality_gate_runner.py",
   "mcp/tests/test_worktree_support.py",
-  "mcp/tests/test_worktree_support_benchmark.py",
   "mcp/tests/test_worktree_support_tests_1.py",
-  "mcp/tests/test_worktree_support_tests_2.py",
-  "mcp/tests/test_worktree_support_tests_3.py",
 ]
 
 [[artifact]]
@@ -860,150 +343,40 @@ source_version_or_generator = "typed task-topology, attestation, and explicit-ju
 introduced_by = "260828-MCAR-L02"
 lifetime = "permanent"
 permanence_rationale = "Closeout fixtures need one shared input author that preserves the production canonical writer and exact validation boundary."
-replacement_contract = "node:mcp/tests/test_curator_coherence.py::test_public_tool_publishes_one_live_authority_and_ignores_historical_markdown"
+replacement_contract = "node:mcp/tests/test_prepared_publication_recovery.py::test_real_gate_five_prepares_then_publishes_memory_and_ledger"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_atomic_series_activation.py",
   "mcp/tests/test_atomic_series_landing_l3.py",
   "mcp/tests/test_author_execution_graph.py",
-  "mcp/tests/test_cleanup_carryover.py",
-  "mcp/tests/test_cleanup_carryover_cache_1.py",
-  "mcp/tests/test_cleanup_carryover_cache_2.py",
-  "mcp/tests/test_cleanup_carryover_terminal.py",
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_claim_l3.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_ledger_evidence_order.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
   "mcp/tests/test_closeout_queue.py",
-  "mcp/tests/test_closeout_queue_lifecycle.py",
-  "mcp/tests/test_closeout_queue_projection.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
   "mcp/tests/test_compact_content.py",
   "mcp/tests/test_config.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
   "mcp/tests/test_context_packet.py",
-  "mcp/tests/test_controlplane_gates_seam.py",
-  "mcp/tests/test_curator_coherence.py",
-  "mcp/tests/test_curator_coherence_edges.py",
   "mcp/tests/test_direct_landing.py",
-  "mcp/tests/test_direct_landing_input_boundary.py",
-  "mcp/tests/test_direct_landing_operation_recovery.py",
-  "mcp/tests/test_dispatch_agent_ambient_reviewer.py",
-  "mcp/tests/test_dispatch_expectation_rows.py",
-  "mcp/tests/test_durable_store_contract.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_gate_certification_records.py",
-  "mcp/tests/test_gate_replay_window.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
   "mcp/tests/test_lifecycle_finalize.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
-  "mcp/tests/test_mcp_registration_wiring.py",
-  "mcp/tests/test_mcp_registration_wiring_tests_1.py",
-  "mcp/tests/test_mcp_registration_wiring_tests_2.py",
   "mcp/tests/test_mcp_stdio_transport.py",
-  "mcp/tests/test_memory_candidate_pair.py",
-  "mcp/tests/test_memory_citation_fix_operations.py",
-  "mcp/tests/test_memory_citation_migration_guard.py",
-  "mcp/tests/test_memory_quality.py",
-  "mcp/tests/test_memory_tool_enclosure_scope.py",
-  "mcp/tests/test_onboarding_drift.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_orchestration_comms.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_provider_async.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_provider_current_state.py",
-  "mcp/tests/test_public_surface_conformance.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_read_ar_files.py",
-  "mcp/tests/test_register_scaffold.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_sequential_default_mode.py",
-  "mcp/tests/test_serving_app_routes.py",
   "mcp/tests/test_spawn_agent_session.py",
-  "mcp/tests/test_spawn_agent_session_knobs_1.py",
-  "mcp/tests/test_spawn_agent_session_resolution.py",
-  "mcp/tests/test_spawn_agent_session_settings.py",
-  "mcp/tests/test_structural_agent_tools.py",
   "mcp/tests/test_task_doc_structural_publication_l2.py",
-  "mcp/tests/test_task_doc_wire_shape.py",
-  "mcp/tests/test_task_execution_topology.py",
-  "mcp/tests/test_task_execution_topology_l15.py",
-  "mcp/tests/test_task_execution_topology_segments.py",
   "mcp/tests/test_task_reopen.py",
-  "mcp/tests/test_task_reopen_authority.py",
-  "mcp/tests/test_task_reopen_guards.py",
   "mcp/tests/test_task_sprint_linkage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_terminal_leaf_assignment.py",
-  "mcp/tests/test_terminal_opener.py",
-  "mcp/tests/test_terminal_ws.py",
-  "mcp/tests/test_terminal_ws_misc.py",
-  "mcp/tests/test_terminal_ws_websocket_1.py",
-  "mcp/tests/test_terminal_ws_websocket_2.py",
-  "mcp/tests/test_tool_response_conformance.py",
   "mcp/tests/test_tools.py",
-  "mcp/tests/test_topology_publication_authority.py",
-  "mcp/tests/test_worktree_abandon.py",
-  "mcp/tests/test_worktree_and_observer_helpers.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
   "mcp/tests/test_worktree_closeout_quality_gate.py",
-  "mcp/tests/test_worktree_closeout_recovery.py",
-  "mcp/tests/test_worktree_edge_paths.py",
   "mcp/tests/test_worktree_integrate_quality_gate.py",
-  "mcp/tests/test_worktree_organizational_start.py",
   "mcp/tests/test_worktree_quality_gate_runner.py",
   "mcp/tests/test_worktree_support.py",
-  "mcp/tests/test_worktree_support_benchmark.py",
   "mcp/tests/test_worktree_support_tests_1.py",
-  "mcp/tests/test_worktree_support_tests_2.py",
-  "mcp/tests/test_worktree_support_tests_3.py",
 ]
 
 [[artifact]]
@@ -1018,7 +391,7 @@ source_version_or_generator = "isolated unit composition; --certify adds Dagger 
 introduced_by = "260824-PDLS"
 lifetime = "permanent"
 permanence_rationale = "Every test uses isolated local state; certification services load only for explicit --certify delivery."
-replacement_contract = "node:mcp/tests/test_evidence_lanes.py::EvidenceLaneRegistryTests::test_plugin_registers_the_registry_and_reports_category_on_each_item"
+replacement_contract = "node:mcp/tests/test_pytest_bootstrap_boundaries.py::PytestBootstrapBoundaryTests::test_environment_is_candidate_bound_scrubbed_disposable_and_reversible"
 consumer_scope = "all-tests"
 
 [[artifact]]
@@ -1033,42 +406,11 @@ source_version_or_generator = "real Git integration-branch authority fixture"
 introduced_by = "260824-PDLS"
 lifetime = "permanent"
 permanence_rationale = "The helper owns one real-Git authority setup shared by integration and lifecycle suites."
-replacement_contract = "node:mcp/tests/test_closeout_candidate_publication_guard.py::test_closeout_candidate_publication_rechecks_the_contract"
+replacement_contract = "node:mcp/tests/test_integration_branch_authority.py::IntegrationBranchAuthorityTests::test_external_pair_cas_retains_torn_pair_without_clobbering_memory_race"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
-  "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
 ]
 
 [[artifact]]
@@ -1083,30 +425,10 @@ source_version_or_generator = "typed lifecycle control and interruption helpers"
 introduced_by = "260824-PDLS"
 lifetime = "permanent"
 permanence_rationale = "The helper centralizes lifecycle control setup without duplicating product transition policy."
-replacement_contract = "node:mcp/tests/test_closeout_candidate_publication_guard.py::test_closeout_candidate_publication_rechecks_the_contract"
+replacement_contract = "node:mcp/tests/test_lifecycle_operations.py::test_cancel_before_boundary_proves_exit_before_releasing_worker_authority"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
 ]
 
 [[artifact]]
@@ -1121,41 +443,10 @@ source_version_or_generator = "typed enclosure and worktree fixture composition"
 introduced_by = "260824-PDLS"
 lifetime = "permanent"
 permanence_rationale = "The helper owns reusable enclosure construction for adoption, discard, and reopen evidence."
-replacement_contract = "node:mcp/tests/test_discard_unstarted_l3.py::DiscardUnstartedL3Tests::test_discard_modules_have_direct_leaf_test_ownership"
+replacement_contract = "node:mcp/tests/test_task_reopen.py::ReopenResetTests::test_contract_publish_failure_rolls_back_docs_and_landing"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_discard_unstarted_l3.py",
-  "mcp/tests/test_landing_state.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
   "mcp/tests/test_task_reopen.py",
-  "mcp/tests/test_task_reopen_authority.py",
-  "mcp/tests/test_task_reopen_guards.py",
-  "mcp/tests/test_tool_response_conformance.py",
-]
-
-[[artifact]]
-path = "mcp/tests/organizational_completion_test_support.py"
-kind = "shared-support"
-authority = "internal-canonical"
-owner = "organizational-completion-test-port"
-category = "integration"
-fidelity = "local-composition"
-cadence = "affected"
-source_version_or_generator = "organizational completion and stale-state fixture builder"
-introduced_by = "260824-PDLS"
-lifetime = "permanent"
-permanence_rationale = "The helper keeps organizational completion proof on one real repository composition."
-replacement_contract = "node:mcp/tests/test_integration_organizational_decisions_l2.py::IntegrationOrganizationalDecisionL2Tests::test_third_task_bytes_make_fresh_status_and_stale_recover_identical"
-consumer_scope = "exact"
-consumers = [
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
 ]
 
 [[artifact]]
@@ -1174,8 +465,6 @@ replacement_contract = "node:mcp/tests/test_structural_dispatch_recovery.py::Str
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_structural_dispatch_recovery.py",
-  "mcp/tests/test_structural_seat_replacement.py",
-  "mcp/tests/test_structural_seat_succession.py",
 ]
 
 [[artifact]]
@@ -1194,9 +483,6 @@ replacement_contract = "node:mcp/tests/test_task_reopen.py::ReopenResetTests::te
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_task_reopen.py",
-  "mcp/tests/test_task_reopen_authority.py",
-  "mcp/tests/test_task_reopen_guards.py",
-  "mcp/tests/test_tool_response_conformance.py",
 ]
 
 [[artifact]]
@@ -1214,12 +500,8 @@ permanence_rationale = "The helper owns the reusable registry composition for ad
 replacement_contract = "node:mcp/tests/test_certification_plan_authority.py::test_result_publication_refuses_deleted_inserted_and_substituted_plan_catalogs"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_certification_contract_model_edges.py",
   "mcp/tests/test_certification_plan_authority.py",
   "mcp/tests/test_certification_rail_registry.py",
-  "mcp/tests/test_certification_reachability_edges.py",
-  "mcp/tests/test_certification_registry_validation_edges.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_recovery.py",
 ]
 
@@ -1240,84 +522,22 @@ consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_clean_quality_executor.py",
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_ledger_evidence_order.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
   "mcp/tests/test_code_certification_execution.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_dagger_certification_suffix.py",
   "mcp/tests/test_environment_reconstruction.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_frozen_certification_store.py",
   "mcp/tests/test_gate_certificate_authority.py",
   "mcp/tests/test_gate_certification_evidence.py",
-  "mcp/tests/test_gate_certification_records.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_quality_report_publication_security.py",
-  "mcp/tests/test_rail_bindings.py",
-  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",
-  "mcp/tests/test_repository_profile_authority.py",
-  "mcp/tests/test_repository_profile_branch_coverage.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_repository_source_applicability.py",
   "mcp/tests/test_source_lineage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_tool_response_conformance.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
   "mcp/tests/test_worktree_closeout_quality_gate.py",
   "mcp/tests/test_worktree_integrate_quality_gate.py",
   "mcp/tests/test_worktree_quality_gate_runner.py",
@@ -1335,89 +555,27 @@ source_version_or_generator = "minimal Node repository manifest consumed by the 
 introduced_by = "260831-CCR-L22"
 lifetime = "permanent"
 permanence_rationale = "The fixture proves a non-Python repository can execute its own admitted Gate 1-4 commands and artifacts."
-replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_portable_dagger_function_interprets_one_frozen_fixture_plan"
+replacement_contract = "node:mcp/tests/test_repository_certification_profiles.py::test_distinct_fixture_adapters_and_decoders_complete_the_declared_protocol"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_clean_quality_executor.py",
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_ledger_evidence_order.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
   "mcp/tests/test_code_certification_execution.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_dagger_certification_suffix.py",
   "mcp/tests/test_environment_reconstruction.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_frozen_certification_store.py",
   "mcp/tests/test_gate_certificate_authority.py",
   "mcp/tests/test_gate_certification_evidence.py",
-  "mcp/tests/test_gate_certification_records.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_quality_report_publication_security.py",
-  "mcp/tests/test_rail_bindings.py",
-  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",
-  "mcp/tests/test_repository_profile_authority.py",
-  "mcp/tests/test_repository_profile_branch_coverage.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_repository_source_applicability.py",
   "mcp/tests/test_source_lineage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_tool_response_conformance.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
   "mcp/tests/test_worktree_closeout_quality_gate.py",
   "mcp/tests/test_worktree_integrate_quality_gate.py",
   "mcp/tests/test_worktree_quality_gate_runner.py",
@@ -1435,91 +593,27 @@ source_version_or_generator = "minimal locked Node runtime manifest consumed by 
 introduced_by = "260831-CCR-L22"
 lifetime = "permanent"
 permanence_rationale = "The lockfile freezes the portable Node fixture runtime input and participates in the admitted semantic digest."
-replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_portable_dagger_function_interprets_one_frozen_fixture_plan"
+replacement_contract = "node:mcp/tests/test_repository_certification_profiles.py::test_distinct_fixture_adapters_and_decoders_complete_the_declared_protocol"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_clean_quality_executor.py",
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_ledger_evidence_order.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
   "mcp/tests/test_code_certification_execution.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_conversation_foundation.py",
-  "mcp/tests/test_dagger_certification_suffix.py",
   "mcp/tests/test_environment_reconstruction.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_frozen_certification_store.py",
   "mcp/tests/test_gate_certificate_authority.py",
   "mcp/tests/test_gate_certification_evidence.py",
-  "mcp/tests/test_gate_certification_records.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
-  "mcp/tests/test_l6_diff_coverage_nw2.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_quality_report_publication_security.py",
-  "mcp/tests/test_rail_bindings.py",
-  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",
-  "mcp/tests/test_repository_profile_authority.py",
-  "mcp/tests/test_repository_profile_branch_coverage.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_repository_source_applicability.py",
   "mcp/tests/test_source_lineage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_tool_response_conformance.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
   "mcp/tests/test_worktree_closeout_quality_gate.py",
   "mcp/tests/test_worktree_integrate_quality_gate.py",
   "mcp/tests/test_worktree_quality_gate_runner.py",
@@ -1537,37 +631,21 @@ source_version_or_generator = "closed file and exact-node evidence-lane membersh
 introduced_by = "260827-PDLS-remediation"
 lifetime = "permanent"
 permanence_rationale = "The manifest removes the unmarked-unit fallback and binds selection, cadence, retry, and reporting to one explicit population."
-replacement_contract = "node:mcp/tests/test_evidence_lanes.py::EvidenceLaneRegistryTests::test_item_category_is_exact_and_provider_gates_are_provider_evidence"
+replacement_contract = "node:mcp/tests/test_evidence_lanes.py::EvidenceLaneRegistryTests::test_incomplete_or_ambiguous_registry_is_refused"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_cadence_runner.py",
   "mcp/tests/test_catalog_selection.py",
   "mcp/tests/test_causal_quality_preflight.py",
-  "mcp/tests/test_code_quality_check.py",
   "mcp/tests/test_code_quality_check_scope.py",
-  "mcp/tests/test_code_quality_environment_guard.py",
-  "mcp/tests/test_code_quality_memory_cap.py",
   "mcp/tests/test_code_quality_targeted.py",
-  "mcp/tests/test_code_quality_tool_signature_exemption.py",
   "mcp/tests/test_dependency_ownership_ast_helpers.py",
-  "mcp/tests/test_diff_coverage.py",
   "mcp/tests/test_evidence_lanes.py",
-  "mcp/tests/test_evidence_lifecycle.py",
   "mcp/tests/test_file_size_detector.py",
-  "mcp/tests/test_gate_scope.py",
-  "mcp/tests/test_git_closeout_publication.py",
-  "mcp/tests/test_git_command.py",
-  "mcp/tests/test_l6_diff_coverage_code_quality.py",
-  "mcp/tests/test_l6_diff_coverage_crap.py",
   "mcp/tests/test_pytest_bootstrap_boundaries.py",
-  "mcp/tests/test_python_test_evidence_firewall.py",
-  "mcp/tests/test_quality_evidence_helper_invariants.py",
+  "mcp/tests/test_quality_diagnostics.py",
   "mcp/tests/test_quality_retry_proof.py",
-  "mcp/tests/test_quality_scope_reporting.py",
-  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",
-  "mcp/tests/test_repository_source_applicability.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
+  "mcp/tests/test_suite_budget.py",
 ]
 
 [[artifact]]
@@ -1582,7 +660,7 @@ source_version_or_generator = "real Codex app-server driver and candidate MCP di
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The clean-room route must exercise the supported Codex process and public MCP discovery boundary."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1603,7 +681,7 @@ source_version_or_generator = "public dispatch schema rejection sentinels"
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The hosted leg needs explicit failure sentinels that distinguish discovery from model timeout."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1626,7 +704,7 @@ source_version_or_generator = "disposable canonical task, contract, runtime, and
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "Each run needs a fresh authority fixture built from production models rather than copied state."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1649,7 +727,7 @@ source_version_or_generator = "checkpoint recorder and atomic JSON evidence writ
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The scenario requires one typed checkpoint vocabulary and durable per-run evidence projection."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1670,7 +748,7 @@ source_version_or_generator = "scripted Responses API server over the public dis
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "Real Codex needs a deterministic independent response peer that still consumes the advertised MCP schema."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1692,7 +770,7 @@ source_version_or_generator = "minimal OpenAI Responses SSE frames consumed by r
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The deterministic provider peer must emit an independent supported wire sequence."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1715,14 +793,12 @@ source_version_or_generator = "two fresh no-retry Dagger replications of the amb
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The acceptance route must regenerate candidate-bound checkpoint evidence inside Dagger."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/repository_profile_test_support.py",
   "mcp/tests/source_selection_test_support.py",
   "mcp/tests/test_agents_remember_quality.py",
-  "mcp/tests/test_rail_evidence_publication.py",
-  "mcp/tests/test_repository_source_applicability.py",
 ]
 
 [[artifact]]
@@ -1737,7 +813,7 @@ source_version_or_generator = "canonical ambient spawn, hosted handoff, vacancy,
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The cross-process behavior is one ordered scenario whose checkpoints cannot be reduced to unit assertions."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1756,7 +832,7 @@ source_version_or_generator = "public control submission and durable observation
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The scenario must drive and observe the real control and inbox boundaries without internal handler shortcuts."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1776,7 +852,7 @@ source_version_or_generator = "checkpoint definitions and independently observed
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "The route needs stable requirement-linked checkpoints separated from scenario mutation code."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1796,7 +872,7 @@ source_version_or_generator = "fixture tmux socket lifecycle and spawned-process
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "Process isolation and cleanup need one bounded owner that proves no host tmux authority is reused."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1816,7 +892,7 @@ source_version_or_generator = "explicit affected-path projection with source-der
 introduced_by = "260821-ARSPAWN-L5"
 lifetime = "permanent"
 permanence_rationale = "Targeted acceptance must fail when a directly imported harness dependency can green-skip the scenario."
-replacement_contract = "contract:ambient-role-chat-e2e"
+replacement_contract = "node:mcp/tests/test_agents_remember_quality.py::test_gate_four_not_applicable_result_does_not_claim_real_codex_execution"
 consumer_scope = "exact-source"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
@@ -1835,76 +911,20 @@ source_version_or_generator = "exact repository gate admission, publication and 
 introduced_by = "260831-CCR-L30"
 lifetime = "permanent"
 permanence_rationale = "One fixture builds isolated Git candidates and real retained report bytes for gate consumer and retention proofs."
-replacement_contract = "node:mcp/tests/test_gate_certification_evidence.py::test_unchanged_certificate_reuses_original_generation_and_provenance"
+replacement_contract = "node:mcp/tests/test_closeout_certification_recovery.py::test_unchanged_interruption_reuses_the_original_exact_certificates"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_ledger_evidence_order.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
   "mcp/tests/test_code_certification_execution.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_dagger_certification_suffix.py",
-  "mcp/tests/test_evidence_dependencies.py",
   "mcp/tests/test_gate_certification_evidence.py",
-  "mcp/tests/test_gate_certification_records.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_quality_gate_public_contract.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_tool_response_conformance.py",
-  "mcp/tests/test_worktree_closeout_quality_gate.py",
-  "mcp/tests/test_worktree_integrate_quality_gate.py",
   "mcp/tests/test_worktree_quality_gate_runner.py",
 ]
 
@@ -1920,16 +940,10 @@ source_version_or_generator = "actual integration operation owners and exact ori
 introduced_by = "260831-CCR-L33"
 lifetime = "permanent"
 permanence_rationale = "One fixture owns real integration journals and retained certificate bytes across integration and renderer boundary tests."
-replacement_contract = "node:mcp/tests/test_integration_certification_selection.py::test_full_integration_selects_originals_before_execution_and_ignores_latest_pointer"
+replacement_contract = "node:mcp/tests/test_quality_gate_public_contract.py::QualityGatePublicContractTests::test_recovery_refuses_same_id_decoder_byte_drift"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_worktree_integrate_quality_gate.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_gate_certification_records.py",
   "mcp/tests/test_quality_gate_public_contract.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
 ]
 
 [[artifact]]
@@ -1944,90 +958,28 @@ source_version_or_generator = "typed candidate source-selection and applicabilit
 introduced_by = "260831-CCR-L33"
 lifetime = "permanent"
 permanence_rationale = "One explicitly counterfactual fixture owner supplies frozen source declarations for compiler and executor boundary tests."
-replacement_contract = "node:mcp/tests/test_repository_source_applicability.py::test_targeted_nonapplicability_removes_only_declared_conditional_execution_dependency"
+replacement_contract = "node:mcp/tests/test_repository_certification_profiles.py::test_selector_result_refuses_unreasoned_output_and_targeted_full_expansion"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_agents_remember_quality.py",
   "mcp/tests/test_certification_lane_bridge.py",
   "mcp/tests/test_clean_quality_executor.py",
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",
   "mcp/tests/test_closeout_certification_recovery.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_closeout_ledger_evidence_order.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
-  "mcp/tests/test_prepared_publication_recovery.py",
-  "mcp/tests/test_closeout_mutation_evidence_boundary.py",
-  "mcp/tests/test_closeout_recovery_projection_invariants.py",
   "mcp/tests/test_code_certification_execution.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_dagger_certification_suffix.py",
   "mcp/tests/test_environment_reconstruction.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_frozen_certification_store.py",
   "mcp/tests/test_gate_certificate_authority.py",
   "mcp/tests/test_gate_certification_evidence.py",
-  "mcp/tests/test_gate_certification_records.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_certification_selection.py",
-  "mcp/tests/test_integration_organizational_decisions_l2.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_l5_quality_and_recovery_edges.py",
-  "mcp/tests/test_legacy_operation_bridge.py",
-  "mcp/tests/test_legacy_operation_entry_totality_l2.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_adoption_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_preparation_selection.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_resume_invariant_owner_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
   "mcp/tests/test_operation_certification_selection.py",
-  "mcp/tests/test_organizational_completion_validation.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_prepared_publication_recovery.py",
   "mcp/tests/test_quality_gate_public_contract.py",
   "mcp/tests/test_quality_report_publication_security.py",
-  "mcp/tests/test_rail_bindings.py",
-  "mcp/tests/test_rail_evidence_publication.py",
   "mcp/tests/test_repository_certification_profiles.py",
-  "mcp/tests/test_repository_profile_authority.py",
-  "mcp/tests/test_repository_profile_branch_coverage.py",
-  "mcp/tests/test_repository_quality_branch_coverage.py",
-  "mcp/tests/test_repository_source_applicability.py",
   "mcp/tests/test_source_lineage.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_tool_response_conformance.py",
-  "mcp/tests/test_worktree_closeout_gate_scope.py",
   "mcp/tests/test_worktree_closeout_quality_gate.py",
   "mcp/tests/test_worktree_integrate_quality_gate.py",
   "mcp/tests/test_worktree_quality_gate_runner.py",
@@ -2045,47 +997,10 @@ source_version_or_generator = "real task, profile, door, frozen admission and at
 introduced_by = "260831-CCR-L33"
 lifetime = "permanent"
 permanence_rationale = "Lifecycle journal tests require real selected admission and successor references; completion helpers exercise bookkeeping without asserting certification acceptance."
-replacement_contract = "node:mcp/tests/test_lifecycle_operation_store_invariants.py::test_store_replacement_and_recovery_require_valid_terminal_identity"
+replacement_contract = "node:mcp/tests/test_lifecycle_operations.py::test_contract_lifecycle_lease_excludes_cross_kind_and_terminal_mutation"
 consumer_scope = "exact"
 consumers = [
-  "mcp/tests/test_closeout_candidate_publication_guard.py",
-  "mcp/tests/test_closeout_execution_input_guards.py",
-  "mcp/tests/test_closeout_generation_boundary.py",
-  "mcp/tests/test_closeout_input_model_invariants.py",
-  "mcp/tests/test_configured_contract_admission_l2.py",
-  "mcp/tests/test_evidence_dependencies.py",
-  "mcp/tests/test_generation_coherent_lifecycle_projection.py",
-  "mcp/tests/test_integration_apply_recovery_edges_l2.py",
-  "mcp/tests/test_integration_authority_lowest_writers.py",
   "mcp/tests/test_integration_branch_authority.py",
-  "mcp/tests/test_integration_branch_authority_bootstrap_edges.py",
-  "mcp/tests/test_integration_branch_authority_edges.py",
-  "mcp/tests/test_integration_branch_authority_series_drift.py",
-  "mcp/tests/test_integration_ref_cas_classification_l2.py",
-  "mcp/tests/test_integration_ref_controls_l2.py",
   "mcp/tests/test_integration_ref_transaction.py",
-  "mcp/tests/test_l4_authority_branch_coverage.py",
-  "mcp/tests/test_l4_integration_authority_gap_coverage.py",
-  "mcp/tests/test_l4_start_authority_gap_coverage.py",
-  "mcp/tests/test_l4_terminal_and_series_gap_coverage.py",
-  "mcp/tests/test_lifecycle_control_configured_contract_toctou_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_model_invariants.py",
-  "mcp/tests/test_lifecycle_enclosure_publication_l2.py",
-  "mcp/tests/test_lifecycle_enclosure_successor.py",
-  "mcp/tests/test_lifecycle_journal_read_totality_l2.py",
-  "mcp/tests/test_lifecycle_operation_controls_l2.py",
-  "mcp/tests/test_lifecycle_operation_dispositions_l2.py",
-  "mcp/tests/test_lifecycle_operation_dry_run_l2.py",
-  "mcp/tests/test_lifecycle_operation_request_validation_l2.py",
-  "mcp/tests/test_lifecycle_operation_store_invariants.py",
-  "mcp/tests/test_lifecycle_operation_worker_entrypoint.py",
   "mcp/tests/test_lifecycle_operations.py",
-  "mcp/tests/test_lifecycle_reconciliation_concurrency_l2.py",
-  "mcp/tests/test_lifecycle_status_wait_outcomes.py",
-  "mcp/tests/test_lifecycle_status_wait_store.py",
-  "mcp/tests/test_lifecycle_worker_release_guards.py",
-  "mcp/tests/test_pending_door_live_classification_l2.py",
-  "mcp/tests/test_terminal_enclosure_archive_boundary_l2.py",
-  "mcp/tests/test_terminal_enclosure_cleanup_l5.py",
-  "mcp/tests/test_tool_response_conformance.py",
 ]

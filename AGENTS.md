@@ -149,48 +149,35 @@ Use `c-04-retrieval-strategy-router` to understand the full benefit of the strat
 
 ## Code Quality Instructions
 
-After implementing Python code in this source checkout, run acceptance only through the
-pinned Dagger module. Task-addressed worktree closeout builds the exact staged sandbox and
-invokes it automatically; a manual diagnostic invocation uses the same module from the
-candidate checkout:
+Ordinary Python development uses `mcp/.venv/bin/python -m pytest`; it runs the isolated
+unit population with four workers. Use `-m integration` for the small real-boundary suite
+and `-m ""` for combined verification. Only the pinned Dagger graph and existing lifecycle
+owners may produce certifying evidence; ordinary pytest does not acquire that authority.
+The delivery graph runs both populations explicitly. Preserve its genuine admission, process
+identity, disposable state, credential isolation, and exact candidate publication boundaries.
 
-```text
-dagger call quality --source=. --repository-bundle=<candidate.bundle> --mode=<targeted|full> --diff-base=<commit> reports export --path=<enclosure>/reports
-```
+Follow `docs/design/python-pytest-bootstrap.md` for the current test policy and commands.
+Every new case must protect a distinct user operation, consequential failure, or actual
+regression. Extend, consolidate, or replace overlapping tests before adding cases. Private
+branch coverage and metric improvement are not sufficient reasons for a test. Remove unused
+fixtures/support with the redundant tests. Do not recursively run pytest or repeatedly scan
+this repository to test the test suite.
 
-The exported `clean-quality-results.json` is the single authoritative result. Leaf
-closeout enforces targeted acceptance once and master integration enforces full acceptance
-once; leaf integration, push, pull-request, tag, and publish paths do not rerun it.
-GitHub pull requests still run their deterministic non-test checks, but those are not
-acceptance gates. No host-wrapper or second Dagger projection is an acceptance gate.
-The Python, Playwright, and changed-lines coverage harnesses fail closed at startup unless the
-pinned Dagger graph supplies a matching per-run environment nonce and in-container attestation
-file. Direct targeted Vitest unit/component runs are supported as non-certifying diagnostic
-feedback. Python has no supported host pytest route: Candidate A was removed after exact-candidate
-measurement showed that its 2,774-line safety/proof surface was slower than the equivalent warm
-Dagger micro-route. There is no host compatibility path, retained classifier, or fallback for the
-guarded Python acceptance and integration harnesses.
-Use `docs/design/python-evidence-system.md` before changing test evidence, fixtures, support,
-selection, retry, cadence, or causal reporting. Durable evidence must enter the enforced lifecycle
-catalog; internal truth comes from canonical product owners, external conformance stays
-independent, and stress cadence must not erase deterministic durability regressions.
-The graph runs the wrapper inside clean Ubuntu. Four steps enforce — ruff (lint),
-`ruff format --check`, Pyright, and the full pytest suite — followed by mandatory CRAP
-threshold enforcement. Take no path arguments to it: there are none, because its scope is
-`git ls-files '*.py'` and narrowing what a gate certifies is how a gate stops meaning
-anything. Each rail states its current input, resolved config, and unit count before its
-result. On a manual dirty tree, non-ignored untracked files inside the quality scope roots
-are reported as outside the index/diff measurement; reporting never stages or stashes them.
+`pyproject.toml` declares parametrized case budgets, enforced on selected collected items.
+The combined run observes both complete populations. Budget growth needs an explicit change
+tradeoff stating the distinct protection, case count, support size, and elapsed runtime cost;
+never silently raise the limits. Keep integration small instead of moving unit bloat into it.
 
-Nothing in this gate is exempt from anything. There is no baseline, ratchet, allowlist or
-grandfather file anywhere in it, and none may be added: a finding is fixed, never
-recorded.
+Coverage is diagnostic only: there is no mandatory percentage, changed-line floor, or test
+obligation derived from an uncovered line. CRAP is reported only for production functions,
+excluding tests and verification support. Its existing threshold of 20 is a review trigger,
+not a delivery blocker. Address a finding through simpler production code, a meaningful
+behavioral test, or a concise justified acceptance in the change description. There is no
+score-exception registry, coverage ratchet, or baseline mechanism.
 
-CRAP is `cc**2 * (1 - branch_coverage)**3 + cc`, scored per function against the branch
-data Coverage.py emits under `[tool.coverage.run] branch = true`. The reader refuses a
-statement-only report rather than silently scoring the wrong metric. There is no CRAP
-baseline and no exemption list — the threshold is the whole policy, so a function over it
-is fixed by covering its branches or by splitting it, never by recording it somewhere.
+Lint, formatting, typing, structural rules, and test failures still enforce. Diagnostic-tool
+errors are distinct from metric findings and remain visible failures. Each report must state
+its scope and inputs. Preserve untracked files: quality reporting never stages or stashes them.
 
 Complexity is enforced by `C901` plus `PLR0911`/`PLR0912`/`PLR0915`, reported by ruff
 like every other rule. Arming them surfaced 67 offenders; those were parked behind a

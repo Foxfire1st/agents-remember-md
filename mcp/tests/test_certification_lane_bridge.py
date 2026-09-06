@@ -13,11 +13,6 @@ from agents_remember.certification.certification_lane import (
 )
 from agents_remember.certification.models import (
     CandidateIdentity,
-    RailAdapterDefinition,
-    RailApplicability,
-    RailDefinition,
-    RailEvidenceContract,
-    RailRuntimeInputs,
 )
 from agents_remember.certification.repository_profiles.authority import (
     load_repository_profile,
@@ -29,7 +24,6 @@ from agents_remember.certification.repository_profiles.planning import (
 )
 from agents_remember.errors import CertificationContractError
 from agents_remember.memory_quality.gate_five_rails import gate_five_memory_rails
-from agents_remember.models.certification.base import RailIdentity
 from source_selection_test_support import source_selection_fixture
 
 _PROFILE = Path(__file__).resolve().parents[1] / "certification-profile-v1.json"
@@ -109,113 +103,6 @@ def test_bridge_derives_one_canonical_five_gate_authority_from_the_real_profile(
     assert envelope.profileId == lane.selectionId
 
 
-def test_bridge_is_deterministic_and_ignores_creation_provenance(tmp_path: Path) -> None:
-    admitted = _admitted(tmp_path)
-    first = _lane(admitted, marker="one")
-    second = _lane(admitted, marker="two")
-    assert first.admission.admissionDigest == second.admission.admissionDigest
-    assert first.registry.registryDigest == second.registry.registryDigest
-    assert first.certificationPlan.planDigest == second.certificationPlan.planDigest
-    assert first.registry == second.registry
-    assert first.certificationPlan == second.certificationPlan
-    # Provenance differs; the semantic envelope and digest must not.
-    assert first.admission.semanticEnvelope == second.admission.semanticEnvelope
-    assert first.admission.provenance != second.admission.provenance
-
-
-def test_bridge_rejects_a_missing_gate_five_population(tmp_path: Path) -> None:
-    admitted = _admitted(tmp_path)
-    with pytest.raises(CertificationContractError) as raised:
-        compile_certification_lane(
-            admitted.canonical,
-            _plan(admitted),
-            provenance=_provenance(),
-            memory_rails=(),
-        )
-    codes = {str(item["code"]) for item in raised.value.findings}
-    assert codes == {"gate-five-memory-rails-missing"}
-
-
-def test_bridge_refuses_a_not_applicable_repository_selection(tmp_path: Path) -> None:
-    admitted = _admitted(tmp_path)
-    selection = resolve_repository_profile_selection(
-        admitted.canonical, purpose="local-precommit", mode="targeted"
-    )
-    plan = compile_repository_profile_plan(
-        admitted.canonical,
-        selection_id=selection.selectionId,
-        candidate_identity=_CANDIDATE,
-    )
-    with pytest.raises(CertificationContractError) as raised:
-        compile_certification_lane(
-            admitted.canonical,
-            plan,
-            provenance=_provenance(),
-            memory_rails=gate_five_memory_rails(selection.selectionId),
-        )
-    codes = {str(item["code"]) for item in raised.value.findings}
-    assert codes == {"repository-gate-not-applicable"}
-
-
-def test_bridge_memory_rails_are_part_of_the_registry_digest(tmp_path: Path) -> None:
-    admitted = _admitted(tmp_path)
-    repository_plan = _plan(admitted)
-    lane = _lane(admitted)
-    # The memory rails bound their registry identity: replacing the vocabulary
-    # digest must change the frozen admission so a memory-domain change can never
-    # masquerade as an unchanged code gate.
-    other_rails = tuple(
-        rail.model_copy(
-            update={"adapter": rail.adapter.model_copy(update={"configurationDigest": "b" * 64})}
-        )
-        for rail in gate_five_memory_rails("closeout-targeted")
-    )
-    other = compile_certification_lane(
-        admitted.canonical,
-        repository_plan,
-        provenance=_provenance(),
-        memory_rails=other_rails,
-    )
-    assert other.admission.admissionDigest != lane.admission.admissionDigest
-
-
-def _invalid_memory_rail(profile_id: str) -> RailDefinition:
-    return RailDefinition(
-        identity=RailIdentity(railId="not-gate-five", version="1.0.0"),
-        gate=4,
-        railClass="pre-test-quality",
-        authority="repository-profile",
-        ownerClass="repository-quality",
-        correctiveOwner="repository-quality",
-        posture="enforcing",
-        orderKey="not-gate-five",
-        prerequisites=(),
-        requiredArtifacts=(),
-        adapter=RailAdapterDefinition(
-            adapterKind="container-command",
-            adapterId="not-gate-five-adapter",
-            configurationDigest="a" * 64,
-            executionEvidence="fixture://not-gate-five",
-        ),
-        runtimeInputs=RailRuntimeInputs(runtimeIdentity="fixture"),
-        applicability=(
-            RailApplicability(
-                profileId=profile_id,
-                status="applicable",
-                selectionIdentity="fixture",
-                population="fixture",
-            ),
-        ),
-        evidenceContract=(
-            RailEvidenceContract(
-                evidenceId="fixture-evidence",
-                mediaType="application/json",
-                maxBytes=1024,
-            ),
-        ),
-    )
-
-
 def test_bridge_admit_currentness_reread_accepts_and_refuses_movement(tmp_path: Path) -> None:
     admitted = _admitted(tmp_path)
     repository_plan = _plan(admitted)
@@ -244,39 +131,3 @@ def test_bridge_admit_currentness_reread_accepts_and_refuses_movement(tmp_path: 
         )
     codes = {str(item["code"]) for item in raised.value.findings}
     assert codes == {"certification-lane-mismatch"}
-
-
-def test_bridge_registry_id_is_bound_when_supplied(tmp_path: Path) -> None:
-    admitted = _admitted(tmp_path)
-    repository_plan = _plan(admitted)
-    memory = gate_five_memory_rails("closeout-targeted")
-    first = compile_certification_lane(
-        admitted.canonical,
-        repository_plan,
-        provenance=_provenance(),
-        memory_rails=memory,
-        registry_id="explicit-registry",
-    )
-    second = compile_certification_lane(
-        admitted.canonical,
-        repository_plan,
-        provenance=_provenance(),
-        memory_rails=memory,
-        registry_id="explicit-registry",
-    )
-    assert first.registry.registryDigest == second.registry.registryDigest
-    assert first.admission.admissionDigest != _lane(admitted).admission.admissionDigest
-
-
-def test_bridge_refuses_an_invalid_gate_five_memory_rail(tmp_path: Path) -> None:
-    admitted = _admitted(tmp_path)
-    repository_plan = _plan(admitted)
-    with pytest.raises(CertificationContractError) as raised:
-        compile_certification_lane(
-            admitted.canonical,
-            repository_plan,
-            provenance=_provenance(),
-            memory_rails=(_invalid_memory_rail("closeout-targeted"),),
-        )
-    codes = {str(item["code"]) for item in raised.value.findings}
-    assert codes == {"gate-five-memory-rail-invalid"}

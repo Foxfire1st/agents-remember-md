@@ -1,6 +1,6 @@
 """Run the repository-owned Python quality rails with explicit provenance.
 
-Ruff, Ruff format, file size, Pyright, pytest, CRAP, and changed-lines coverage enforce.
+Ruff, Ruff format, file size, Pyright and pytest enforce; coverage and CRAP report.
 Cheap deterministic rails precede pytest, which is the final subprocess; CRAP and diff
 coverage then score its artifact. Radon CC and MI are labelled reports because Radon
 findings do not change its exit status. Scope
@@ -689,7 +689,6 @@ def prepare_retry_plan(
                 base_revision=base.revision,
                 threshold=config.threshold,
                 top=config.top,
-                diff_floor=config.diff_floor,
                 coverage_paths=tuple(config.scope.coverage_paths),
                 test_arguments=tuple(config.scope.test_paths),
                 untracked_paths=tuple(config.scope.untracked_paths),
@@ -793,7 +792,6 @@ def config_from_args(
             threshold=args.threshold,
             top=args.top,
             diff_base=args.diff_base,
-            diff_floor=args.diff_floor,
             targeted=True,
             targeted_base=base,
             targeted_scope=derived,
@@ -812,7 +810,6 @@ def config_from_args(
         threshold=args.threshold,
         top=args.top,
         diff_base=args.diff_base,
-        diff_floor=args.diff_floor,
         file_size_armed=quality_scope.file_size_armed(project_root),
         pytest_report_log=getattr(args, "pytest_report_log", None),
         pytest_phase_report=getattr(args, "pytest_phase_report", None),

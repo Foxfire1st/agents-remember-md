@@ -2,7 +2,7 @@
 
 Thanks for contributing.
 
-Agents Remember is a markdown-first memory layer and workflow system for coding agents. It is also a substantial application: roughly 190,000 lines of Python under `mcp/` (the MCP server, CLI, and workflow engine, plus its test suite) and a TypeScript dashboard under `dashboard/`, alongside the instructions, skills, and onboarding conventions. Contributions land in both halves, and most of them touch code.
+Agents Remember is a markdown-first memory layer and workflow system for coding agents. It is also a substantial application: Python under `mcp/` (the MCP server, CLI, and workflow engine, plus its test suite) and a TypeScript dashboard under `dashboard/`, alongside the instructions, skills, and onboarding conventions. Contributions land in both halves, and most of them touch code.
 
 The standard for changes is the same either way: make the system clearer, safer, and easier to apply consistently. Code additionally has to pass the quality gate described below — that part is not a matter of taste.
 
@@ -11,7 +11,7 @@ The standard for changes is the same either way: make the system clearer, safer,
 Good contributions include:
 
 - fixing defects in the MCP server, CLI, workflow engine, or dashboard
-- adding or tightening tests, especially where the gate shows thin coverage
+- consolidating tests and adding distinct protection for user operations, consequential failures, or regressions
 - fixing unclear or conflicting workflow guidance
 - improving skills so their scope, inputs, and outputs are easier to follow
 - tightening onboarding conventions and examples
@@ -38,7 +38,7 @@ When contributing, prefer changes that reinforce those rules instead of introduc
 This repository is organized around a few distinct responsibilities:
 
 - `mcp/src/agents_remember` — the MCP server, CLI, workflow engine, and quality wrapper
-- `mcp/tests` — the pytest suite that the gate runs in full
+- `mcp/tests` — the bounded unit and integration suites
 - `dashboard/` — the cockpit frontend; its build output is generated, is not committed, and is produced by the release job
 - `scripts/` — synchronisers that keep generated copies in step with their sources
 - `.githooks/` — the shared local gate, in a fast tier and a full tier
@@ -63,92 +63,43 @@ For larger workflow changes, open a discussion or draft pull request early inste
 
 ## Quality gates
 
-### Acceptance runs in Dagger
+### Development and delivery
 
-For this repository, only the pinned Dagger Ubuntu graph produces acceptance
-evidence. Host `pytest`, Playwright, and direct `agents_remember_test_support.code_quality.check`
-execution refuse before test or retry planning. A direct targeted `npm test -- <files>` Vitest
-run is supported as a fast unit/component diagnostic loop; it never substitutes for Dagger
-acceptance, changed-lines coverage, or lifecycle evidence. Python has no supported host pytest
-diagnostic command. Candidate A was retired after its exact-candidate cost comparison failed the
-approved retention threshold; do not recreate its command, manifest, analyzer, or compatibility
-wrapper. Use an explicit non-accepting Dagger evidence route for investigation and the canonical
-quality function for acceptance.
-Before adding a durable fixture, recording, migration proof, or shared-support world, follow the
-authority, lifecycle, cadence, and replacement rules in
-[`docs/design/python-evidence-system.md`](docs/design/python-evidence-system.md). The executable
-inventory is `mcp/tests/evidence-lifecycle.toml`; an uncataloged or expired governed artifact fails
-the static quality tier and Dagger quality route.
-The lifecycle tools own the two accepted invocations:
+Use `mcp/.venv/bin/python -m pytest` for isolated unit feedback, `-m integration` for
+real boundaries, and `-m ""` for the combined population. Add `-n=0` when serial debugging
+helps. Targeted `npm test -- <files>` provides dashboard feedback. Only the pinned Dagger
+graph and lifecycle owners produce certifying evidence; host runs are development checks.
+Use the existing shared engine, candidate snapshot, and genuine admission mechanism for
+Dagger delivery. The exact comparison commit remains required for diagnostic diff reporting.
 
-- `mode=targeted` for focused leaf acceptance (changed files, reverse-import closure,
-  and the derived pytest subset);
-- `mode=full` once at master integration for the complete repository suite.
+### Keep protection small
 
-Both modes require the exact Git comparison commit through `--diff-base`. In a leaf,
-that is the recorded master base; at master integration, it is the recorded super
-base. An omitted base is refused because the clean-room checkout has no trustworthy
-implicit upstream and must never turn changed-lines coverage into whole-tree coverage
-against Git's empty tree. `dagger call quality --help` is the executable reference for
-the current inputs; the lifecycle tools construct the source snapshot and ancestry
-bundle and invoke it automatically.
+A test needs a distinct user operation, consequential failure, or actual regression to protect.
+Extend or consolidate existing protection before adding overlap across model, helper, service,
+and application layers. Keep a small number of real integration checks for ownership, data
+integrity, recovery and external protocol boundaries. Delete obsolete assertions and unused
+support together. Do not add recursive test runs, repeated collection, repository census
+copies, or synthetic fixture worlds to establish test policy.
 
-Inside that nonce-attested graph, one wrapper,
-`python -m agents_remember_test_support.code_quality.check`, is the gate. It is an internal
-executor, not a host command. Four of its steps enforce and fail the run on any
-finding: ruff (lint, including the
-complexity rules `C901`, `PLR0911`, `PLR0912`, `PLR0915`), `ruff format --check`,
-Pyright (types), and the full pytest suite — followed by CRAP (complexity x
-**branch** coverage), where any score at or above the configured threshold is a hard
-failure. The gate prints the branch coverage each CRAP offender would need, and says
-so explicitly when the complexity term alone is over the line and no test can clear
-it.
+The provisional unit budget is 1,000 collected parametrized cases. The separate integration
+budget is declared beside it in `pyproject.toml`. Collection checks these limits without
+starting another collection or scanning source. Combined delivery observes both populations.
+An increase needs an explicit protection/cost tradeoff in the change description: what
+consequential behavior requires it, why existing tests cannot absorb it, and its case, code-size
+and elapsed-runtime costs. Moving excess tests behind integration markers is not a reduction.
 
-**No rail of this gate has a baseline, allowlist, ratchet or exemption file, and none
-may be added.** The complexity rules briefly had one: arming them produced 67
-offenders, which were recorded in `quality/complexity-baseline.txt` behind a
-shrink-only cap and a dated burn-down. That was overruled — all 67 were refactored,
-and the file, its module and its gate step were deleted. A complexity finding is
-cleared by extracting a cohesive helper, never by `# noqa`, a per-file ignore, or a
-wider limit in `pyproject.toml`. A CRAP finding is cleared by raising the function's
-branch coverage or by splitting it.
+Coverage reporting, including changed-line coverage, is diagnostic. No percentage fails
+delivery or automatically requires another test. CRAP applies only to production functions;
+tests and verification support are excluded. The existing score threshold of 20 prompts
+review rather than failing delivery. Simplify production code, add a justified behavioral
+test, or briefly explain why the score is acceptable in the change description. Do not create
+an exception registry or coverage baseline.
 
-Two steps do **not** enforce and are labelled as reports in the output: `radon
-cc` and `radon mi` exit 0 whatever they find, so no Radon finding has ever been
-able to fail this gate. They are printed for refactor scouting. A non-zero exit
-from either still fails the run, because for a tool that exits 0 on every
-finding a non-zero exit means the tool itself broke.
-
-Scope is derived from the tree, not written down: `git ls-files '*.py'` is what
-ruff, the formatter and Pyright receive, so a newly tracked Python file is gated
-the moment it is added. The wrapper accepts no path arguments — there is no way to
-narrow what it certifies.
-
-### The coverage floor is on your diff, not on the tree
-
-The binding coverage gate is `diff-coverage`, the last enforcing step. It scores the
-same coverage report pytest just produced — no second run — restricted to the lines
-your change touched, and it fails on **any** uncovered changed statement or untaken
-changed branch, naming each one as `path:line`.
-
-There is no aggregate percentage to pin, on purpose. With 88k lines of tests, much of
-the package runs simply by being imported: the tree reports 87% and one entirely
-untested twenty-line function moves that by 0.04 points, which no threshold can see.
-A floor on changed lines is the only form that can. And it is 100% because anything
-lower is a budget for untested code that grows with the size of the change — at a 90%
-floor the median commit here (234 changed units) may leave 23 lines untested, which is
-a whole function. `mcp/test_support/agents_remember_test_support/code_quality/diff_coverage.py` carries the
-measurements.
-
-The lifecycle supplies the comparison point as `AR_GATE_DIFF_BASE` from the
-worktree contract. On a leaf branch it is the recorded series base, and at master
-integration it is the recorded super base. Do not substitute a host invocation:
-the wrapper refuses without the nonce-attested Dagger environment.
-
-Changed Python outside the measured packages — the suite itself, `scripts/`, the
-provider images — is listed on every run under its own heading rather than dropped,
-because `--cov` measures the shipped package and the floor cannot honestly speak for
-the rest.
+Lint (including C901/PLR0911/PLR0912/PLR0915), formatting, typing, structural rules and test
+failures remain enforcing. Their rules, limits and scope are unchanged. Tool execution errors
+remain errors even when the tool normally emits a diagnostic report. See
+[`Python test policy`](docs/design/python-pytest-bootstrap.md) for isolation and commands and
+[`Evidence ownership`](docs/design/python-evidence-system.md) for existing delivery ownership.
 
 Set it up once per clone:
 
@@ -215,46 +166,13 @@ master acceptance boundary again. If required status-check names change, update
 the branch ruleset in the same change so the PR cannot merge without its current
 checks.
 
-### The environment-gated integration paths
+### Integration scope
 
-`pyproject.toml` registers eight markers for suites that skip unless an `AR_*`
-variable opts them in — fourteen tests over the Pi RPC transport, the Codex
-app-server, the Claude stream-json transport, the L3 control routes, the production
-evidence seam and the real MCP stdio server. Registering a marker is not applying
-one: all eight were registered and documented while no test carried
-`@pytest.mark.<name>`, so `pytest -m ar_run_pi_rpc_smoke` selected nothing, and
-nothing set any of the variables either.
-
-`scripts/run-gated-integration.py list` reports each selection and what it needs.
-Execution is test-capable and therefore refuses outside the nonce-attested Dagger
-environment; it is not a host-test escape hatch:
-
-```sh
-python scripts/run-gated-integration.py list
-```
-
-The environment-gated paths are not GitHub PR checks. They are pytest selections and
-therefore inherit the repository-wide Dagger attestation requirement; a host or plain
-GitHub runner is refused before collection. Their requirements remain:
-
-| Path | Needs | Automated PR check |
-| --- | --- | --- |
-| `ar-run-pi-rpc-smoke` | node + npm; installs its own pinned Pi build and drives it `--offline` against `127.0.0.1` | no |
-| `agents-remember-real-mcp-config` | a generated settings file; spawns this repo's own MCP server over stdio. The live grepai half additionally needs the self-hosted docker stack up and indexed | no |
-| `ar-codex-app-server-live-smoke` | an installed, signed-in Codex whose live catalogue advertises the model. Sends no prompt, so it bills nothing | no |
-| `ar-codex-app-server-live-conformance` | the same install, plus two real turns. Bills | no |
-| `ar-claude-stream-smoke` | an installed, signed-in Claude Code. The prompt is the local `/cost` command, so spend is negligible | no |
-| `ar-run-control-plane-installed` | exactly `codex 0.144.5` and `pi 0.80.7`, signed in, plus a 600-word essay prompt and an image upload. Bills | no |
-| `ar-run-control-installed` | the same pinned pair, plus the essay prompt, two settled turns and a PNG upload. Bills | no |
-| `ar-run-evidence-installed` | the same pinned pair. Tiny prompts, but it persists a real thread into your `CODEX_HOME`. Bills | no |
-
-Six of the eight need an installed, signed-in vendor CLI that no hosted runner can
-hold, and four of those bill for real model turns — that is a fact about the path,
-not a setup nobody got round to. None of them is faked, stubbed or soft-skipped in
-CI; they run here, in one command, and the runner states the cost before it starts.
-
-`mcp/tests/test_gated_integration_runner.py` fails if any registered marker selects
-zero tests again, or if the runner and the registry drift apart in either direction.
+The retained suite uses disposable local application, process, socket and publication boundaries.
+The obsolete vendor-account marker cohorts and their unconsumed runner were removed with their
+tests. Current adapter tests use explicit protocol recordings and local peers; they do not claim
+validation against an operator's signed-in vendor account. The existing profile-owned ambient
+Codex end-to-end harness remains separate from ordinary pytest.
 
 ### Closeout
 

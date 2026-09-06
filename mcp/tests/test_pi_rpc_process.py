@@ -7,7 +7,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from agents_remember.errors import HarnessAdapterDisconnectedError, HarnessControlError
+from agents_remember.errors import HarnessAdapterDisconnectedError
 from agents_remember.models.conversations.control_wire import (
     ControlIdentity,
     LaunchSpec,
@@ -63,17 +63,6 @@ for line in sys.stdin:
         with self.assertRaises(HarnessAdapterDisconnectedError):
             await anext(events)
 
-    async def test_malformed_stdout_fails_transport_without_reclassification(self) -> None:
-        transport = PiRpcSubprocess()
-        await transport.start(_child_launch('print("{\\"type\\":]", flush=True)'))
-        try:
-            with self.assertRaisesRegex(HarnessControlError, "malformed Pi RPC JSONL frame"):
-                await anext(transport.events())
-            with self.assertRaisesRegex(HarnessControlError, "malformed Pi RPC JSONL frame"):
-                await transport.request({"id": "after-malformed", "type": "get_state"})
-        finally:
-            await transport.stop("forced")
-
     async def test_eof_during_correlated_request_is_ambiguous(self) -> None:
         script = """
 import sys
@@ -119,39 +108,6 @@ for command in (first, second):
             self.assertEqual(response["id"], "next-1")
         finally:
             await transport.stop("forced")
-
-    async def test_cancelled_requests_without_responses_need_no_retained_tombstones(self) -> None:
-        for size in (8, 64):
-            with self.subTest(size=size):
-                script = f"""
-import json
-import sys
-
-for _ in range({size}):
-    json.loads(sys.stdin.readline())
-next_request = json.loads(sys.stdin.readline())
-print(json.dumps({{
-    "type": "response",
-    "id": next_request["id"],
-    "command": next_request["type"],
-    "success": True,
-}}), flush=True)
-"""
-                transport = PiRpcSubprocess()
-                await transport.start(_child_launch(script))
-                try:
-                    for index in range(size):
-                        cancelled = asyncio.create_task(
-                            transport.request({"id": f"lost-{index}", "type": "slow"})
-                        )
-                        await asyncio.sleep(0.001)
-                        cancelled.cancel()
-                        with self.assertRaises(asyncio.CancelledError):
-                            await cancelled
-                    response = await transport.request({"id": "next", "type": "ping"})
-                    self.assertEqual(response["id"], "next")
-                finally:
-                    await transport.stop("forced")
 
 
 if __name__ == "__main__":

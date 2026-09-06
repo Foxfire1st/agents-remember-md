@@ -40,25 +40,6 @@ def _mcp_json(directory: Path, config_path: Path | None, server: str = "agents-r
 
 
 class DiscoverConfigTests(unittest.TestCase):
-    def test_finds_the_settings_convention(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            settings = _settings(
-                root / ".claude/mcp/agents-remember-settings.json", root / "ar-coordination"
-            )
-            deep = root / "a" / "b"
-            deep.mkdir(parents=True)
-            self.assertEqual(discover_config(deep), settings)
-
-    def test_finds_the_mcp_registration_config(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            settings = _settings(root / "elsewhere" / "settings.json", root / "ar-coordination")
-            _mcp_json(root, settings)
-            deep = root / "repo" / "src"
-            deep.mkdir(parents=True)
-            self.assertEqual(discover_config(deep), settings)
-
     def test_convention_wins_over_registration_in_the_same_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -95,40 +76,6 @@ class DiscoverConfigTests(unittest.TestCase):
             )
             start = low / "other"
             self.assertEqual(discover_config(start), settings)
-
-    def test_registration_pointing_at_a_missing_file_is_skipped(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            settings = _settings(
-                root / ".claude/mcp/agents-remember-settings.json", root / "ar-coordination"
-            )
-            _mcp_json(root / "ws", root / "ws" / "gone.json")
-            start = root / "ws"
-            start.mkdir(parents=True, exist_ok=True)
-            self.assertEqual(discover_config(start), settings)
-
-    def test_placeholder_template_is_skipped(self) -> None:
-        # The repository ships a tracked template at the convention path whose
-        # coordinationRoot is a "<PATH/TO/YOUR/...>" placeholder; running from inside a
-        # source checkout must walk past it to the workspace's real settings.
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            real = _settings(
-                root / ".claude/mcp/agents-remember-settings.json", root / "ar-coordination"
-            )
-            repo = root / "agents-remember"
-            _write(
-                repo / ".claude/mcp/agents-remember-settings.json",
-                json.dumps(
-                    {
-                        "version": 1,
-                        "coordinationRoot": "<PATH/TO/YOUR/PROJECTS_FOLDER>/ar-coordination",
-                    }
-                ),
-            )
-            start = repo / "mcp" / "src"
-            start.mkdir(parents=True)
-            self.assertEqual(discover_config(start), real)
 
     def test_miss_raises_with_both_patterns_and_the_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

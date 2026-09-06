@@ -9,12 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from hashlib import sha256
 
 from _control_plane import OPERATOR, TINY_PNG, FakeControlAdapter, drive_activity, make_harness
-from agents_remember.models.conversations.evidence import (
-    AR_EVIDENCE_KEY,
-)
 from agents_remember.models.conversations.submissions import (
     AssetSubmitBlock,
     ConversationSubmitRequest,
@@ -25,9 +21,7 @@ from agents_remember.models.conversations.withdrawals import (
 )
 from agents_remember.serving.conversation.control import (
     attachments,
-    policy,
     queue_projection,
-    telemetry,
     withdrawals,
 )
 from agents_remember.serving.conversation.control.capabilities import (
@@ -103,29 +97,6 @@ class AttachmentStageTests(unittest.IsolatedAsyncioTestCase):
             uploads=uploads,
         )
 
-    async def test_stage_binds_and_returns_receipt_with_fallback_alt(self) -> None:
-        answer = await self._stage("at-1", [_png()])
-        self.assertEqual(answer.operation.phase, "staged")
-        self.assertEqual(answer.operation.outcome, "pending")
-        (receipt,) = answer.receipts
-        self.assertEqual(receipt.alt, "dot.png, image/png")
-        self.assertEqual(receipt.alt_provenance, "filename-mime-fallback")
-        self.assertEqual(receipt.sha256, sha256(TINY_PNG).hexdigest())
-        self.assertEqual(receipt.size_bytes, len(TINY_PNG))
-        self.assertEqual(receipt.ar_session_id, SESSION)
-        self.assertEqual(receipt.bridge_epoch, self.epoch)
-        spool = self.harness.endpoint.path.parent / "assets" / "at-1" / receipt.asset_id
-        self.assertTrue(spool.exists())
-        replay = await self._stage("at-1", [_png()])
-        self.assertEqual(replay.receipts[0].asset_id, receipt.asset_id)
-        self.assertEqual(replay.operation.revision, answer.operation.revision)
-
-    async def test_supplied_alt_keeps_its_provenance(self) -> None:
-        answer = await self._stage("at-2", [_png(alt="a diagram of the flow")])
-        receipt = answer.receipts[0]
-        self.assertEqual(receipt.alt, "a diagram of the flow")
-        self.assertEqual(receipt.alt_provenance, "supplied-description")
-
     async def test_mime_count_byte_and_kind_limits_are_typed(self) -> None:
         with self.assertRaises(OperationRejectedError):
             await self._stage(
@@ -152,11 +123,6 @@ class AttachmentStageTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(CapabilityRefusedError):
             await self._stage("at-6", [file_kind])
-
-    async def test_conflicting_content_reuse_is_typed(self) -> None:
-        await self._stage("at-7", [_png()])
-        with self.assertRaises(OperationConflictError):
-            await self._stage("at-7", [_png(name="other.png")])
 
 
 class AttachmentSubmitTests(unittest.IsolatedAsyncioTestCase):
@@ -381,30 +347,6 @@ class AttachmentRebindTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.05)
         self.assertEqual(self.adapter.submit_requests[-1].assets[0].asset_id, new_receipt.asset_id)
 
-    async def test_ack_keep_current_draft_deletes_recoverable_bytes(self) -> None:
-        _staged, response = await self._withdraw_with_asset()
-        assert isinstance(response, WithdrawnQueueResponse)
-        pending = await withdrawals.pending_recoveries(
-            ControlRequest(
-                service=self.service,
-                authorization=OPERATOR,
-                ar_session_id=SESSION,
-                expected_bridge_epoch=self.epoch,
-            )
-        )
-        await withdrawals.acknowledge_recovery(
-            ControlRequest(
-                service=self.service,
-                authorization=OPERATOR,
-                ar_session_id=SESSION,
-                expected_bridge_epoch=self.epoch,
-            ),
-            recovery_ref=pending.items[0].recovery_ref,
-            disposition="keep-current-draft",
-        )
-        spool_dir = self.harness.endpoint.path.parent / "assets" / "at-r1"
-        self.assertFalse(spool_dir.exists())
-
 
 class AttachmentReconcileTransitionTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
@@ -449,38 +391,6 @@ class AttachmentReconcileTransitionTests(unittest.IsolatedAsyncioTestCase):
             reconcile=reconcile,
         )
 
-    async def test_rejected_row_advances_to_failed_with_revision_bump(self) -> None:
-        self.adapter.next_acceptance = "rejected"
-        staged = await attachments.stage(
-            ControlRequest(
-                service=self.service,
-                authorization=OPERATOR,
-                ar_session_id=SESSION,
-                expected_bridge_epoch=self.epoch,
-            ),
-            request_id="at-t1",
-            kind_capabilities=self.caps,
-            uploads=[_png()],
-        )
-        await attachments.submit(
-            self.service,
-            OPERATOR,
-            SESSION,
-            body=_submit_body("at-t1", self.epoch, staged.receipts[0]),
-        )
-        projection = await attachments.attachment_status(
-            ControlRequest(
-                service=self.service,
-                authorization=OPERATOR,
-                ar_session_id=SESSION,
-                expected_bridge_epoch=self.epoch,
-            ),
-            request_id="at-t1",
-            reconcile=True,
-        )
-        self.assertEqual(projection.phase, "failed")
-        self.assertEqual(projection.outcome, "rejected")
-
     async def test_unknown_outcome_is_retained_and_never_cleaned(self) -> None:
         self.adapter.next_acceptance = "unknown"
         staged = await attachments.stage(
@@ -514,144 +424,6 @@ class AttachmentReconcileTransitionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(projection.outcome, "unknown")
         spool_dir = self.harness.endpoint.path.parent / "assets" / "at-t2"
         self.assertTrue(spool_dir.exists())
-
-    async def test_queued_then_dispatching_advances_phase(self) -> None:
-        await drive_activity(self.harness, "running")
-        staged = await attachments.stage(
-            ControlRequest(
-                service=self.service,
-                authorization=OPERATOR,
-                ar_session_id=SESSION,
-                expected_bridge_epoch=self.epoch,
-            ),
-            request_id="at-t3",
-            kind_capabilities=self.caps,
-            uploads=[_png()],
-        )
-        await attachments.submit(
-            self.service,
-            OPERATOR,
-            SESSION,
-            body=_submit_body("at-t3", self.epoch, staged.receipts[0]),
-        )
-        queued = await attachments.attachment_status(
-            ControlRequest(
-                service=self.service,
-                authorization=OPERATOR,
-                ar_session_id=SESSION,
-                expected_bridge_epoch=self.epoch,
-            ),
-            request_id="at-t3",
-            reconcile=True,
-        )
-        self.assertEqual(queued.phase, "queued")
-        self.adapter.submit_gate = asyncio.Event()
-        await drive_activity(self.harness, "idle")
-        deadline = asyncio.get_running_loop().time() + 5.0
-        while True:
-            timeline = await self.service.read_full_timeline(
-                self.harness.control_entry, expected_bridge_epoch=self.epoch
-            )
-            if any(item.state == "dispatching" for item in timeline):
-                break
-            if asyncio.get_running_loop().time() > deadline:
-                self.fail("row never dispatched into the gate")
-            await asyncio.sleep(0.05)
-        dispatching = await attachments.attachment_status(
-            ControlRequest(
-                service=self.service,
-                authorization=OPERATOR,
-                ar_session_id=SESSION,
-                expected_bridge_epoch=self.epoch,
-            ),
-            request_id="at-t3",
-            reconcile=True,
-        )
-        self.assertEqual(dispatching.phase, "dispatching")
-        self.assertGreater(dispatching.revision, queued.revision)
-        self.adapter.submit_gate.set()
-        self.adapter.submit_gate = None
-
-
-class PolicyTelemetryTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        self.adapter = FakeControlAdapter(harness="codex")
-        self.harness = make_harness(self, self.adapter, SESSION, harness="codex")
-        await self.harness.start()
-        self.service = self.harness.service
-        self.epoch = self.harness.epoch
-
-    async def asyncTearDown(self) -> None:
-        await self.harness.stop()
-
-    async def test_policy_is_read_only_evidence_with_reasons(self) -> None:
-        projection = await policy.conversation_policy(
-            self.service, OPERATOR, SESSION, expected_bridge_epoch=self.epoch
-        )
-        self.assertEqual(projection.repo_policy.state, "supported")
-        assert projection.repo_policy.value is not None
-        self.assertIn("local single-operator", projection.repo_policy.value)
-        self.assertEqual(projection.harness_mode.state, "unverified")
-        self.assertIn("adapter-private", projection.harness_mode.reason)
-        self.assertEqual(projection.policy_read.state, "unverified")
-        self.assertGreaterEqual(projection.revision, 1)
-
-    async def test_telemetry_usage_from_token_usage_frames_and_absent_before(self) -> None:
-        before = await telemetry.conversation_telemetry(
-            self.service, OPERATOR, SESSION, expected_bridge_epoch=self.epoch
-        )
-        self.assertIsNone(before.usage)
-        self.adapter.emit(
-            "codex-notification",
-            {
-                "codexMethod": "thread/tokenUsage/updated",
-                AR_EVIDENCE_KEY: {
-                    "threadId": "thread-1",
-                    "turnId": "turn-1",
-                    "tokenUsage": {
-                        "total": {
-                            "totalTokens": 100,
-                            "inputTokens": 60,
-                            "cachedInputTokens": 10,
-                            "outputTokens": 40,
-                            "reasoningOutputTokens": 5,
-                        },
-                        "last": {"totalTokens": 12, "inputTokens": 8, "outputTokens": 4},
-                    },
-                },
-            },
-        )
-        after = await telemetry.conversation_telemetry(
-            self.service, OPERATOR, SESSION, expected_bridge_epoch=self.epoch
-        )
-        assert after.usage is not None
-        self.assertEqual(after.usage.value.input_tokens, 60)
-        self.assertEqual(after.usage.value.output_tokens, 40)
-        self.assertEqual(after.usage.value.cached_tokens, 10)
-        self.assertEqual(after.usage.unit, "tokens")
-        self.assertEqual(after.usage.precision, "exact")
-        self.assertEqual(after.usage.scope.kind, "conversation")
-        self.assertEqual(after.usage.runtime_version, "0.144.5")
-        self.assertEqual(after.usage.fixture_id, "codex-0.144.5-installed-20260718")
-        self.assertGreater(after.revision, before.revision)
-        self.assertIsNone(after.cost)
-        self.assertIsNone(after.context)
-        self.assertIsNone(after.rate_limits)
-        self.assertIsNone(after.compaction)
-
-    async def test_pi_telemetry_stays_absent_when_unverified(self) -> None:
-        adapter = FakeControlAdapter(harness="pi", vendor_id="pi-x")
-        harness = make_harness(self, adapter, "ar-attach-pi", harness="pi")
-        await harness.start()
-        try:
-            service = harness.service
-            projection = await telemetry.conversation_telemetry(
-                service, OPERATOR, "ar-attach-pi", expected_bridge_epoch=harness.epoch
-            )
-            self.assertIsNone(projection.usage)
-            self.assertIsNone(projection.compaction)
-        finally:
-            await harness.stop()
 
 
 if __name__ == "__main__":

@@ -347,8 +347,9 @@ def crap_scope_line(
 ) -> str:
     return scope_line(
         "CRAP-Calculator",
-        f"functions in coverage roots scored from {coverage_json.as_posix()}",
-        f"{config_path.as_posix()} [tool.coverage.run]; threshold={threshold:.1f}",
+        f"production functions in coverage roots scored from {coverage_json.as_posix()}",
+        f"{config_path.as_posix()} [tool.coverage.run]; review threshold={threshold:.1f}; "
+        "scores are diagnostic only",
         f"{function_count} functions",
     )
 
@@ -380,13 +381,12 @@ def diff_input_description(
 def diff_scope_line(
     result: diff_coverage.DiffCoverage,
     coverage_json: Path,
-    floor: float,
     environment: dict[str, str] | None = None,
 ) -> str:
     return scope_line(
         "diff-coverage",
         diff_input_description(result.base, environment),
-        f"coverage input={coverage_json.as_posix()}; floor={floor:.1f}%",
+        f"coverage input={coverage_json.as_posix()}; diagnostic only",
         (
             f"{result.changed_files} changed Python files; "
             f"{result.total_units} measurable statements+branches"

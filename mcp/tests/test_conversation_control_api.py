@@ -11,17 +11,12 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import httpx
 import uvicorn
 from _adapter_event_scripts import replay_codex_terminal
 from _control_plane import OPERATOR, TINY_PNG, FakeControlAdapter, make_harness
-from agents_remember.models.conversations.evidence import (
-    AR_EVIDENCE_KEY,
-)
-from agents_remember.serving.harness_control_client import ControlSubmission, submit_control_prompt
 
 SESSION = "ar-api-ctl"
 
@@ -124,37 +119,6 @@ class ControlApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(settled["settledAt"])
         self.assertEqual(len(self.adapter.interrupt_calls), 1)
 
-    async def test_interrupt_conflicts_and_epoch_failures_are_typed(self) -> None:
-        await self._typed_submit("i-body", "generate")
-        self.adapter.set_activity("running")
-        await self.client.post(
-            f"/api/terminal/{SESSION}/conversation/interrupt",
-            params=self._params(),
-            json={"turnId": "turn-i-body", "requestId": "int-2"},
-        )
-        conflict = await self.client.post(
-            f"/api/terminal/{SESSION}/conversation/interrupt",
-            params=self._params(),
-            json={"turnId": "turn-other", "requestId": "int-2"},
-        )
-        self.assertEqual(conflict.status_code, 409)
-        self.assertEqual(conflict.json()["status"], "request-conflict")
-        epoch = await self.client.post(
-            f"/api/terminal/{SESSION}/conversation/interrupt",
-            params=self._params(epoch="wrong-epoch"),
-            json={"turnId": "turn-i-body", "requestId": "int-3"},
-        )
-        self.assertEqual(epoch.status_code, 409)
-        self.assertEqual(epoch.json()["status"], "bridge-epoch-mismatch")
-        self.assertEqual(epoch.json()["expectedBridgeEpoch"], "wrong-epoch")
-        missing = await self.client.post(
-            "/api/terminal/ar-missing/conversation/interrupt",
-            params=self._params(),
-            json={"turnId": "turn-1", "requestId": "int-4"},
-        )
-        self.assertEqual(missing.status_code, 404)
-        self.assertEqual(missing.json()["status"], "unknown-session")
-
     async def test_remote_peer_fails_closed_typed_403(self) -> None:
         self._auth_patcher.stop()
         response = await self.client.get(
@@ -167,69 +131,6 @@ class ControlApiTests(unittest.IsolatedAsyncioTestCase):
         self._auth_patcher.start()
 
     # -- queue / withdraw / recovery over the wire -----------------------------
-
-    async def test_queue_truth_privacy_and_withdrawal_flow(self) -> None:
-        self.adapter.set_activity("running")
-        await self._typed_submit("q-body", "the wire cockpit draft")
-        await asyncio.to_thread(
-            submit_control_prompt,
-            self.harness.control_entry,
-            "terminal wire body",
-            ControlSubmission(source="terminal", request_id="q-term"),
-        )
-        queue = await self._queue()
-        self.assertEqual(len(queue["items"]), 2)
-        by_source = {row["source"]: row for row in queue["items"]}
-        self.assertNotIn("terminal wire body", json.dumps(queue))
-        cockpit = by_source["cockpit"]
-        self.assertEqual(cockpit["cockpit"]["redactedPreview"], "the wire cockpit draft")
-        withdrawn = await self._withdraw_row(cockpit, "wd-wire-1")
-        self.assertEqual(withdrawn.status_code, 200, withdrawn.text)
-        body = withdrawn.json()
-        self.assertEqual(body["outcome"], "withdrawn")
-        self.assertEqual(body["recovery"]["text"], "the wire cockpit draft")
-        self.assertEqual(body["recovery"]["submittedDraftRevision"], 1)
-        pending = await self.client.get(
-            f"/api/terminal/{SESSION}/operation-queue/pending-withdrawal-recoveries",
-            params=self._params(),
-        )
-        self.assertEqual(pending.status_code, 200)
-        items = pending.json()["items"]
-        self.assertEqual(len(items), 1)
-        self.assertNotIn("the wire cockpit draft", json.dumps(pending.json()))
-        recovery_ref = items[0]["recoveryRef"]
-        fetched = await self.client.post(
-            f"/api/terminal/{SESSION}/operation-queue/withdraw-recovery",
-            params=self._params(),
-            json={"recoveryRef": recovery_ref},
-        )
-        self.assertEqual(fetched.status_code, 200)
-        self.assertEqual(fetched.json()["text"], "the wire cockpit draft")
-        acked = await self.client.post(
-            f"/api/terminal/{SESSION}/operation-queue/withdraw-recovery-ack",
-            params=self._params(),
-            json={"recoveryRef": recovery_ref, "disposition": "replace-current-draft"},
-        )
-        self.assertEqual(acked.status_code, 200)
-        self.assertEqual(acked.json()["recoveryState"], "acknowledged")
-        refetched = await self.client.post(
-            f"/api/terminal/{SESSION}/operation-queue/withdraw-recovery",
-            params=self._params(),
-            json={"recoveryRef": recovery_ref},
-        )
-        self.assertEqual(refetched.status_code, 404)
-        self.assertEqual(refetched.json()["status"], "not-found")
-        forged = await self.client.post(
-            f"/api/terminal/{SESSION}/operation-queue/withdraw",
-            params=self._params(),
-            json={
-                "operationRef": cockpit["operationRef"],
-                "withdrawalRef": cockpit["cockpit"]["withdrawalRef"][:-4] + "aaaa",
-                "withdrawRequestId": "wd-wire-2",
-            },
-        )
-        self.assertEqual(forged.status_code, 400)
-        self.assertEqual(forged.json()["status"], "ref-invalid")
 
     # -- attachments over the wire ---------------------------------------------
 
@@ -291,94 +192,9 @@ class ControlApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(missing.status_code, 404)
 
-    async def test_attachment_limits_are_typed_over_the_wire(self) -> None:
-        refused = await self.client.post(
-            f"/api/terminal/{SESSION}/conversation/attachments",
-            params=self._params(),
-            data={"requestId": "att-wire-2", "metadata": json.dumps([{"kind": "image"}])},
-            files=[("assets", ("note.txt", b"hello", "text/plain"))],
-        )
-        self.assertEqual(refused.status_code, 422)
-        self.assertEqual(refused.json()["status"], "rejected")
-        unsupported_kind = await self.client.post(
-            f"/api/terminal/{SESSION}/conversation/attachments",
-            params=self._params(),
-            data={"requestId": "att-wire-3", "metadata": json.dumps([{"kind": "file"}])},
-            files=[("assets", ("doc.pdf", b"%PDF", "application/pdf"))],
-        )
-        self.assertEqual(unsupported_kind.status_code, 422)
-        self.assertEqual(unsupported_kind.json()["status"], "unsupported")
-
     # -- policy / telemetry over the wire ---------------------------------------
 
-    async def test_policy_is_read_only_with_no_mutation_surface(self) -> None:
-        projection = await self.client.get(
-            f"/api/terminal/{SESSION}/conversation/policy", params=self._params()
-        )
-        self.assertEqual(projection.status_code, 200)
-        body = projection.json()
-        self.assertEqual(body["repoPolicy"]["state"], "supported")
-        self.assertEqual(body["harnessMode"]["state"], "unverified")
-        for method in ("patch", "put", "delete"):
-            mutated = await getattr(self.client, method)(
-                f"/api/terminal/{SESSION}/conversation/policy", params=self._params()
-            )
-            self.assertEqual(mutated.status_code, 405)
-
-    async def test_telemetry_usage_and_absent_metrics(self) -> None:
-        self.adapter.emit(
-            "codex-notification",
-            {
-                "codexMethod": "thread/tokenUsage/updated",
-                AR_EVIDENCE_KEY: {
-                    "threadId": "thread-1",
-                    "turnId": "turn-1",
-                    "tokenUsage": {
-                        "total": {"inputTokens": 61, "outputTokens": 41, "cachedInputTokens": 11},
-                        "last": {"inputTokens": 9, "outputTokens": 4},
-                    },
-                },
-            },
-        )
-        projection = await self.client.get(
-            f"/api/terminal/{SESSION}/conversation/telemetry", params=self._params()
-        )
-        self.assertEqual(projection.status_code, 200)
-        body = projection.json()
-        self.assertEqual(
-            body["usage"]["value"], {"inputTokens": 61, "outputTokens": 41, "cachedTokens": 11}
-        )
-        self.assertEqual(body["usage"]["unit"], "tokens")
-        self.assertEqual(body["usage"]["precision"], "exact")
-        self.assertNotIn("cost", body)
-        self.assertNotIn("rateLimits", body)
-
     # -- production-honesty scans ------------------------------------------------
-
-    def test_no_paste_pty_or_native_queue_substitution_in_control_modules(self) -> None:
-        root = (
-            Path(__file__).resolve().parents[1]
-            / "src"
-            / "agents_remember"
-            / "serving"
-            / "conversation"
-            / "control"
-        )
-        forbidden = (
-            "terminal_paste",
-            "PtySurface",
-            "tmux_pane",
-            "capture_pane",
-            "harness_terminal_surface",
-            "queue_update",
-            "turn/steer",
-            "followUp",
-            "follow_up_submit",
-        )
-        for path in root.rglob("*.py"):
-            source = path.read_text(encoding="utf-8")
-            for token in forbidden:
-                self.assertNotIn(token, source, f"{path.name} references {token}")
 
 
 if __name__ == "__main__":

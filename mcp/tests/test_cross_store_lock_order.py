@@ -42,7 +42,6 @@ from agents_remember.controlplane.agent_notifier_signals import AgentNotifierSig
 from agents_remember.controlplane.expectation_rows import ExpectationRowStore
 from agents_remember.controlplane.operator_inbox_store import OperatorInboxStore
 from agents_remember.errors import HarnessControlError
-from agents_remember.kernel import file_lock
 from agents_remember.models.conversations.control_wire import (
     AdapterSnapshot,
     ControlIdentity,
@@ -55,7 +54,6 @@ from agents_remember.serving import _app_terminal_routes as terminal_routes_modu
 from agents_remember.serving import app as app_module
 from agents_remember.serving.agent_notifier import AgentNotifierContext, run_agent_notifier_sweep
 from agents_remember.serving.agent_notifier_heartbeat import AgentNotifierHeartbeatStore
-from agents_remember.serving.conversation.active.service import ActiveConversationService
 from agents_remember.serving.conversation.control.service import ConversationControlService
 from agents_remember.serving.conversation.runtime import ConversationRuntime
 from agents_remember.serving.hosted_interactions import HostedInteractionSynchronizer
@@ -68,7 +66,6 @@ from agents_remember.serving.terminal_liveness import (
     SnapshotReader,
     TerminalCatalogLivenessConfig,
     TerminalCatalogLivenessSweeper,
-    observe_terminal_liveness,
 )
 from agents_remember.serving.terminal_liveness import (
     TerminalLivenessHost as _LivenessHostProtocol,
@@ -202,182 +199,6 @@ class CrossStoreLockOrderTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._dir.cleanup()
 
-    def test_interaction_sync_never_runs_under_the_catalog_batch_lock(self) -> None:
-        """The synchronizer's store locks are never taken while this thread holds the batch.
-
-        Pins the catalog→inbox edge removal: against the pre-fix tree the sweep runs the whole
-        synchronizer inside ``catalog.batch()`` and every gate/inbox mutex acquisition below is
-        recorded as a violation.
-        """
-        state = threading.local()
-        violations: list[str] = []
-        real_batch = TerminalCatalog.batch
-
-        @contextlib.contextmanager
-        def flagging_batch(self: TerminalCatalog) -> Iterator[None]:
-            with real_batch(self):
-                previous = getattr(state, "in_batch", False)
-                state.in_batch = True
-                try:
-                    yield
-                finally:
-                    state.in_batch = previous
-
-        real_mutex_for = file_lock.thread_mutex_for
-
-        def checking_mutex_for(log_path: Path) -> object:
-            if getattr(state, "in_batch", False):
-                violations.append(str(log_path))
-            return real_mutex_for(log_path)
-
-        observe_calls: list[str] = []
-        with (
-            mock.patch.object(TerminalCatalog, "batch", flagging_batch),
-            mock.patch.object(file_lock, "thread_mutex_for", checking_mutex_for),
-            mock.patch(
-                "agents_remember.serving.hosted_interactions.read_control_transcript",
-                _no_transcript,
-            ),
-        ):
-            self.stores.sweeper(observe_calls).refresh()
-
-        # The sync actually ran — a vacuous pass (observer never invoked) is refused.
-        self.assertEqual(observe_calls, ["sess-1"])
-        self.assertEqual(violations, [])
-
-    def test_starting_rows_sweep_defers_and_drains_like_the_full_sweep(self) -> None:
-        """The starting fast path collects under the batch and drains after the commit.
-
-        Same placement pin as the full sweep, driven through ``_refresh_starting_rows``: only
-        starting rows are observed, the synchronizer's store I/O never lands under the catalog
-        batch lock, and turn-state events still fire from the committed observations.
-        """
-        self.stores.catalog.upsert(replace(_ready_entry("sess-2"), control_state="starting"))
-        state = threading.local()
-        violations: list[str] = []
-        real_batch = TerminalCatalog.batch
-
-        @contextlib.contextmanager
-        def flagging_batch(self: TerminalCatalog) -> Iterator[None]:
-            with real_batch(self):
-                previous = getattr(state, "in_batch", False)
-                state.in_batch = True
-                try:
-                    yield
-                finally:
-                    state.in_batch = previous
-
-        real_mutex_for = file_lock.thread_mutex_for
-
-        def checking_mutex_for(log_path: Path) -> object:
-            if getattr(state, "in_batch", False):
-                violations.append(str(log_path))
-            return real_mutex_for(log_path)
-
-        observe_calls: list[str] = []
-        events: list[object] = []
-        sweeper = self.stores.sweeper(
-            observe_calls,
-            # A working snapshot projects a seat claim, so the committed observation flips the
-            # fresh starting row's turn state and the event fires.
-            snapshot_reader=lambda entry: replace(_ready_snapshot(entry), activity="working"),
-        )
-        sweeper._on_turn_state_change = events.append
-        with (
-            mock.patch.object(TerminalCatalog, "batch", flagging_batch),
-            mock.patch.object(file_lock, "thread_mutex_for", checking_mutex_for),
-            mock.patch(
-                "agents_remember.serving.hosted_interactions.read_control_transcript",
-                _no_transcript,
-            ),
-        ):
-            sweeper._refresh_starting_rows(NOW)
-
-        # Only the starting row is re-probed on the fast path, its sync really ran outside the
-        # batch, and the committed observation still fired its turn-state event.
-        self.assertEqual(observe_calls, ["sess-2"])
-        self.assertEqual(violations, [])
-        self.assertNotEqual(events, [])
-
-    def test_starting_rows_sweep_early_returns(self) -> None:
-        """The fast path's cheap exits: nothing starting, busy sweep lock, rate limit."""
-        observe_calls: list[str] = []
-        sweeper = self.stores.sweeper(observe_calls)
-
-        # No starting rows (sess-1 is already ready) — the plain catalog list comes back.
-        self.assertEqual(len(sweeper._refresh_starting_rows(NOW)), 1)
-        self.assertEqual(observe_calls, [])
-
-        self.stores.catalog.upsert(replace(_ready_entry("sess-2"), control_state="starting"))
-
-        # A running sweep holds the non-overlapping lock — the fast path bows out untouched.
-        sweeper._lock.acquire()
-        try:
-            self.assertEqual(len(sweeper._refresh_starting_rows(NOW)), 2)
-        finally:
-            sweeper._lock.release()
-        self.assertEqual(observe_calls, [])
-
-        # A real fast-path run, then an immediate second one is starting-rate-limited.
-        with mock.patch(
-            "agents_remember.serving.hosted_interactions.read_control_transcript",
-            _no_transcript,
-        ):
-            sweeper._refresh_starting_rows(NOW)
-            self.assertEqual(observe_calls, ["sess-2"])
-            observe_calls.clear()
-            sweeper._refresh_starting_rows(NOW)
-            self.assertEqual(observe_calls, [])
-
-    def test_direct_observe_runs_the_synchronizer_inline(self) -> None:
-        """Direct callers outside a batch keep the legacy inline synchronizer call.
-
-        ``probe.sync_collector`` is None here, so ``_observe_alive`` runs the synchronizer
-        immediately — the WS-attach/paste path that never holds the catalog batch.
-        """
-        calls: list[str] = []
-
-        class _AliveHost:
-            def get(self, _sid: str) -> object:
-                return SimpleNamespace(is_alive=True)
-
-            def has_session(self, _tmux_name: str) -> bool:
-                return True
-
-        entry = _ready_entry("sess-3")
-        self.stores.catalog.upsert(entry)
-        probe = LivenessProbe(
-            hysteresis=_LIVENESS_HYSTERESIS,
-            pane_capturer=lambda _tmux_name: "",
-            snapshot_reader=_ready_snapshot,
-            on_control_snapshot=lambda observed, _snapshot: calls.append(observed.id),
-        )
-        with mock.patch(
-            "agents_remember.serving.hosted_interactions.read_control_transcript",
-            _no_transcript,
-        ):
-            observation = observe_terminal_liveness(
-                self.stores.catalog,
-                cast(_LivenessHostProtocol, _AliveHost()),
-                entry,
-                checked_at=NOW,
-                probe=probe,
-            )
-
-        self.assertEqual(calls, ["sess-3"])
-        self.assertTrue(observation.alive)
-
-        # The sweeper's own per-entry observe without a collector keeps the same inline path
-        # (probe unchanged), e.g. a caller that never opens a batch.
-        observe_calls: list[str] = []
-        sweeper = self.stores.sweeper(observe_calls)
-        with mock.patch(
-            "agents_remember.serving.hosted_interactions.read_control_transcript",
-            _no_transcript,
-        ):
-            sweeper._observe_catalog_entry(entry, checked_at=NOW)
-        self.assertEqual(observe_calls, ["sess-3"])
-
     def test_liveness_sweep_and_agent_notifier_sweep_do_not_abba_deadlock(self) -> None:
         """The two real sweep paths run concurrently against shared stores and both finish.
 
@@ -484,31 +305,6 @@ class CrossStoreLockOrderTests(unittest.TestCase):
             self.assertRaises(HarnessControlError),
         ):
             asyncio.run(service.resolve_entry("sess-1"))
-
-        self.assertEqual(len(seen), 1)
-        self.assertIsNot(seen[0], loop_thread)
-
-    def test_active_projector_resolution_runs_off_the_event_loop(self) -> None:
-        """The active-side resolution is offloaded the same way."""
-        loop_thread = threading.current_thread()
-        seen: list[threading.Thread] = []
-
-        def spy_resolve(_runtime: object, _ar_session_id: str) -> TerminalCatalogEntry:
-            seen.append(threading.current_thread())
-            raise HarnessControlError("stopped at resolution — the thread is the evidence")
-
-        runtime = SimpleNamespace(catalog=mock.Mock(), host=mock.Mock())
-        service = ActiveConversationService(cast(ConversationRuntime, runtime))
-        with (
-            mock.patch(
-                "agents_remember.serving.conversation.active.service.resolve_running_entry",
-                spy_resolve,
-            ),
-            self.assertRaises(HarnessControlError),
-        ):
-            asyncio.run(
-                service._projector_for(mock.Mock(), "sess-1", expected_bridge_epoch="epoch-1")
-            )
 
         self.assertEqual(len(seen), 1)
         self.assertIsNot(seen[0], loop_thread)

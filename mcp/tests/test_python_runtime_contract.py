@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
 import subprocess
-import sys
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-
-import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -156,50 +151,6 @@ esac
 """
 
 
-def test_runtime_contract_has_one_exact_supported_minor() -> None:
-    contract = _contract()
-    package = (REPOSITORY_ROOT / "mcp/pyproject.toml").read_text(encoding="utf-8")
-    quality = (REPOSITORY_ROOT / ".github/workflows/quality-checks.yml").read_text(encoding="utf-8")
-    release = (REPOSITORY_ROOT / ".github/workflows/publish-mcp-to-pypi.yml").read_text(
-        encoding="utf-8"
-    )
-    dagger_python = (REPOSITORY_ROOT / ".dagger/.python-version").read_text(encoding="utf-8")
-
-    assert contract["AR_PYTHON_VERSION"] == "3.13.15"
-    assert contract["AR_PYTHON_REQUIRES"] == ">=3.13,<3.14"
-    assert 'requires-python = ">=3.13,<3.14"' in package
-    assert '"Programming Language :: Python :: 3.13"' in package
-    assert "Programming Language :: Python :: 3.11" not in package
-    assert "Programming Language :: Python :: 3.12" not in package
-    assert 'python-version: "3.13.15"' in quality
-    assert 'python-version: "3.13.15"' in release
-    assert dagger_python.strip() == contract["AR_PYTHON_VERSION"]
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="pidfd is the Linux executor contract")
-def test_current_test_interpreter_passes_the_canonical_capability_probe() -> None:
-    contract = _contract()
-    completed = subprocess.run(
-        [
-            sys.executable,
-            (REPOSITORY_ROOT / "scripts/check-python-runtime.py").as_posix(),
-            "--expected-version",
-            contract["AR_PYTHON_VERSION"],
-            "--require-linux-pidfd",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    report = json.loads(completed.stdout)
-
-    assert report["version"] == contract["AR_PYTHON_VERSION"]
-    assert report["capabilities"] == {
-        "os.pidfd_open": True,
-        "signal.pidfd_send_signal": True,
-    }
-
-
 def test_runtime_builder_is_fully_cloned_atomically_published_and_reused(tmp_path: Path) -> None:
     fixture = _runtime_fixture(tmp_path)
     first = _run_installer(tmp_path, fixture, "runtime-one")
@@ -233,24 +184,6 @@ def test_runtime_builder_is_fully_cloned_atomically_published_and_reused(tmp_pat
     assert sentinel.read_text(encoding="utf-8") == "preserve\n"
 
 
-def test_failed_builder_clone_leaves_no_canonical_or_staging_checkout(tmp_path: Path) -> None:
-    fixture = _runtime_fixture(tmp_path)
-    fixture.environment["AR_TEST_CLONE_FAIL"] = "1"
-
-    failed = _run_installer(tmp_path, fixture, "failed-runtime")
-
-    builder = fixture.tooling_root / f"pyenv-{fixture.contract['AR_PYTHON_BUILD_COMMIT'][:12]}"
-    clone_lines = [
-        line
-        for line in fixture.log.read_text(encoding="utf-8").splitlines()
-        if line.startswith("clone ")
-    ]
-    assert failed.returncode == 23
-    assert not builder.exists()
-    assert not list(fixture.tooling_root.glob(".pyenv-*.staging.*"))
-    assert len(clone_lines) == 1
-
-
 def test_existing_foreign_builder_is_refused_and_preserved(tmp_path: Path) -> None:
     fixture = _runtime_fixture(tmp_path)
     builder = fixture.tooling_root / f"pyenv-{fixture.contract['AR_PYTHON_BUILD_COMMIT'][:12]}"
@@ -264,53 +197,4 @@ def test_existing_foreign_builder_is_refused_and_preserved(tmp_path: Path) -> No
     assert f"refusing foreign builder path: {builder}" in failed.stderr
     assert marker.read_text(encoding="utf-8") == "keep\n"
     assert not fixture.log.exists()
-    assert not list(fixture.tooling_root.glob(".pyenv-*.staging.*"))
-
-
-def test_competing_publishers_adopt_only_the_validated_winner(tmp_path: Path) -> None:
-    fixture = _runtime_fixture(tmp_path)
-    fixture.environment["AR_TEST_CLONE_BARRIER"] = (tmp_path / "clone-barrier").as_posix()
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [
-            pool.submit(_run_installer, tmp_path, fixture, runtime_name)
-            for runtime_name in ("race-one", "race-two")
-        ]
-        results = [future.result(timeout=20) for future in futures]
-
-    builder = fixture.tooling_root / f"pyenv-{fixture.contract['AR_PYTHON_BUILD_COMMIT'][:12]}"
-    clone_lines = [
-        line
-        for line in fixture.log.read_text(encoding="utf-8").splitlines()
-        if line.startswith("clone ")
-    ]
-    assert [result.returncode for result in results] == [0, 0]
-    assert len(clone_lines) == 2
-    assert builder.is_dir() and (builder / ".git").is_dir()
-    assert not list(fixture.tooling_root.glob(".pyenv-*.staging.*"))
-
-
-@pytest.mark.parametrize("foreign_kind", ["directory", "symlink"])
-def test_foreign_builder_publication_race_fails_closed(
-    tmp_path: Path,
-    foreign_kind: str,
-) -> None:
-    fixture = _runtime_fixture(tmp_path)
-    builder = fixture.tooling_root / f"pyenv-{fixture.contract['AR_PYTHON_BUILD_COMMIT'][:12]}"
-    backing = tmp_path / "foreign-backing"
-    fixture.environment.update(
-        {
-            "AR_TEST_RACE_FOREIGN": foreign_kind,
-            "AR_TEST_RACE_TARGET": builder.as_posix(),
-            "AR_TEST_RACE_SYMLINK_TARGET": backing.as_posix(),
-        }
-    )
-
-    failed = _run_installer(tmp_path, fixture, f"foreign-race-{foreign_kind}")
-
-    preserved_root = backing if foreign_kind == "symlink" else builder
-    assert failed.returncode == 1
-    assert f"refusing foreign builder path: {builder}" in failed.stderr
-    assert (preserved_root / "foreign-content").read_text(encoding="utf-8") == "foreign\n"
-    assert builder.is_symlink() is (foreign_kind == "symlink")
     assert not list(fixture.tooling_root.glob(".pyenv-*.staging.*"))

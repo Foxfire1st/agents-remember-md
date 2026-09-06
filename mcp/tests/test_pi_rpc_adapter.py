@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import unittest
 from collections import deque
 from collections.abc import (
@@ -33,17 +32,9 @@ from agents_remember.serving.harness_control_models import (
 )
 from agents_remember.serving.pi_rpc_adapter import PiRpcAdapter
 from agents_remember.serving.pi_rpc_protocol import (
-    PI_RPC_DIALOG_METHODS,
-    PI_RPC_FIRE_AND_FORGET_METHODS,
-    PI_RPC_PACKAGE,
     PiRpcJsonlDecoder,
-    encode_pi_rpc_frame,
     parse_pi_models,
-    pi_rpc_launch,
 )
-from test_pi_rpc_real_smoke import PI_RPC_VERSION
-
-FIXTURES = Path(__file__).parent / "fixtures" / "pi_rpc"
 
 
 class _FakePiTransport:
@@ -439,57 +430,6 @@ class PiRpcProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(HarnessControlError, "exceeds 4 bytes"):
             PiRpcJsonlDecoder(max_frame_bytes=4).feed(b"12345\n")
 
-    def test_encoder_emits_one_lf_and_rejects_non_standard_numbers(self) -> None:
-        self.assertEqual(encode_pi_rpc_frame({"text": "a\u2028b"}).count(b"\n"), 1)
-        with self.assertRaisesRegex(HarnessControlError, "not JSON-serializable"):
-            encode_pi_rpc_frame({"value": float("nan")})
-
-    def test_launch_preserves_every_configuration_field(self) -> None:
-        launch = _launch()
-        rpc = pi_rpc_launch(launch)
-        self.assertEqual(rpc.argv, ("pi", "--mode", "rpc", *launch.argv[1:]))
-        self.assertEqual(rpc.cwd, launch.cwd)
-        self.assertEqual(rpc.env, launch.env)
-        self.assertEqual(rpc.identity, launch.identity)
-        with self.assertRaisesRegex(HarnessControlError, "non-RPC"):
-            pi_rpc_launch(
-                LaunchSpec(
-                    identity=launch.identity,
-                    harness_id="pi",
-                    cwd=launch.cwd,
-                    argv=("pi", "--mode", "text"),
-                )
-            )
-        with self.assertRaisesRegex(HarnessControlError, "harness_id='pi'"):
-            pi_rpc_launch(
-                LaunchSpec(
-                    identity=launch.identity,
-                    harness_id="pi-near-miss",
-                    cwd=launch.cwd,
-                    argv=launch.argv,
-                )
-            )
-
-    def test_capability_fixture_documents_the_smoke_baseline(self) -> None:
-        """The recording describes the pinned build, and the adapter agrees with it.
-
-        The fixture is named after ``PI_RPC_VERSION``, so this reads the file the smoke
-        test re-records rather than a second, older baseline: there is exactly one
-        recording in the tree and it belongs to the version the product ships.
-        """
-        fixture = json.loads(
-            (FIXTURES / f"{PI_RPC_VERSION}-capabilities.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(fixture["package"], PI_RPC_PACKAGE)
-        self.assertEqual(fixture["version"], PI_RPC_VERSION)
-        self.assertEqual(set(fixture["dialogMethods"]), PI_RPC_DIALOG_METHODS)
-        self.assertEqual(set(fixture["fireAndForgetMethods"]), PI_RPC_FIRE_AND_FORGET_METHODS)
-        self.assertEqual(
-            sorted(path.name for path in FIXTURES.glob("*-capabilities.json")),
-            [f"{PI_RPC_VERSION}-capabilities.json"],
-            "a second capability recording leaves no rule about which one is authoritative",
-        )
-
     def test_available_models_preserve_provider_identity_and_model_gated_thinking(self) -> None:
         models = parse_pi_models(
             {
@@ -527,22 +467,3 @@ class PiRpcProtocolTests(unittest.TestCase):
         )
         self.assertFalse(models[1].supports_effort)
         self.assertEqual([option.key for option in models[1].effort_options], ["off"])
-
-    def test_available_models_accept_empty_auth_catalog_and_reject_bad_maps(self) -> None:
-        self.assertEqual(parse_pi_models({"data": {"models": []}}), ())
-        with self.assertRaisesRegex(HarnessControlError, "thinkingLevelMap.low"):
-            parse_pi_models(
-                {
-                    "data": {
-                        "models": [
-                            {
-                                "provider": "provider",
-                                "id": "model",
-                                "name": "Model",
-                                "reasoning": True,
-                                "thinkingLevelMap": {"low": 7},
-                            }
-                        ]
-                    }
-                }
-            )

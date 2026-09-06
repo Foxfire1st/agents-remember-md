@@ -107,7 +107,6 @@ class CheckConfig:
     threshold: float
     top: int
     diff_base: str | None = None
-    diff_floor: float = diff_coverage.DEFAULT_DIFF_COVERAGE_FLOOR
     targeted: bool = False
     targeted_base: diff_coverage.BaseResolution | None = None
     targeted_scope: targeted.TargetedScopeResult | None = None
