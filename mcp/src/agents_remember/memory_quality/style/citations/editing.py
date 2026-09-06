@@ -23,7 +23,7 @@ class Documents:
 
     def lines(self, path: Path) -> list[str]:
         if path not in self.cache:
-            self.cache[path] = path.read_text(encoding="utf-8").split("\n")
+            self.cache[path] = path.read_bytes().decode("utf-8").split("\n")
         return self.cache[path]
 
 

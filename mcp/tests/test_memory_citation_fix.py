@@ -275,7 +275,7 @@ class ReflowTests(TreeCase):
         result = self.tree.fix(dry_run=True)
 
         self.assertEqual(self.sources(result), "kernel/store.py:11-12")
-        self.assertEqual(result["documentsWritten"], 1)
+        self.assertEqual(result["documentsWritten"], 0)
         self.assertEqual(self.tree.card_text("kernel/store.py.md"), before)
 
     def test_the_row_around_the_source_cell_survives_the_rewrite(self) -> None:

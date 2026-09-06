@@ -122,7 +122,9 @@ def _require_exact_scope(
 
 
 def _paths(paths: list[Path]) -> list[str]:
-    return [path.as_posix() for path in paths]
+    # Selector contracts use canonical string order; Path orders path components,
+    # which differs for siblings such as conversation/ and conversation-library/.
+    return sorted(path.as_posix() for path in paths)
 
 
 def _run_python_suite(config: check.CheckConfig) -> int:

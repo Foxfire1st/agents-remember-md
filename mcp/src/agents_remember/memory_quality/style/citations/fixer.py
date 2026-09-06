@@ -12,7 +12,7 @@ preserve every byte outside the selected citation span.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,7 +31,10 @@ from agents_remember.memory_quality.style.citations import (
     source_index,
     symbol_index,
 )
-from agents_remember.memory_quality.style.citations.editing import Documents, Site, rewritten
+from agents_remember.memory_quality.style.citations.documents import (
+    transaction as document_transaction,
+)
+from agents_remember.memory_quality.style.citations.editing import Documents, Site
 from agents_remember.memory_quality.style.citations.range_resolution import (
     ClaimScope,
     Resolved,
@@ -106,7 +109,7 @@ class Result:
     candidates: int = 0
     wrapped: int = 0
     written: int = 0
-    remaining: int = 0
+    remaining: int | None = 0
     projections: list[deterministic_projection.Projection] = field(default_factory=list)
 
 
@@ -243,10 +246,9 @@ def candidates(
 
 @dataclass
 class Staging:
-    """One run's pending writes: per-document edit batches, history bullets, and stamp."""
+    """Accepted edits awaiting per-document publication, with one run timestamp."""
 
-    edits: dict[Path, list[tuple[Site, str]]] = field(default_factory=dict)
-    bullets: dict[Path, list[str]] = field(default_factory=dict)
+    documents: dict[Path, document_transaction.DocumentTransaction] = field(default_factory=dict)
     stamp: datetime | None = None
 
 
@@ -294,32 +296,8 @@ def fix_onboarding_root(
         for one in found:
             outcome = repair.plan(one.claim, trees, sources, seen) if one.repairing else None
             _decide(one, outcome, walk, staging, onboarding_root)
-        for document, doc_bullets in staging.bullets.items():
-            lines = document_cache.lines(document)
-            heading = deterministic_projection.history_section_line(lines)
-            if heading is None:  # pragma: no cover - bullets only stage beside a section
-                continue
-            staging.edits.setdefault(document, []).append(
-                deterministic_projection.history_edit(lines, heading, doc_bullets)
-            )
-        for document, per_document in staging.edits.items():
-            digest = deterministic_projection.document_digest(
-                document_cache.lines(document), per_document
-            )
-            relative = rel(document, onboarding_root)
-            for position, projection in enumerate(walk.result.projections):
-                if projection.document == relative:
-                    walk.result.projections[position] = replace(
-                        projection, new_document_digest=digest
-                    )
-        result.written = len(staging.edits)
-        if not dry_run:
-            for document, per_document in staging.edits.items():
-                body = "\n".join(rewritten(document_cache.lines(document), per_document))
-                document.write_text(body, encoding="utf-8")
-        result.remaining = range_resolution.check_onboarding_root(
-            onboarding_root, code_repository_root, only=only, index=index
-        )["findingCount"]
+        _publish(staging, walk, dry_run=dry_run)
+        result.remaining = _postcheck(onboarding_root, code_repository_root, walk, selected, only)
         return payload(
             onboarding_root,
             trees.code_root,
@@ -327,6 +305,32 @@ def fix_onboarding_root(
             index,
             dry_run=dry_run,
         )
+
+
+def _postcheck(
+    onboarding_root: Path,
+    code_repository_root: Path | Trees,
+    walk: Walk,
+    selected: list[Path],
+    only: str | None,
+) -> int | None:
+    """Keep a detected disappearance refusal when its admitted scope cannot be rechecked.
+
+    Initial selection still refuses nonexistent input. An absent selected document after
+    an observed publication conflict is unmeasurable, not a successful empty scan.
+    """
+    if (
+        only is not None
+        and not selected[0].exists()
+        and any(
+            refused.path == only and refused.code == deterministic_projection.PROJECTION_CONFLICT
+            for refused in walk.result.refused
+        )
+    ):
+        return None
+    return range_resolution.check_onboarding_root(
+        onboarding_root, code_repository_root, only=only, index=walk.index
+    )["findingCount"]
 
 
 def _decide(
@@ -352,34 +356,8 @@ def _decide(
         assert now is not None
     if now == was:
         return
-    walk.result.applied.append(
-        Applied(
-            path=one.relative,
-            line=one.claim.line,
-            was=was,
-            now=now,
-            repairing=one.gating,
-        )
-    )
-    staging.edits.setdefault(one.document, []).append((one.site, now))
-    if not one.repairing:
-        return
-    assert isinstance(outcome, repair.Repair)
     lines = walk.documents.lines(one.document)
-    heading = deterministic_projection.history_section_line(lines)
-    stamp = staging.stamp if staging.stamp is not None else deterministic_projection.now_utc()
-    projection = deterministic_projection.plan_projection(
-        deterministic_projection.ProjectionRequest(
-            lines=lines,
-            site=one.site,
-            relative=one.relative,
-            claim=one.claim,
-            outcome=outcome,
-            index=walk.index,
-            now=stamp,
-            history_line=heading,
-        )
-    )
+    projection = _projection(one, outcome, walk, staging) if one.repairing else None
     if isinstance(projection, deterministic_projection.ProjectionDecline):
         walk.result.refused.append(
             Refused(
@@ -391,11 +369,68 @@ def _decide(
             )
         )
         return
-    walk.result.projections.append(projection)
-    if heading is not None:
-        bullet = projection.history_bullet
-        assert bullet is not None
-        staging.bullets.setdefault(one.document, []).append(bullet)
+    if one.document not in staging.documents:
+        staging.documents[one.document] = document_transaction.DocumentTransaction(
+            path=one.document,
+            relative=one.relative,
+            original="\n".join(lines).encode("utf-8"),
+            snapshot_id=walk.index.snapshot_id,
+        )
+    staging.documents[one.document].edits.append(
+        document_transaction.Edit(one.site, was, now, one.gating, projection)
+    )
+
+
+def _projection(
+    one: Candidate,
+    outcome: repair.Repair | repair.Decline | None,
+    walk: Walk,
+    staging: Staging,
+) -> deterministic_projection.Projection | deterministic_projection.ProjectionDecline:
+    assert isinstance(outcome, repair.Repair)
+    lines = walk.documents.lines(one.document)
+    heading = deterministic_projection.history_section_line(lines)
+    stamp = staging.stamp if staging.stamp is not None else deterministic_projection.now_utc()
+    return deterministic_projection.plan_projection(
+        deterministic_projection.ProjectionRequest(
+            lines=lines,
+            site=one.site,
+            relative=one.relative,
+            claim=one.claim,
+            outcome=outcome,
+            index=walk.index,
+            now=stamp,
+            history_line=heading,
+        )
+    )
+
+
+def _publish(staging: Staging, walk: Walk, *, dry_run: bool) -> None:
+    """Account only for accepted previews or successfully published document batches."""
+    for batch in staging.documents.values():
+        digest = batch.preview(walk.index) if dry_run else batch.publish(walk.index)
+        if digest is None:
+            for edit in batch.edits:
+                anchor = edit.projection.anchors[0] if edit.projection is not None else None
+                declined = deterministic_projection.conflicting_write_decline(
+                    batch.relative, edit.site.line, anchor
+                )
+                walk.result.refused.append(
+                    Refused(
+                        path=batch.relative,
+                        line=edit.site.line,
+                        code=declined.code,
+                        anchor=declined.anchor,
+                        message=declined.message,
+                    )
+                )
+            continue
+        walk.result.written += not dry_run
+        walk.result.applied.extend(
+            Applied(batch.relative, edit.site.line, edit.was, edit.now, edit.repairing)
+            for edit in batch.edits
+        )
+        walk.result.projections.extend(batch.projections(digest))
 
 
 def _scoped_source(
@@ -503,10 +538,13 @@ def payload(
     A fixer that reported success from its own refusals alone would say ok on a tree still
     holding thousands of findings it never had a rule for -- a halfway state indistinguishable
     from a finished one. On a dry run nothing was written, so the number is the tree as it
-    stands.
+    stands. Dry-run repairs and projection digests describe validated prospective bytes;
+    ``documentsWritten`` counts only completed publications and remains zero for previews.
+    When an observed conflict removed the admitted selected document, the recheck is
+    unavailable: ``findingsRemaining`` is null and the conflict keeps ``ok`` false.
     """
     return {
-        "ok": not result.refused and not result.remaining,
+        "ok": not result.refused and result.remaining == 0,
         "operation": OPERATION,
         "onboardingRoot": onboarding_root.as_posix(),
         "codeRoot": code_repository_root.as_posix(),
@@ -517,7 +555,7 @@ def payload(
         "claimsNormalised": sum(not one.repairing for one in result.applied),
         "documentsWritten": result.written,
         "claimsNotOnOneLine": result.wrapped,
-        "sourceIndex": index.telemetry(post_fix_recheck=True),
+        "sourceIndex": index.telemetry(post_fix_recheck=result.remaining is not None),
         "repairs": [
             {
                 "path": one.path,

@@ -17,8 +17,7 @@ import unittest
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 from unittest import mock
 
 from agents_remember.memory_quality.style.citations import (
@@ -29,9 +28,8 @@ from agents_remember.memory_quality.style.citations import (
     range_resolution,
     repair,
     source_index,
-    symbol_index,
 )
-from agents_remember.memory_quality.style.citations.editing import Site, rewritten
+from agents_remember.memory_quality.style.citations.editing import Site
 from agents_remember.memory_quality.style.citations.resolution import Trees
 from agents_remember.memory_quality.style.update_history.history_order import (
     datetime_value,
@@ -433,95 +431,6 @@ class ProjectionRefusalTests(TreeCase):
         self.assertEqual(self.tree.source_cell("kernel/caller.py.md"), "kernel/route_index.py:1-2")
 
 
-class TransactionSeamTests(TreeCase):
-    """The plan-then-stage seam the packet's open truth gap left to choose."""
-
-    def test_a_conflicting_write_between_plan_and_stage_refuses_the_rewrite(self) -> None:
-        self.tree.source("kernel/indexes.py", "def build_route_indexes():\n    return 1\n")
-        card = self.tree.card(
-            "kernel/caller.py",
-            "| The census. | `build_route_indexes` | kernel/route_index.py:1-2 |",
-        )
-
-        with source_index.open_repository_index(self.tree.trees()) as index:
-            lines = card.read_text(encoding="utf-8").split("\n")
-            located, _wrapped = fixer.sites(lines)
-            claim, site = located[0]
-            seen = symbol_index.locate(claim.anchors, self.tree.trees(), index=index)
-            outcome = repair.plan(claim, self.tree.trees(), fixer.Sources(), seen)
-            assert isinstance(outcome, repair.Repair)
-            projection = deterministic_projection.plan_projection(
-                deterministic_projection.ProjectionRequest(
-                    lines=lines,
-                    site=site,
-                    relative="kernel/caller.py.md",
-                    claim=claim,
-                    outcome=outcome,
-                    index=index,
-                    now=NOW,
-                    history_line=deterministic_projection.history_section_line(lines),
-                )
-            )
-            assert not isinstance(projection, deterministic_projection.ProjectionDecline)
-            self.assertIsNone(projection.new_document_digest)
-
-            changed = list(lines)
-            changed[claim.line - 1] = changed[claim.line - 1].replace(
-                "kernel/route_index.py:1-2", "kernel/route_index.py:400-480"
-            )
-            self.assertFalse(
-                deterministic_projection.verify_unchanged(changed, site, projection.was)
-            )
-            declined = deterministic_projection.conflicting_write_decline(
-                "kernel/caller.py.md", claim.line, claim.anchors[0].written
-            )
-            self.assertEqual(declined.code, deterministic_projection.PROJECTION_CONFLICT)
-
-    def test_the_staged_range_edit_and_the_history_edit_land_in_one_batch(self) -> None:
-        """Both edits share one document batch: no range rewrite without its bullet."""
-        self.tree.source("kernel/indexes.py", "def build_route_indexes():\n    return 1\n")
-        card = self.tree.card(
-            "kernel/caller.py",
-            "| The census. | `build_route_indexes` | kernel/route_index.py:1-2 |",
-            history=("2026-08-01T10:00:00+02:00: Previous entry.",),
-        )
-
-        with source_index.open_repository_index(self.tree.trees()) as index:
-            lines = card.read_text(encoding="utf-8").split("\n")
-            located, _wrapped = fixer.sites(lines)
-            claim, site = located[0]
-            seen = symbol_index.locate(claim.anchors, self.tree.trees(), index=index)
-            outcome = repair.plan(claim, self.tree.trees(), fixer.Sources(), seen)
-            assert isinstance(outcome, repair.Repair)
-            heading = deterministic_projection.history_section_line(lines)
-            projection = deterministic_projection.plan_projection(
-                deterministic_projection.ProjectionRequest(
-                    lines=lines,
-                    site=site,
-                    relative="kernel/caller.py.md",
-                    claim=claim,
-                    outcome=outcome,
-                    index=index,
-                    now=NOW,
-                    history_line=heading,
-                )
-            )
-            assert not isinstance(projection, deterministic_projection.ProjectionDecline)
-            assert heading is not None and projection.history_bullet is not None
-            batch: list[tuple[Any, str]] = [(site, projection.now)]
-            batch.append(
-                deterministic_projection.history_edit(lines, heading, [projection.history_bullet])
-            )
-            digest = deterministic_projection.document_digest(lines, batch)
-            row_only = deterministic_projection.document_digest(lines, [(site, projection.now)])
-            self.assertNotEqual(digest, row_only)
-            self.assertIn(projection.history_bullet, "\n".join(batch_rendered(lines, batch)))
-
-
-def batch_rendered(lines: list[str], batch: list[tuple[Any, str]]) -> list[str]:
-    return rewritten(lines, batch)
-
-
 class ProjectionBoundaryTests(TreeCase):
     """plan_projection's one refusal inside a live repair: the anchor must resolve
     to exactly ONE extent in the repair's own oracle.
@@ -604,12 +513,11 @@ class ProjectionDeclineThroughFixerTests(TreeCase):
     """The decline surface seen by a full fix_onboarding_root run.
 
     A claim whose one anchor is repaired out of TWO cited files at once has no unique
-    extent to bind: the source cell still gets the mechanically generated ranges, but the
-    projection transaction refuses and reports the refusal the way every other refused
-    claim is reported.
+    extent to bind. The complete document, including history, must stay unchanged;
+    the refused projection is never counted or applied as a repair.
     """
 
-    def test_a_two_file_anchor_resolution_stages_the_edit_and_refuses_the_projection(
+    def test_a_two_file_anchor_resolution_refuses_without_staging_any_edit(
         self,
     ) -> None:
         self.tree.source("kernel/left.py", "def persist():\n    return 1\n")
@@ -617,11 +525,15 @@ class ProjectionDeclineThroughFixerTests(TreeCase):
         self.tree.card(
             "kernel/caller.py",
             "| The write path. | `persist` | kernel/left.py:1-2; kernel/right.py:99-99 |",
+            history=("2026-08-01T10:00:00+02:00: Previous entry.",),
         )
+        before = self.tree.card_bytes("kernel/caller.py.md")
 
         result = self.tree.fix()
 
-        self.assertEqual(result["claimsRepaired"], 1)
+        self.assertEqual(result["claimsRepaired"], 0)
+        self.assertEqual(result["documentsWritten"], 0)
+        self.assertEqual(result["repairs"], [])
         self.assertEqual(result["projectionCount"], 0)
         self.assertEqual(result["projections"], [])
         self.assertEqual(result["declinedCount"], 1)
@@ -632,8 +544,9 @@ class ProjectionDeclineThroughFixerTests(TreeCase):
         self.assertIn("2 extent(s)", declined["message"])
         self.assertEqual(
             self.tree.source_cell("kernel/caller.py.md"),
-            "kernel/left.py:1-2; kernel/right.py:1-2",
+            "kernel/left.py:1-2; kernel/right.py:99-99",
         )
+        self.assertEqual(self.tree.card_bytes("kernel/caller.py.md"), before)
         self.assertFalse(result["ok"])
 
 
@@ -716,50 +629,6 @@ class ClockContractTests(unittest.TestCase):
         stamp = deterministic_projection.now_utc()
         self.assertIsNotNone(stamp.tzinfo)
         self.assertEqual(stamp.astimezone(UTC).isoformat(timespec="seconds")[-6:], "+00:00")
-
-
-class ScopedNormalisationEditTests(unittest.TestCase):
-    """The non-repairing arm of _decide: a passing claim that normalisation rewrites
-    stages its edit and returns before any projection transaction is opened."""
-
-    def test_a_normalised_passing_claim_stages_the_edit_and_skips_the_projection(
-        self,
-    ) -> None:
-        was = "kernel/route_index.py:1-2"
-        now = "kernel/indexes.py:1-2"
-        lines = [f"| The census. | `build_route_indexes` | {was} |"]
-        start = lines[0].index(was)
-        site = Site(line=1, start=start, end=start + len(was))
-        claim = model.Claim(
-            line=1,
-            anchors=(),
-            citations=(),
-            malformed=(),
-            unchecked_spans=0,
-        )
-        one = fixer.Candidate(
-            document=Path("kernel/caller.py.md"),
-            relative="kernel/caller.py.md",
-            claim=claim,
-            site=site,
-            repairing=False,
-            gating=False,
-        )
-        walk = SimpleNamespace(
-            documents=SimpleNamespace(lines=lambda _document: lines),
-            result=SimpleNamespace(refused=[], applied=[]),
-        )
-        staging = fixer.Staging()
-        with mock.patch.object(fixer, "_scoped_source", return_value=(now, None)):
-            fixer._decide(one, None, cast(fixer.Walk, walk), staging, Path("/onboarding"))
-
-        self.assertEqual(
-            [(one.path, one.line, one.was, one.now) for one in walk.result.applied],
-            [("kernel/caller.py.md", 1, was, now)],
-        )
-        self.assertEqual(walk.result.refused, [])
-        self.assertEqual(staging.edits, {Path("kernel/caller.py.md"): [(site, now)]})
-        self.assertEqual(staging.bullets, {})
 
 
 if __name__ == "__main__":  # pragma: no cover

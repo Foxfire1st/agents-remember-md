@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -36,6 +38,7 @@ from agents_remember.certification.repository_profiles.models import (
 )
 from agents_remember.errors import CertificationProfileError
 from agents_remember_test_support.code_quality import profile_rails, profile_selection
+from agents_remember_test_support.testing.dagger_admission import require_dagger_admission
 from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
     NODE_FIXTURE,
@@ -922,3 +925,44 @@ def test_profile_publication_and_adapter_ambiguity_refuse_at_admission(
     report = validate_repository_profile(canonical)
 
     assert expected in {finding.code for finding in report.findings}
+
+
+@pytest.mark.parametrize("drift", [None, "missing", "extra", "duplicate"])
+def test_full_python_rail_uses_canonical_selector_order_and_still_refuses_scope_drift(
+    tmp_path: Path, drift: str | None
+) -> None:
+    """Actual full selector and executable configuration agree before any pytest launch."""
+    diff_base = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=REPOSITORY_ROOT, text=True
+    ).strip()
+    selection = profile_selection.selection_result(
+        REPOSITORY_ROOT, mode="full", diff_base=diff_base
+    )
+    scope_path = tmp_path / "scope.json"
+    scope_path.write_text(selection.model_dump_json(), encoding="utf-8")
+    args = argparse.Namespace(
+        project_root=REPOSITORY_ROOT,
+        mode="full",
+        diff_base=diff_base,
+        scope=scope_path,
+        reports=tmp_path / "reports",
+        memory_cap_bytes=0,
+    )
+    config = profile_rails._profile_config(args, require_dagger_admission())
+    assert config.selection_digest == selection.selectionDigest
+    paths = config.scope.size_paths
+    assert sorted(path.as_posix() for path in paths) == list(
+        selection.output_values()["size-paths"]
+    )
+    if drift is None:
+        return
+    altered = (
+        paths[1:]
+        if drift == "missing"
+        else [*paths, Path("unselected-source.py")]
+        if drift == "extra"
+        else [*paths, paths[0]]
+    )
+    changed = replace(config, scope=replace(config.scope, size_paths=altered))
+    with pytest.raises(profile_rails.quality_scope.ScopeError, match="size-paths differs"):
+        profile_rails._require_exact_scope(args, changed)

@@ -17,9 +17,9 @@ conflicting writes. No similarity, filename, or prose search authority is introd
 no old range is accepted as a fallback, and canonical Markdown remains the sole memory
 content - the binding travels in the repair payload, never a sidecar.
 
-This module owns the transaction seam (planned projection + write-time precondition
-verification); resolution semantics stay with the shared oracle in :mod:, so a
-second citation authority can never emerge here.
+This module owns projection bindings and source-cell preconditions. The document transaction
+composes accepted projections and checks their preconditions at publication; resolution
+semantics stay with the shared oracle, without a second citation authority.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from hashlib import sha256
 from typing import Any
 
 from agents_remember.memory_quality.style.citations import model, repair, source_index
-from agents_remember.memory_quality.style.citations.editing import Site, rewritten
+from agents_remember.memory_quality.style.citations.editing import Site
 
 OPERATION = "citation_deterministic_projection"
 REPAIR_TOOL_VERSION = "ccr-r10@v1"
@@ -221,19 +221,24 @@ def plan_projection(request: ProjectionRequest) -> Projection | ProjectionDeclin
 def verify_unchanged(lines: list[str], site: Site, expected: str) -> bool:
     """The transaction's precondition: the cell still holds what the plan bound.
 
-    The fixer re-checks this at staging time; a conflicting writer between plan and
-    staging makes the recorded prior digest no longer bind, and the rewrite refuses.
+    The document transaction checks this immediately before publication, together with
+    the complete original document and the still-leased source snapshot.
     """
-    return lines[site.line - 1][site.start : site.end].strip() == expected
+    if not 1 <= site.line <= len(lines):
+        return False
+    line = lines[site.line - 1]
+    return (
+        0 <= site.start <= site.end <= len(line) and line[site.start : site.end].strip() == expected
+    )
 
 
-def conflicting_write_decline(relative: str, line: int, anchor: str) -> ProjectionDecline:
+def conflicting_write_decline(relative: str, line: int, anchor: str | None) -> ProjectionDecline:
     return ProjectionDecline(
         code=PROJECTION_CONFLICT,
         anchor=anchor,
         message=(
-            f"{relative}:{line} changed between planning and staging, so the recorded "
-            f"prior claim digest no longer binds; refusing the mechanical rewrite"
+            f"{relative}:{line} no longer matches its planned document, source cell, or "
+            f"leased source snapshot at publication; refusing the entire document batch"
         ),
     )
 
@@ -246,10 +251,6 @@ def history_edit(lines: list[str], heading_line: int, bullets: list[str]) -> tup
     top of the section - newest-first by construction.
     """
     element = lines[heading_line - 1]
-    return Site(line=heading_line, start=0, end=len(element)), (element + "\n" + "\n".join(bullets))
-
-
-def document_digest(lines: list[str], edits: list[tuple[Site, str]]) -> str:
-    """SHA-256 of the exact bytes the batch would write to the document."""
-    body = "\n".join(rewritten(lines, edits))
-    return sha256(body.encode("utf-8")).hexdigest()
+    separator = "\r\n" if element.endswith("\r") else "\n"
+    text = element.removesuffix("\r") + separator + separator.join(bullets)
+    return Site(line=heading_line, start=0, end=len(element)), text
