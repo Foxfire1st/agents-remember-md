@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 import sys
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +23,7 @@ from agents_remember.application.lifecycle.lifecycle_operation_worker import (
 from agents_remember.certification.certificate_invalidation import classify_certificate_invalidation
 from agents_remember.certification.digests import content_digest
 from agents_remember.errors import CertificationContractError
+from agents_remember.kernel.git_command import preparation_command, read_git_commit_bytes
 from agents_remember.models.certification.corrective import (
     CorrectiveInputChange,
     RedCatalogDisposition,
@@ -40,13 +44,18 @@ from agents_remember.worktrees.integration.closeout.certification.admission impo
     prepare_closeout_certification,
 )
 from agents_remember.worktrees.integration.closeout.certification.execution import (
-    _current_handoff,
+    CloseoutCertificationHandoff,
     _observe_current_memory,
     _observed_recovery_changes,
+    current_certification_handoff,
 )
 from agents_remember.worktrees.integration.closeout.certification.selection import (
     LoadedCertificationSelection,
     require_selected_certification,
+)
+from agents_remember.worktrees.integration.closeout.preparation import private_execution
+from agents_remember.worktrees.integration.closeout.preparation.code_execution import (
+    prepare_code_output,
 )
 from agents_remember.worktrees.integration.lifecycle import lifecycle_operations
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
@@ -77,8 +86,8 @@ from agents_remember.worktrees.worktree_contract import (
     load_contract,
     write_contract,
 )
-from repository_profile_test_support import NODE_FIXTURE
-from test_closeout_certification_entrypoint import _apply, _executor, _fixture, _store
+from repository_profile_test_support import NODE_FIXTURE, install_fixture_profile
+from test_closeout_certification_entrypoint import _apply, _executor, _fixture, _git_state, _store
 from test_closeout_certification_recovery import _memory
 from test_closeout_queue import MASTER_A, QueueFixture, _grade, _leaf
 from test_operation_certification_selection import _fixture as selected_fixture
@@ -108,7 +117,7 @@ def test_memory_observation_revalidates_inputs_and_live_journal_owner(
         assert _apply(fixture)["state"] == "queued"
     store = _store(contract)
     running = OperationRuntime(store).start()
-    handoff = _current_handoff(contract, running, store)
+    handoff = current_certification_handoff(contract, running, store)
     original_journal = store.path.read_bytes()
     original_run = _original_run_bytes(running)
     inputs = _memory()
@@ -934,3 +943,228 @@ def test_retained_output_refuses_persisted_repository_alias_with_unchanged_physi
     assert ephemeral_git_mutation_snapshot(changed.code_worktree) == original_git
     assert changed.contract_path.read_bytes() == changed_bytes
     assert alias.is_symlink() and alias.resolve() == contract.code_repo_path.resolve()
+
+
+def _run_preparation_in_worker_session(request: pytest.FixtureRequest, root: Path) -> bool:
+    """Execute the same bounded scenario in a real isolated worker process group."""
+    if os.getpgrp() == os.getpid():
+        return False
+    command = [
+        sys.executable,
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-n=0",
+        "--tb=long",
+        f"--basetemp={root / 'worker-session'}",
+        request.node.nodeid,
+    ]
+    with subprocess.Popen(
+        command,
+        cwd=Path(__file__).resolve().parents[2],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=240)
+        except subprocess.TimeoutExpired:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate()
+            pytest.fail(f"bounded lifecycle scenario timed out\n{stdout}\n{stderr}")
+        assert process.returncode == 0, f"{stdout}\n{stderr}"
+    return True
+
+
+def _green_code_preparation_handoff(
+    root: Path, monkeypatch: pytest.MonkeyPatch, *, existing: bool = False
+) -> CloseoutCertificationHandoff:
+    if existing:
+        fixture = QueueFixture(root, memory_mode="internal")
+        contract = fixture.contracts[MASTER_A]
+        install_fixture_profile(contract.code_worktree, contract.repo_name, NODE_FIXTURE)
+        git(contract.code_worktree, "add", "-A")
+        git(contract.code_worktree, "commit", "-m", "install actual certification profile")
+        slug = Path(fixture.leaf_refs[MASTER_A].path).stem
+        write_task_doc(contract.task_root, _leaf(contract, slug))
+        fixture.declare(MASTER_A)
+    else:
+        fixture = _fixture(root)
+        contract = fixture.contracts[MASTER_A]
+    with mock.patch.object(lifecycle_operations, "launch_detached_worker"):
+        assert _apply(fixture)["state"] == "queued"
+    store = _store(contract)
+    fingerprint = worker_process_fingerprint(os.getpid())
+    assert fingerprint is not None
+    lease = "d" * 64
+    store.update(
+        lambda record: record.model_copy(
+            update={
+                "workerPid": os.getpid(),
+                "workerLease": lease,
+                "workerProcessFingerprint": fingerprint,
+            }
+        )
+    )
+    runtime = OperationRuntime(store, worker_lease=lease)
+    owner = runtime.start()
+    calls: list[clean_executor.CleanQualityRequest] = []
+    monkeypatch.setattr(gate, "run_clean_quality", _executor(NODE_FIXTURE, calls))
+    with pytest.raises(CertificationContractError) as refused:
+        execute_operation(owner, runtime)
+    assert refused.value.findings[0]["code"] == "certification-continuation-unbound"
+    assert len(calls) == 1
+    handoff = current_certification_handoff(contract, owner, store)
+    assert [terminal.result.gate for terminal in handoff.selected.terminals] == [1, 2, 3, 4]
+    assert all(terminal.certificate is not None for terminal in handoff.selected.terminals)
+    return handoff
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["new-private-code", "existing-code"])
+def test_preparation_selects_exact_real_code_without_publishing_logical_refs_or_recommitting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool, request: pytest.FixtureRequest
+) -> None:
+    if _run_preparation_in_worker_session(request, tmp_path):
+        return
+    handoff = _green_code_preparation_handoff(tmp_path, monkeypatch, existing=existing)
+    before = _git_state(handoff.contract)
+    original_run = _original_run_bytes(handoff.record)
+    original_runner = private_execution.run_git_preparation
+    starts = []
+
+    def observe_started(capability, action):
+        current = handoff.store.read()
+        assert current is not None and current.preparation is not None
+        leg = current.preparation.legs[0]
+        assert leg.output is None
+        assert leg.commands[-1].kind == action and leg.commands[-1].terminal is None
+        assert leg.commands[-1].workerPid == os.getpid()
+        plan = preparation_command(capability.binding, action)
+        assert (leg.commands[-1].cwd, leg.commands[-1].argv) == (plan.cwd.as_posix(), plan.argv)
+        starts.append(action)
+        return original_runner(capability, action)
+
+    monkeypatch.setattr(private_execution, "run_git_preparation", observe_started)
+    selected, reference, output = prepare_code_output(handoff)
+    state = selected.handoff.record.preparation
+    assert state is not None and state.legs[0].output == reference
+    assert output.intent == selected.reference
+    assert output.disposition == ("existing" if existing else "created")
+    assert selected.intent.writeEnabled is not existing
+    assert _git_state(handoff.contract) == before
+    assert _original_run_bytes(selected.handoff.record) == original_run
+    assert (
+        git(handoff.contract.code_worktree, "symbolic-ref", "HEAD")
+        == f"refs/heads/{handoff.contract.code_work_branch}"
+    )
+    assert selected.handoff.record.status == "running"
+    assert not selected.handoff.record.irreversibleBoundaryEntered
+    assert certificate_store(handoff.contract.worktree_group).load_reference(reference) == output
+    if existing:
+        assert starts == [] and state.legs[0].commands == ()
+        assert output.commit == before[0] and selected.intent.privateRoot is None
+    else:
+        assert starts == ["create", "materialize", "commit"]
+        assert all(
+            command.terminal is not None and command.terminal.outcome == "succeeded"
+            for command in state.legs[0].commands
+        )
+        assert output.commit != before[0] and output.parents == (before[0],)
+        assert selected.intent.privateRoot is not None
+        private = Path(selected.intent.privateRoot)
+        assert git(private, "rev-parse", "HEAD") == output.commit
+        assert git(private, "rev-parse", "HEAD^{tree}") == selected.intent.admittedTree
+        assert read_git_commit_bytes(private, output.commit) == read_git_commit_bytes(
+            handoff.contract.code_worktree, output.commit
+        )
+    journal = handoff.store.path.read_bytes()
+    with mock.patch.object(
+        private_execution,
+        "run_git_preparation",
+        side_effect=AssertionError("recommitted original output"),
+    ) as rerun:
+        reopened, same_reference, same_output = prepare_code_output(selected.handoff)
+    rerun.assert_not_called()
+    assert same_reference == reference and same_output == output
+    assert reopened.handoff.record.preparation == state
+    assert handoff.store.path.read_bytes() == journal
+    assert _git_state(handoff.contract) == before
+
+
+@pytest.mark.parametrize(
+    "cut", ["before-create", "before-commit", "after-commit", "cancel-after-commit"]
+)
+def test_preparation_retains_original_uncertain_commands_without_repeating_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cut: str, request: pytest.FixtureRequest
+) -> None:
+    if _run_preparation_in_worker_session(request, tmp_path):
+        return
+    handoff = _green_code_preparation_handoff(tmp_path, monkeypatch)
+    before = _git_state(handoff.contract)
+    original_runner = private_execution.run_git_preparation
+    starts = []
+    committed_heads = []
+
+    def cut_command(capability, action):
+        starts.append(action)
+        if (cut == "before-create" and action == "create") or (
+            cut == "before-commit" and action == "commit"
+        ):
+            raise subprocess.TimeoutExpired(action, 300)
+        result = original_runner(capability, action)
+        if action == "commit":
+            committed_heads.append(git(capability.binding.private_root, "rev-parse", "HEAD"))
+            if cut == "after-commit":
+                raise subprocess.TimeoutExpired(action, 300)
+            if cut == "cancel-after-commit":
+                handoff.store.update(
+                    lambda record: record.model_copy(update={"cancelRequested": True})
+                )
+        return result
+
+    monkeypatch.setattr(private_execution, "run_git_preparation", cut_command)
+    error_type = (
+        CertificationContractError if cut == "cancel-after-commit" else subprocess.TimeoutExpired
+    )
+    with pytest.raises(error_type):
+        prepare_code_output(handoff)
+    current = handoff.store.read()
+    assert current is not None and current.preparation is not None
+    leg = current.preparation.legs[0]
+    assert leg.output is None and leg.commands[-1].terminal is not None
+    expected = "succeeded" if cut == "cancel-after-commit" else "unknown"
+    assert leg.commands[-1].terminal.outcome == expected
+    assert starts == (["create"] if cut == "before-create" else ["create", "materialize", "commit"])
+    commands = leg.commands
+    assert _git_state(handoff.contract) == before
+    with mock.patch.object(
+        private_execution,
+        "run_git_preparation",
+        side_effect=AssertionError("repeated uncertain command"),
+    ) as rerun:
+        if cut == "after-commit":
+            selected, reference, output = prepare_code_output(handoff)
+            assert selected.handoff.record.preparation is not None
+            assert selected.handoff.record.preparation.legs[0].output == reference
+            assert output.commit != before[0] and committed_heads == [output.commit]
+        else:
+            with pytest.raises(CertificationContractError) as refused:
+                prepare_code_output(handoff)
+            assert (
+                refused.value.findings[0]["code"]
+                == {
+                    "before-create": "private-preparation-command-unresolved",
+                    "before-commit": "private-preparation-output-unfinished",
+                    "cancel-after-commit": "certification-worker-no-longer-current",
+                }[cut]
+            )
+    rerun.assert_not_called()
+    final = handoff.store.read()
+    assert final is not None and final.preparation is not None
+    assert final.preparation.legs[0].commands == commands
+    assert final.certification == current.certification
+    assert _git_state(handoff.contract) == before

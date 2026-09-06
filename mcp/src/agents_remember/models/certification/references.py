@@ -18,6 +18,8 @@ CertificateObjectKind = Literal[
     "lifecycle-admission",
     "prior-red-disposition",
     "recovery",
+    "preparation-intent",
+    "prepared-output",
 ]
 
 

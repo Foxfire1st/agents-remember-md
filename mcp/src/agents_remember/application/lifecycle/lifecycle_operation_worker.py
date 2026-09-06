@@ -51,7 +51,7 @@ from agents_remember.worktrees.integration.closeout.ledger_recovery import (
     CloseoutLedgerRecoveryDecision,
 )
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
-    closeout_generation_retained,
+    closeout_recovery_phase,
     derive_closeout_recovery_commits,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
@@ -125,15 +125,17 @@ class OperationRuntime:
                 raise RuntimeError(
                     "queued lifecycle operation is reserved for another worker process"
                 )
+            recovery_phase = closeout_recovery_phase(record)
             recovering = (
-                closeout_generation_retained(record)
+                recovery_phase is not None
                 if record.operationKind == "closeout"
                 else record.irreversibleBoundaryEntered
             )
             return record.model_copy(
                 update={
                     "status": "running",
-                    "phase": "recovering-after-claim" if recovering else "preflight",
+                    "phase": recovery_phase
+                    or ("recovering-after-claim" if recovering else "preflight"),
                     "startedAt": record.startedAt or stamp,
                     "heartbeatAt": stamp,
                     "currentCommand": "recover task state"
@@ -415,8 +417,9 @@ def terminal_operation_record(
             }
         )
     durable_result = _organizational_repair_failure(record) or result
+    recovery_phase = closeout_recovery_phase(record, waiting=True)
     needs_recovery = (
-        closeout_generation_retained(record)
+        recovery_phase is not None
         if record.operationKind == "closeout"
         else record.irreversibleBoundaryEntered and not bool(durable_result.get("safeToReplace"))
     )
@@ -425,7 +428,7 @@ def terminal_operation_record(
     return record.model_copy(
         update={
             "status": "input-required" if needs_input else "failed",
-            "phase": "contract-finalization" if needs_recovery else "failed",
+            "phase": recovery_phase or ("contract-finalization" if needs_recovery else "failed"),
             "heartbeatAt": stamp,
             "finishedAt": None if needs_input else stamp,
             "currentCommand": "reconcile the same operation"
@@ -441,7 +444,10 @@ def terminal_operation_record(
                 "intended state is restored."
                 if developer_decision
                 else (
-                    "Restart this exact task operation; its consumed approval remains bound "
+                    "Inspect the exact named private output and continue this generation; "
+                    "private preparation has not consumed its approval."
+                    if recovery_phase == "recovering-private-preparation"
+                    else "Restart this exact task operation; its consumed approval remains bound "
                     "to the same internal fingerprint and recovery will not replay a different "
                     "mutation."
                     if needs_recovery

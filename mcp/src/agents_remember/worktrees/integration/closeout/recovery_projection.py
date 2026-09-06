@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import Literal, cast
 
 from agents_remember.models.lifecycles.mutation_evidence import (
     CloseoutMutationLeg,
@@ -94,15 +94,40 @@ def require_closeout_recovery_projection(record: LifecycleOperationRecord) -> No
 def closeout_generation_retained(record: LifecycleOperationRecord) -> bool:
     """Whether recovery/finalization remains owned by this exact closeout generation.
 
-    Git mutation proof and contract-finalization ownership are deliberately
-    distinct. The latter requires the exact intended finalized contract-state
+    Private preparation, Git mutation proof and contract-finalization ownership
+    are deliberately distinct. The latter requires the exact intended finalized contract-state
     fingerprint plus a complete recovery tuple; arbitrary recovery cells do not
     retain a generation.
     """
 
-    if record.legacyMigration is not None or closeout_requires_recovery(record):
+    if (
+        record.preparation is not None
+        or record.legacyMigration is not None
+        or closeout_requires_recovery(record)
+    ):
         return True
     return _has_exact_finalization_evidence(record)
+
+
+def closeout_recovery_phase(
+    record: LifecycleOperationRecord, *, waiting: bool = False
+) -> (
+    Literal["recovering-private-preparation", "recovering-after-claim", "contract-finalization"]
+    | None
+):
+    """Project recovery without mistaking retained private work for a consumed claim."""
+    if record.operationKind != "closeout" or not closeout_generation_retained(record):
+        return None
+    claimed = (
+        record.approvalClaimed
+        or record.irreversibleBoundaryEntered
+        or closeout_requires_recovery(record)
+        or record.legacyMigration is not None
+        or record.closeoutFinalizedContractSha256 is not None
+    )
+    if record.preparation is not None and not claimed:
+        return "recovering-private-preparation"
+    return "contract-finalization" if waiting else "recovering-after-claim"
 
 
 def require_closeout_finalization_evidence(record: LifecycleOperationRecord) -> None:

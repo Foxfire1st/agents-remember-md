@@ -32,6 +32,10 @@ from agents_remember.models.certification.references import (
     CertificateObjectKind,
     CertificateObjectReference,
 )
+from agents_remember.models.lifecycles.preparation import (
+    CloseoutPreparationIntent,
+    PreparedCloseoutOutput,
+)
 
 CertificateObject = (
     CertificationAdmissionManifest
@@ -43,6 +47,8 @@ CertificateObject = (
     | LifecycleAdmissionManifest
     | PriorRedDispositionManifest
     | CertificationRecoveryRecord
+    | CloseoutPreparationIntent
+    | PreparedCloseoutOutput
 )
 CertificateObjectT = TypeVar("CertificateObjectT", bound=CertificateObject)
 
@@ -57,6 +63,8 @@ _KINDS: tuple[CertificateObjectKind, ...] = (
     "lifecycle-admission",
     "prior-red-disposition",
     "recovery",
+    "preparation-intent",
+    "prepared-output",
 )
 _MODELS: dict[CertificateObjectKind, type[CertificateObject]] = {
     "admission": CertificationAdmissionManifest,
@@ -68,6 +76,8 @@ _MODELS: dict[CertificateObjectKind, type[CertificateObject]] = {
     "lifecycle-admission": LifecycleAdmissionManifest,
     "prior-red-disposition": PriorRedDispositionManifest,
     "recovery": CertificationRecoveryRecord,
+    "preparation-intent": CloseoutPreparationIntent,
+    "prepared-output": PreparedCloseoutOutput,
 }
 
 
@@ -276,6 +286,10 @@ def _object_digest(value: CertificateObject) -> str:
         digest = value.dispositionDigest
     elif isinstance(value, CertificationRecoveryRecord):
         digest = value.recoveryDigest
+    elif isinstance(value, CloseoutPreparationIntent):
+        digest = value.intentDigest
+    elif isinstance(value, PreparedCloseoutOutput):
+        digest = value.outputDigest
     else:
         digest = value.authorityDigest
     return digest

@@ -49,6 +49,10 @@ from agents_remember.models.lifecycles.operation_projection import (
     LifecycleOperationProjection,  # noqa: F401 - public re-export
 )
 from agents_remember.models.lifecycles.policy import GatePolicyRuleSnapshot
+from agents_remember.models.lifecycles.preparation_state import (
+    OperationPreparationState,
+    validate_preparation_owner,
+)
 from agents_remember.models.lifecycles.termination import (
     LifecycleCancellationEvidence,
     WorkerTerminationEvidence,
@@ -392,6 +396,7 @@ class LifecycleOperationRecord(BaseModel):
     )
     qualityCertification: IntegrationQualityCertification | None = None
     certification: OperationCertificationState | None = None
+    preparation: OperationPreparationState | None = None
     integrationCertification: IntegrationCertificationSelection | None = None
     integrationPublication: IntegrationPublicationIntent | None = None
     organizationalRepair: OrganizationalCompletionRepairEvidence | None = None
@@ -533,6 +538,7 @@ _MEANINGFUL_STATE_FIELDS: tuple[str, ...] = (
     "closeoutFinalizedContractSha256",
     "qualityCertification",
     "certification",
+    "preparation",
     "integrationCertification",
     "integrationPublication",
     "organizationalRepair",
@@ -590,6 +596,13 @@ def _require_altitude_authority(record: LifecycleOperationRecord) -> None:
         raise ValueError("lifecycle operation kind must equal its accepted input kind")
     validate_certification_owner(
         record.certification, record.operationKind, record.operationKey, record.generation
+    )
+    validate_preparation_owner(
+        record.preparation,
+        record.operationKind,
+        record.operationKey,
+        record.generation,
+        has_certification=record.certification is not None,
     )
     _require_integration_certification_authority(record)
     if record.operationKind != "direct-landing" and record.directLandingLedgerIntent is not None:
@@ -906,6 +919,13 @@ def _require_cancellation_evidence(record: LifecycleOperationRecord) -> None:
         raise ValueError("cancellation evidence must bind this generation and proven worker exit")
     if record.status != "cancelled":
         raise ValueError("cancellation evidence belongs only to a cancelled generation")
+    if record.preparation is not None and any(
+        evidence.expected.get(f"preparation:{leg.leg}:intent") != leg.intent.semanticDigest
+        for leg in record.preparation.legs
+    ):
+        raise ValueError(
+            "private cancellation evidence must bind every selected preparation intent"
+        )
 
 
 def _require_organizational_repair_evidence(record: LifecycleOperationRecord) -> None:

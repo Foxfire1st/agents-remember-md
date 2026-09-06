@@ -23,6 +23,9 @@ if TYPE_CHECKING:
     from agents_remember.worktrees.integration.closeout.certification.execution import (
         CloseoutCertificationHandoff,
     )
+    from agents_remember.worktrees.integration.closeout.preparation.memory_port import (
+        PreparedMemoryCertificationPort,
+    )
     from agents_remember.worktrees.modules.models import WorktreeCommandResult
 
 
@@ -145,6 +148,7 @@ class WorktreeServices:
     citation_guard: CitationGuardPort
     certification_memory_rails: CertificationMemoryRailsPort | None = None
     certification_continuation: CertificationContinuationPort | None = None
+    prepared_memory_certification: PreparedMemoryCertificationPort | None = None
 
 
 @dataclass(frozen=True)

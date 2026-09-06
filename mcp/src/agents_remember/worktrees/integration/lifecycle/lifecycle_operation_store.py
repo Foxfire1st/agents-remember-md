@@ -27,13 +27,14 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationStatus,
     meaningful_state_changed,
 )
+from agents_remember.models.lifecycles.preparation_state import validate_preparation_transition
 from agents_remember.models.lifecycles.termination import WorkerTerminationEvidence
 from agents_remember.models.task_intent import (
     require_task_intent_identity,
     task_intent_is_missing,
 )
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
-    closeout_generation_retained,
+    closeout_recovery_phase,
     require_closeout_finalization_evidence,
     require_closeout_recovery_projection,
 )
@@ -356,6 +357,7 @@ def _validate_identity_and_evidence_transition(
         raise RuntimeError("a claimed approval cannot become unclaimed")
     _validate_recovery_commits_transition(current, updated)
     _validate_quality_certification_transition(current, updated)
+    _validate_private_preparation_transition(current, updated)
     validate_integration_certification_transition(
         current.integrationCertification,
         updated.integrationCertification,
@@ -391,6 +393,55 @@ def _validate_identity_and_evidence_transition(
     _validate_closeout_finalization_transition(current, updated)
     if current.irreversibleBoundaryEntered and not updated.irreversibleBoundaryEntered:
         raise RuntimeError("an entered irreversible boundary cannot be cleared")
+
+
+def _validate_private_preparation_transition(
+    current: LifecycleOperationRecord, updated: LifecycleOperationRecord
+) -> None:
+    if current.preparation is not None and (
+        updated.generationDisposition in {"retired", "superseded"}
+        or updated.successorFingerprint != current.successorFingerprint
+    ):
+        raise RuntimeError("private preparation requires an explicit proved retention disposition")
+    if (
+        updated.preparation is not None
+        and updated.status == "completed"
+        and updated.closeoutFinalizedContractSha256 is None
+    ):
+        raise RuntimeError("private preparation is unfinished work, not closeout completion")
+    termination = current.workerTermination
+    exited = (
+        (termination.pid, termination.lease, termination.processFingerprint)
+        if termination is not None and termination.state == "exited"
+        else (None, None, None)
+    )
+    worker = (current.workerPid, current.workerLease, current.workerProcessFingerprint)
+    validate_preparation_transition(
+        current.preparation,
+        updated.preparation,
+        can_start=current.status == "running"
+        and updated.status == "running"
+        and not current.cancelRequested
+        and not updated.cancelRequested
+        and current.generationDisposition == "active"
+        and worker == (updated.workerPid, updated.workerLease, updated.workerProcessFingerprint)
+        and all(value is not None for value in worker),
+        worker=worker,
+        exited_worker=exited,
+    )
+    if current.preparation != updated.preparation:
+        for field in (
+            "mutationEvidence",
+            "mutationHistory",
+            "recoveryCommits",
+            "approvalClaimed",
+            "irreversibleBoundaryEntered",
+            "closeoutFinalizedContractSha256",
+        ):
+            if getattr(current, field) != getattr(updated, field):
+                raise RuntimeError(
+                    "private preparation cannot publish mutation or approval evidence"
+                )
 
 
 def _advance_record_revision(
@@ -603,6 +654,8 @@ class LifecycleOperationStore:
         _require_record_matches_canonical_path(self.path, record)
         if record.recordRevision != 1:
             raise RuntimeError("a new lifecycle operation must begin at record revision 1")
+        if record.preparation is not None:
+            raise RuntimeError("private preparation must be selected after generation creation")
         with exclusive_access(self.path, _OWNERSHIP):
             current = self.read()
             if current is not None:
@@ -685,9 +738,7 @@ class LifecycleOperationStore:
             expected_phase = (
                 "direct-preflight"
                 if current.operationKind == "direct-landing"
-                else "recovering-after-claim"
-                if closeout_generation_retained(current)
-                else "queued"
+                else closeout_recovery_phase(current) or "queued"
             )
             if updated.status != expected_status or updated.phase != expected_phase:
                 raise RuntimeError(
@@ -718,6 +769,10 @@ class LifecycleOperationStore:
                 return current
             if current is None or current.status not in _TERMINAL:
                 raise RuntimeError("an active lifecycle operation cannot be replaced")
+            if current.preparation is not None or candidate.preparation is not None:
+                raise RuntimeError(
+                    "private preparation requires an explicit proved retention disposition"
+                )
             if current.workerPid is not None or (
                 current.workerTermination is not None
                 and current.workerTermination.state != "exited"
@@ -836,6 +891,12 @@ class LifecycleOperationStore:
         closeout_ambiguous = current.operationKind in {"closeout", "direct-landing"} and any(
             item.state == "mutation-intent" for item in current.mutationEvidence.values()
         )
+        if (
+            updated.status == "cancelled"
+            and current.preparation is not None
+            and updated.cancellationEvidence is None
+        ):
+            raise RuntimeError("private preparation cancellation requires unchanged logical refs")
         if (
             updated.status == "cancelled"
             and closeout_ambiguous

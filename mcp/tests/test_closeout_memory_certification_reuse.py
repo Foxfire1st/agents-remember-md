@@ -82,10 +82,16 @@ from agents_remember.memory_quality.integrity.check_missing_onboarding import (
 )
 from agents_remember.memory_quality.style.citations.resolution import Trees
 from agents_remember.memory_quality.style.citations.source_index import open_repository_index
+from agents_remember.models.certification.references import (
+    CertificateObjectKind,
+    CertificateObjectReference,
+)
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.curator_coherence import CuratorCoherenceRequest
 from agents_remember.models.lifecycles.door import CloseoutDoorRequest
+from agents_remember.models.lifecycles.evidence_dependencies import canonical_sha256
 from agents_remember.models.lifecycles.operation import CloseoutOperationInput
+from agents_remember.models.lifecycles.preparation import CloseoutPreparationIntent
 from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks import write_task_doc
 from agents_remember.worktrees.integration.closeout.certification.admission import (
@@ -94,7 +100,7 @@ from agents_remember.worktrees.integration.closeout.certification.admission impo
 )
 from agents_remember.worktrees.integration.closeout.certification.execution import (
     CloseoutCertificationHandoff,
-    _current_handoff,
+    current_certification_handoff,
     execute_selected_closeout,
 )
 from agents_remember.worktrees.integration.closeout.certification.selection import (
@@ -116,6 +122,10 @@ from agents_remember.worktrees.integration.closeout.future_code_candidate import
 )
 from agents_remember.worktrees.integration.closeout.memory_candidate_pair import (
     resolve_memory_candidate_pair,
+)
+from agents_remember.worktrees.integration.closeout.preparation.policy import (
+    PreparationPolicyError,
+    observe_git_preparation_policy,
 )
 from agents_remember.worktrees.integration.lifecycle import lifecycle_operations
 from agents_remember.worktrees.modules.context import contract_context
@@ -509,7 +519,7 @@ def _publish_fifth(
     record = select_recorded_terminals(
         contract, handoff.store, handoff.record, RecordedCertificationGeneration((terminal,), ())
     )
-    return _current_handoff(contract, record, handoff.store), result
+    return current_certification_handoff(contract, record, handoff.store), result
 
 
 @dataclass
@@ -586,7 +596,7 @@ def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> _Fixture:
     with pytest.raises(CertificationContractError) as unbound:
         execute_selected_closeout(contract, owner, store)
     assert unbound.value.findings[0]["code"] == "certification-continuation-unbound"
-    handoff = _current_handoff(contract, owner, store)
+    handoff = current_certification_handoff(contract, owner, store)
     assert tuple(item.result.gate for item in handoff.selected.terminals) == (1, 2, 3, 4)
     handoff, r08 = _publish_fifth(handoff)
     return _Fixture(queue, handoff, r08, calls)
@@ -797,3 +807,173 @@ def test_second_actual_memory_observation_fences_finalization(
     assert record.certification.terminals == handoff.selected.state.terminals
     assert record.cancelRequested is (cut == "cancel")
     assert all(path.read_bytes() == data for path, data in originals.items())
+
+
+def _policy_roots(root: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
+    """Real policy inputs isolated from host configuration and hook execution."""
+    global_config = root / "global.gitconfig"
+    global_config.write_bytes(b"")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    logical, private, hooks = root / "logical", root / "private", root / "hooks"
+    logical.mkdir()
+    hooks.mkdir()
+    git(logical, "init", "-q", "-b", "policy-fixture")
+    git(logical, "config", "user.name", "Policy Fixture")
+    git(logical, "config", "user.email", "policy@example.invalid")
+    git(logical, "config", "commit.gpgsign", "false")
+    git(logical, "config", "core.hooksPath", str(hooks))
+    (logical / "source.txt").write_text("policy fixture\n", encoding="utf-8")
+    git(logical, "add", "source.txt")
+    git(logical, "commit", "-qm", "Actual policy fixture")
+    git(logical, "worktree", "add", "--detach", str(private), "HEAD")
+    return logical, private, hooks
+
+
+def _policy_intent(logical: Path, private: Path) -> CloseoutPreparationIntent:
+    """Typed comparison fixture only: its references assert no certificate issuance."""
+
+    def reference(kind: CertificateObjectKind, marker: str) -> dict[str, object]:
+        return CertificateObjectReference(
+            kind=kind, semanticDigest=marker * 64, contentSha256=marker * 64, sizeBytes=1
+        ).model_dump(mode="json")
+
+    policy = observe_git_preparation_policy(logical)
+    parent = git(logical, "rev-parse", "HEAD")
+    payload = {
+        "schemaVersion": "closeout-preparation-intent/v1",
+        "operationKey": "a" * 64,
+        "generation": 1,
+        "contractPath": str(logical.parent / "policy-contract.md"),
+        "contractSha256": "b" * 64,
+        "leg": "code",
+        "writeEnabled": True,
+        "repositoryIdentity": git(
+            logical, "rev-parse", "--path-format=absolute", "--git-common-dir"
+        ),
+        "logicalRoot": str(logical),
+        "logicalRef": "refs/heads/policy-fixture",
+        "expectedOldCommit": parent,
+        "parentCommit": parent,
+        "admittedTree": git(logical, "rev-parse", "HEAD^{tree}"),
+        "privateRoot": str(private),
+        "normalizedMessage": "Compare actual policy",
+        "hookPolicy": "strict-code-no-verify",
+        "gitConfigSha256": policy.git_config_sha256,
+        "hooksSha256": policy.hooks_sha256,
+        "frozenRun": reference("frozen-run", "c"),
+        "candidateAuthorities": reference("candidate-authorities", "d"),
+        "prefixCertificates": [reference("certificate", marker) for marker in "abcd"],
+        "gateFiveCertificate": None,
+        "existingMemoryProof": None,
+    }
+    return CloseoutPreparationIntent.model_validate(
+        {**payload, "intentDigest": canonical_sha256(payload)}
+    )
+
+
+def test_preparation_policy_matches_actual_logical_and_linked_private_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logical, private, _hooks = _policy_roots(tmp_path, monkeypatch)
+    intent = _policy_intent(logical, private)
+    original = observe_git_preparation_policy(logical)
+    observed = observe_git_preparation_policy(private)
+
+    assert observed == original
+    observed.require_intent(intent)
+    assert git(logical, "rev-parse", "HEAD") == git(private, "rev-parse", "HEAD")
+    assert git(logical, "status", "--porcelain") == git(private, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize("scope", ["worktree-local", "conditional"])
+def test_preparation_policy_refuses_actual_private_commit_configuration_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str
+) -> None:
+    logical, private, _hooks = _policy_roots(tmp_path, monkeypatch)
+    if scope == "worktree-local":
+        git(logical, "config", "extensions.worktreeConfig", "true")
+        git(private, "config", "--worktree", "commit.cleanup", "verbatim")
+    else:
+        included = tmp_path / "private.gitconfig"
+        included.write_text("[commit]\n\tcleanup = verbatim\n", encoding="utf-8")
+        git_dir = git(private, "rev-parse", "--absolute-git-dir")
+        git(logical, "config", f"includeIf.gitdir:{git_dir}.path", str(included))
+    intent = _policy_intent(logical, private)
+    original = observe_git_preparation_policy(logical)
+    observed = observe_git_preparation_policy(private)
+
+    assert git(private, "config", "--get", "commit.cleanup") == "verbatim"
+    assert observed.git_config_sha256 != original.git_config_sha256
+    assert observed.hooks_sha256 == original.hooks_sha256
+    with pytest.raises(PreparationPolicyError, match="differs from selected intent"):
+        observed.require_intent(intent)
+    assert git(logical, "rev-parse", "HEAD") == intent.expectedOldCommit
+    assert git(private, "rev-parse", "HEAD") == intent.parentCommit
+
+
+def test_preparation_policy_refuses_changed_actual_executable_hook_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logical, private, hooks = _policy_roots(tmp_path, monkeypatch)
+    hook = hooks / "prepare-commit-msg"
+    hook.write_bytes(b"#!/bin/sh\n# original bytes\nexit 0\n")
+    hook.chmod(0o755)
+    intent = _policy_intent(logical, private)
+    observe_git_preparation_policy(private).require_intent(intent)
+    hook.write_bytes(b"#!/bin/sh\n# changed bytes\nexit 0\n")
+    observed = observe_git_preparation_policy(private)
+
+    assert observed.git_config_sha256 == intent.gitConfigSha256
+    assert observed.hooks_sha256 != intent.hooksSha256
+    with pytest.raises(PreparationPolicyError, match="differs from selected intent"):
+        observed.require_intent(intent)
+    assert git(logical, "rev-parse", "HEAD") == intent.expectedOldCommit
+    assert git(private, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize("link", ["hook", "ancestor"])
+def test_preparation_policy_refuses_actual_linked_hook_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link: str
+) -> None:
+    logical, private, hooks = _policy_roots(tmp_path, monkeypatch)
+    hook = hooks / "prepare-commit-msg"
+    hook.write_bytes(b"#!/bin/sh\nexit 0\n")
+    hook.chmod(0o755)
+    observe_git_preparation_policy(private).require_intent(_policy_intent(logical, private))
+    before = git(logical, "rev-parse", "HEAD")
+    if link == "hook":
+        target = tmp_path / "actual-hook"
+        hook.rename(target)
+        hook.symlink_to(target)
+    else:
+        target = tmp_path / "actual-hooks"
+        hooks.rename(target)
+        hooks.symlink_to(target, target_is_directory=True)
+    with pytest.raises(PreparationPolicyError, match="hook path is not canonical"):
+        observe_git_preparation_policy(private)
+    assert git(logical, "rev-parse", "HEAD") == git(private, "rev-parse", "HEAD") == before
+    assert git(private, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize("variable", ["GIT_AUTHOR_NAME", "GIT_COMMITTER_DATE"])
+def test_preparation_policy_binds_identity_environment_without_disclosing_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    variable: str,
+) -> None:
+    logical, private, _hooks = _policy_roots(tmp_path, monkeypatch)
+    monkeypatch.delenv(variable, raising=False)
+    intent = _policy_intent(logical, private)
+    secret = "private-identity-marker" if variable == "GIT_AUTHOR_NAME" else "1234567890 +0123"
+    monkeypatch.setenv(variable, secret)
+    observed = observe_git_preparation_policy(private)
+
+    assert observed.git_config_sha256 != intent.gitConfigSha256
+    assert observed.hooks_sha256 == intent.hooksSha256
+    with pytest.raises(PreparationPolicyError, match="differs from selected intent") as refused:
+        observed.require_intent(intent)
+    captured = capsys.readouterr()
+    assert secret not in repr(observed) + str(refused.value) + captured.out + captured.err
+    assert git(logical, "rev-parse", "HEAD") == intent.expectedOldCommit

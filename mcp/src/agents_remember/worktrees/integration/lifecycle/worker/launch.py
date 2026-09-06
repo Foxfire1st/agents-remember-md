@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
-    closeout_generation_retained,
+    closeout_recovery_phase,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_control_errors import (
     LifecycleControlError,
@@ -44,7 +44,8 @@ def launch_or_fail(
             expected={"state": "running"},
             observed={"state": "launch-failed"},
         )
-        retained = record.operationKind == "closeout" and closeout_generation_retained(record)
+        recovery_phase = closeout_recovery_phase(record, waiting=True)
+        retained = recovery_phase is not None
         next_action = "recover" if retained else "retry"
         result = {
             "state": "lifecycle-worker-launch-failed",
@@ -59,7 +60,7 @@ def launch_or_fail(
             return current.model_copy(
                 update={
                     "status": "input-required" if retained else "failed",
-                    "phase": "contract-finalization" if retained else "failed",
+                    "phase": recovery_phase or "failed",
                     "finishedAt": None if retained else stamp,
                     "failure": failure,
                     "result": result,

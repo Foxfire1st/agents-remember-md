@@ -19,6 +19,7 @@ LifecycleOperationPhase = Literal[
     "quality",
     "approval-claim",
     "recovering-after-claim",
+    "recovering-private-preparation",
     "code-commit",
     "memory-refresh",
     "memory-commit",

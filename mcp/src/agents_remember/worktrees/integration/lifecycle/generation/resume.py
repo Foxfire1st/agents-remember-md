@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
-    closeout_generation_retained,
+    closeout_recovery_phase,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_control_errors import (
     LifecycleControlError,
@@ -36,18 +36,13 @@ def requeued_same_generation(record: LifecycleOperationRecord) -> LifecycleOpera
                     "expectedOutputTree": None,
                 }
             )
-    recovering_closeout = record.operationKind == "closeout" and closeout_generation_retained(
-        record
-    )
     return record.model_copy(
         update={
             "status": "running" if record.operationKind == "direct-landing" else "queued",
             "phase": (
                 "direct-preflight"
                 if record.operationKind == "direct-landing"
-                else "recovering-after-claim"
-                if recovering_closeout
-                else "queued"
+                else closeout_recovery_phase(record) or "queued"
             ),
             "attempt": record.attempt + 1,
             "finishedAt": None,

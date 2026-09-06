@@ -27,6 +27,7 @@ import unittest
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 
@@ -47,9 +48,21 @@ from agents_remember.kernel.git_command import (
     GIT_METADATA_TIMEOUT_SECONDS,
     GIT_REMOTE_TIMEOUT_SECONDS,
     GIT_REPOSITORY_SELECTOR_ENV,
+    admit_private_git_preparation,
     git_environment,
+    inspect_existing_git_preparation,
+    inspect_git_preparation,
+    preparation_command,
+    read_git_commit_bytes,
+    read_git_configuration_bytes,
     run_git,
+    run_git_preparation,
     run_git_with_index,
+)
+from agents_remember.kernel.git_preparation import (
+    GitPreparationError,
+    PrivateGitPreparationBinding,
+    PrivateGitPreparationCapability,
 )
 from agents_remember.worktrees.modules import cleanup
 from agents_remember.worktrees.modules.git import (
@@ -67,6 +80,7 @@ from agents_remember.worktrees.worktree_contract import (
 )
 from agents_remember_test_support.code_quality import check as quality_check
 from agents_remember_test_support.code_quality import diff_coverage
+from agents_remember_test_support.code_quality.single_owner import module_git_offenders
 
 PACKAGE_ROOT = MCP_SRC / "agents_remember"
 
@@ -523,15 +537,10 @@ class SingleRunnerTests(unittest.TestCase):
     contents it cannot see. :class:`SingleRunnerGuardReachTests` plants each of those forms
     and fails if the sweep stops catching it.
 
-    This sweep reads argv **list literals** at the call site, so an argv composed elsewhere is
-    invisible to it. That was a live hole rather than a theoretical one: it existed precisely
-    because ``benchmarks/runner_modules/commands.py`` composed its argv through a second
-    builder, ``git_command()``, which L3 sanctioned as an exception. L6 deleted the builder
-    and routed those commands onto ``run_git``, and
-    ``mcp/tests/test_single_owner_primitives.py`` now closes the hole itself: it reports the
-    *construction* of a git argv wherever it happens, so a helper-composed argv no longer
-    escapes by being assembled one line above the spawn. This class is kept as the
-    environment-shaped guard it always was; the ownership question is that module's.
+    The environment sweep cannot see helper-composed argv. L6 removed a real second builder
+    from ``benchmarks/runner_modules/commands.py``; the canonical owner detector now catches
+    argv construction anywhere. This class uses that detector for ownership, as does
+    ``test_single_owner_primitives.py``, while retaining the separate literal-env guard.
     """
 
     def _package_modules(self) -> list[Path]:
@@ -563,14 +572,12 @@ class SingleRunnerTests(unittest.TestCase):
         )
 
     def test_only_the_kernel_module_defines_a_git_runner(self) -> None:
-        # `run_git` may be re-exported and wrapped -- `diff_coverage.run_git` adds this
-        # gate's typed error -- but only one module may SPAWN git, and that is the runner.
+        # The canonical owner sees direct spawns and the exact shared argv builder alike.
         spawners: list[str] = []
         for path in self._package_modules():
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in _spawn_calls(tree):
-                if _spawns_git(node):
-                    spawners.append(path.relative_to(PACKAGE_ROOT).as_posix())
+            module = path.relative_to(PACKAGE_ROOT).as_posix()
+            spawners.extend(finding.module for finding in module_git_offenders(tree, module))
         self.assertEqual(
             sorted(set(spawners)),
             ["kernel/git_command.py"],
@@ -958,6 +965,232 @@ class CandidateTreeConcurrencyTests(unittest.TestCase):
             self.assertEqual(len(set(trees)), 1)
             self.assertFalse(index.exists())
             self.assertEqual(list(root.glob(f".{index.name}-*")), [])
+
+
+class PrivateGitPreparationTests(unittest.TestCase):
+    """Real Git state behind the primitive; lifecycle admission belongs to its caller."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.repo = self.root / "logical"
+        _init(self.repo)
+        self.parent = _commit(self.repo, "source.txt", "original\n")
+        (self.repo / "source.txt").write_text("candidate\n", encoding="utf-8")
+        self.assertEqual(run_git(self.repo, ["add", "source.txt"]).returncode, 0)
+        tree = run_git(self.repo, ["write-tree"]).stdout.strip()
+        self.common = self.repo / ".git"
+        self.before_index = (self.common / "index").read_bytes()
+        self.binding = PrivateGitPreparationBinding(
+            self.repo,
+            "refs/heads/main",
+            self.parent,
+            self.common,
+            self.root / "named-output",
+            self.parent,
+            tree,
+            "prepared output",
+            "strict-code-no-verify",
+            "operation-1",
+            1,
+            "a" * 64,
+        )
+        self.authorizations: list[PrivateGitPreparationBinding] = []
+        self.cancelled = False
+
+    def authorize(self, binding: PrivateGitPreparationBinding) -> None:
+        self.authorizations.append(binding)
+        if self.cancelled:
+            raise RuntimeError("operation cancelled")
+
+    def _materialize(self) -> PrivateGitPreparationCapability:
+        capability = admit_private_git_preparation(self.binding, authorize=self.authorize)
+        self.assertEqual(run_git_preparation(capability, "create").returncode, 0)
+        self.assertEqual(run_git_preparation(capability, "materialize").returncode, 0)
+        return capability
+
+    def _unchanged_logical(self) -> None:
+        self.assertEqual(run_git(self.repo, ["rev-parse", "HEAD"]).stdout.strip(), self.parent)
+        self.assertEqual((self.common / "index").read_bytes(), self.before_index)
+        self.assertEqual((self.repo / "source.txt").read_text(), "candidate\n")
+
+    def test_exact_private_commit_preserves_logical_state_and_normal_hook_policy(self) -> None:
+        log = self.common / "hook-invocations"
+        for hook in ("pre-commit", "commit-msg", "prepare-commit-msg", "post-commit"):
+            path = self.common / "hooks" / hook
+            path.write_text(f"#!/bin/sh\nprintf '%s\\n' '{hook}' >> '{log}'\n", encoding="utf-8")
+            path.chmod(0o755)
+        for policy, expected in (
+            ("strict-code-no-verify", ["prepare-commit-msg", "post-commit"]),
+            ("ordinary", ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit"]),
+        ):
+            with self.subTest(policy=policy):
+                self.binding = replace(
+                    self.binding, private_root=self.root / policy, hook_policy=policy
+                )
+                if log.exists():
+                    log.unlink()
+                capability = self._materialize()
+                command = preparation_command(self.binding, "commit")
+                with patch.object(subprocess, "run", wraps=subprocess.run) as spawned:
+                    self.assertEqual(run_git_preparation(capability, "commit").returncode, 0)
+                self.assertIn(list(command.argv), [call.args[0] for call in spawned.call_args_list])
+                self.assertEqual(command.cwd, self.binding.private_root)
+                observed = inspect_git_preparation(capability)
+                self.assertEqual(observed.state, "committed")
+                self.assertEqual(observed.tree, self.binding.admitted_tree)
+                self.assertEqual(observed.parents, (self.parent,))
+                self.assertIsNotNone(observed.raw_commit)
+                self.assertEqual(log.read_text().splitlines(), expected)
+                with self.assertRaisesRegex(GitPreparationError, "not admitted from committed"):
+                    run_git_preparation(capability, "commit")
+                self.assertEqual(log.read_text().splitlines(), expected)
+                self._unchanged_logical()
+        self.assertGreater(len(self.authorizations), 12)
+
+    def test_raw_commit_readback_preserves_crlf_and_opaque_signature_header(self) -> None:
+        capability = self._materialize()
+        self.assertEqual(run_git_preparation(capability, "commit").returncode, 0)
+        original = inspect_git_preparation(capability)
+        assert original.raw_commit is not None and original.head is not None
+        headers = original.raw_commit.split(b"\n\n", 1)[0]
+        raw = (
+            headers
+            + b"\ngpgsig -----BEGIN PGP SIGNATURE-----\r\n opaque\r\n -----END PGP SIGNATURE-----\n\nopaque\r\nmessage\xff\r\n"
+        )
+        # An actual Git object tests lossless transport; the opaque header claims no verified signature.
+        written = run_git(
+            self.repo,
+            ["hash-object", "-t", "commit", "-w", "--stdin"],
+            input_text=raw.decode("utf-8", "surrogateescape"),
+        )
+        self.assertEqual(written.returncode, 0, written.stderr)
+        object_id = written.stdout.strip()
+        self.assertEqual(
+            run_git(
+                self.binding.private_root, ["update-ref", "HEAD", object_id, original.head]
+            ).returncode,
+            0,
+        )
+        observed = inspect_git_preparation(capability)
+        self.assertEqual(observed.raw_commit, raw)
+        self.assertEqual(read_git_commit_bytes(self.repo, object_id), raw)
+        self.assertEqual(observed.head, object_id)
+        self._unchanged_logical()
+
+    def test_config_read_retains_crlf_and_exact_commit_read_rejects_refs_and_missing_objects(
+        self,
+    ) -> None:
+        self.assertEqual(
+            run_git(self.repo, ["config", "preparation.payload", "one\r\ntwo"]).returncode, 0
+        )
+        crlf = read_git_configuration_bytes(self.repo)
+        self.assertIn(b"preparation.payload\none\r\ntwo\0", crlf)
+        self.assertEqual(
+            run_git(self.repo, ["config", "preparation.payload", "one\ntwo"]).returncode, 0
+        )
+        self.assertNotEqual(read_git_configuration_bytes(self.repo), crlf)
+        for identity in ("HEAD", self.parent[:12], "0" * 40):
+            with self.subTest(identity=identity), self.assertRaises(GitPreparationError):
+                read_git_commit_bytes(self.repo, identity)
+        self._unchanged_logical()
+        self.assertEqual(run_git(self.repo, ["reset", "--hard", self.parent]).returncode, 0)
+        tree = run_git(self.repo, ["rev-parse", "HEAD^{tree}"]).stdout.strip()
+        raw = inspect_existing_git_preparation(
+            self.repo,
+            common_directory=self.common,
+            logical_ref="refs/heads/main",
+            commit=self.parent,
+            tree=tree,
+        )
+        self.assertEqual(raw, read_git_commit_bytes(self.repo, self.parent))
+        self.assertFalse(self.binding.private_root.exists())
+
+    def test_parent_may_be_an_existing_private_commit_while_logical_tip_stays_old(self) -> None:
+        first = self._materialize()
+        self.assertEqual(run_git_preparation(first, "commit").returncode, 0)
+        prepared = inspect_git_preparation(first)
+        assert prepared.head is not None
+        self.binding = replace(
+            self.binding, parent_commit=prepared.head, private_root=self.root / "ledger-output"
+        )
+        second = self._materialize()
+        self.assertEqual(inspect_git_preparation(second).head, prepared.head)
+        self._unchanged_logical()
+
+    def test_cancelled_owner_and_forged_capability_start_no_commit(self) -> None:
+        capability = self._materialize()
+        forged = PrivateGitPreparationCapability(self.binding, self.authorize, object())
+        with self.assertRaisesRegex(GitPreparationError, "not admitted"):
+            run_git_preparation(forged, "commit")
+        self.cancelled = True
+        with self.assertRaisesRegex(RuntimeError, "cancelled"):
+            run_git_preparation(capability, "commit")
+        self.assertEqual(
+            run_git(self.binding.private_root, ["rev-parse", "HEAD"]).stdout.strip(), self.parent
+        )
+        self._unchanged_logical()
+
+    def test_hidden_index_flags_and_changed_physical_bytes_refuse_commit(self) -> None:
+        capability = self._materialize()
+        private = self.binding.private_root
+        self.assertEqual(
+            run_git(private, ["update-index", "--assume-unchanged", "source.txt"]).returncode, 0
+        )
+        with self.assertRaisesRegex(GitPreparationError, "hidden source flags"):
+            run_git_preparation(capability, "commit")
+        self.assertEqual(
+            run_git(private, ["update-index", "--no-assume-unchanged", "source.txt"]).returncode, 0
+        )
+        (private / "source.txt").write_text("tampered!\n", encoding="utf-8")
+        with self.assertRaisesRegex(GitPreparationError, "bytes differ"):
+            run_git_preparation(capability, "commit")
+        self.assertEqual(run_git(private, ["rev-parse", "HEAD"]).stdout.strip(), self.parent)
+        self._unchanged_logical()
+
+    def test_stale_logical_tip_and_rebound_private_metadata_refuse_before_mutation(self) -> None:
+        capability = self._materialize()
+        other = self.root / "other-output"
+        self.assertEqual(
+            run_git(
+                self.repo, ["worktree", "add", "--detach", "--no-checkout", str(other), self.parent]
+            ).returncode,
+            0,
+        )
+        dot_git = self.binding.private_root / ".git"
+        original_pointer = dot_git.read_bytes()
+        dot_git.write_bytes((other / ".git").read_bytes())
+        with self.assertRaisesRegex(GitPreparationError, "backlink changed"):
+            run_git_preparation(capability, "commit")
+        dot_git.write_bytes(original_pointer)
+        self.assertEqual(
+            run_git(self.repo, ["commit", "-m", "foreign logical update"]).returncode, 0
+        )
+        moved = run_git(self.repo, ["rev-parse", "HEAD"]).stdout.strip()
+        with self.assertRaisesRegex(GitPreparationError, "logical Git preparation binding changed"):
+            run_git_preparation(capability, "commit")
+        self.assertEqual(run_git(self.repo, ["rev-parse", "HEAD"]).stdout.strip(), moved)
+        self.assertEqual(
+            run_git(self.binding.private_root, ["rev-parse", "HEAD"]).stdout.strip(), self.parent
+        )
+
+    def test_failed_hook_returns_original_failure_and_does_not_retry(self) -> None:
+        self.binding = replace(self.binding, hook_policy="ordinary")
+        capability = self._materialize()
+        hook = self.common / "hooks" / "pre-commit"
+        log = self.common / "failed-hook-count"
+        hook.write_text(
+            f"#!/bin/sh\necho called >> '{log}'\necho original-refusal >&2\nexit 1\n",
+            encoding="utf-8",
+        )
+        hook.chmod(0o755)
+        result = run_git_preparation(capability, "commit")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("original-refusal", result.stderr)
+        self.assertEqual(log.read_text().splitlines(), ["called"])
+        self.assertEqual(inspect_git_preparation(capability).state, "materialized")
+        self._unchanged_logical()
 
 
 if __name__ == "__main__":

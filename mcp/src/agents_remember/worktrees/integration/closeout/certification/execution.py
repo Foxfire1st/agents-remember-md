@@ -64,11 +64,12 @@ class CloseoutCertificationHandoff:
     selected: LoadedCertificationSelection
 
 
-def _current_handoff(
+def current_certification_handoff(
     contract: WorktreeContract,
     owner: LifecycleOperationRecord,
     store: LifecycleOperationStore,
 ) -> CloseoutCertificationHandoff:
+    """Reprove the live worker and selected authorities for a continuation action."""
     current = store.read()
     if current is None or (
         current.operationKey != owner.operationKey
@@ -219,7 +220,7 @@ def _advance_recovery(
         }
     )
     record = select_certification_state(handoff.contract, handoff.store, handoff.record, updated)
-    return _current_handoff(handoff.contract, record, handoff.store)
+    return current_certification_handoff(handoff.contract, record, handoff.store)
 
 
 def _run_code(handoff: CloseoutCertificationHandoff) -> CloseoutCertificationHandoff:
@@ -231,11 +232,11 @@ def _run_code(handoff: CloseoutCertificationHandoff) -> CloseoutCertificationHan
     ).certification_profile
 
     def select_terminals(recorded: RecordedCertificationGeneration) -> None:
-        current = _current_handoff(handoff.contract, handoff.record, handoff.store)
+        current = current_certification_handoff(handoff.contract, handoff.record, handoff.store)
         select_recorded_terminals(current.contract, current.store, current.record, recorded)
 
     def protected_generations() -> frozenset[str]:
-        current = _current_handoff(handoff.contract, handoff.record, handoff.store)
+        current = current_certification_handoff(handoff.contract, handoff.record, handoff.store)
         return current.selected.protected_generations
 
     def authorize_start() -> None:
@@ -259,7 +260,8 @@ def _run_code(handoff: CloseoutCertificationHandoff) -> CloseoutCertificationHan
         ),
     )
     return _advance_recovery(
-        _current_handoff(handoff.contract, handoff.record, handoff.store), memory_inputs=None
+        current_certification_handoff(handoff.contract, handoff.record, handoff.store),
+        memory_inputs=None,
     )
 
 
@@ -282,7 +284,13 @@ def execute_selected_closeout(
     store: LifecycleOperationStore,
 ) -> WorktreeCommandResult:
     """R21 alone controls actual starts; absent downstream composition cannot complete."""
-    handoff = _current_handoff(contract, record, store)
+    from agents_remember.worktrees.integration.closeout.preparation.finalization import resume_prepared_closeout
+    from agents_remember.worktrees.integration.closeout.preparation.code_view import prepare_code_view
+
+    recovered = resume_prepared_closeout(contract, record, store)
+    if recovered is not None:
+        return recovered
+    handoff = current_certification_handoff(contract, record, store)
     require_unchanged_retry_admissible(handoff.selected)
     selected_certificates = tuple(
         item.certificate.identity
@@ -296,6 +304,7 @@ def execute_selected_closeout(
     if has_memory_certificate or inherited_memory is not None:
         if continuation is None:
             refuse("certification-continuation-unbound", "registered memory owner", None)
+        handoff, _ = prepare_code_view(handoff)
         memory_inputs = _observe_current_memory(handoff, continuation)
     if (
         selected_certificates

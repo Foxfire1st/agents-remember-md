@@ -9,6 +9,9 @@ from pathlib import Path
 from agents_remember.models.lifecycles.mutation_evidence import GitMutationSnapshot
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
 from agents_remember.models.lifecycles.termination import LifecycleCancellationEvidence
+from agents_remember.worktrees.integration.closeout.preparation_selection import (
+    require_preparation_logical_refs,
+)
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     derive_closeout_recovery_commits,
 )
@@ -25,6 +28,7 @@ from agents_remember.worktrees.integration.mutation_evidence import (
     git_mutation_snapshot,
     reconcile_closeout_mutations,
 )
+from agents_remember.worktrees.worktree_contract import load_contract
 
 
 def prove_cancellable_git(
@@ -124,9 +128,16 @@ def _cancellable_closeout_facts(
     *,
     publish: bool,
 ) -> dict[str, str]:
+    preparation = (
+        require_preparation_logical_refs(load_contract(Path(record.contractPath)), record)
+        if record.preparation is not None
+        else {}
+    )
     if not record.mutationEvidence:
+        if preparation:
+            return preparation
         return {"mutationState": "not-applicable"}
-    facts: dict[str, str] = {}
+    facts: dict[str, str] = dict(preparation)
     report_root = Path(record.reportPath).parent
     for leg, evidence in record.mutationEvidence.items():
         accepted = evidence.acceptedBefore

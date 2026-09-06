@@ -527,6 +527,8 @@ integration = [
   "mcp/tests/test_worker_child_processes.py",
   "mcp/tests/test_frozen_certification_store.py",
   "mcp/tests/test_operation_certification_selection.py",
+  "mcp/tests/test_lifecycle_preparation_selection.py",
+  "mcp/tests/test_git_closeout_publication.py",
   "mcp/tests/test_closeout_certification_admission_recovery.py",
   "mcp/tests/test_closeout_memory_certification_reuse.py",
   "mcp/tests/test_closeout_certification_entrypoint.py",

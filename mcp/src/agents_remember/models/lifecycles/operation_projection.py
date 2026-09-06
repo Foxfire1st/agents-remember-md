@@ -63,6 +63,7 @@ _RUNNING_PHASES: frozenset[LifecycleOperationPhase] = frozenset(
         "quality",
         "approval-claim",
         "recovering-after-claim",
+        "recovering-private-preparation",
         "code-commit",
         "memory-refresh",
         "memory-commit",
@@ -90,7 +91,8 @@ _DIRECT_PHASES: frozenset[LifecycleOperationPhase] = frozenset(
 # contract-finalization/developer-decision cells, the direct-landing decision
 # cells, plus the running phases the shared evidence reporters legitimately park
 # under (memory-commit / ledger-commit after a proven Git mutation, and
-# recovering-after-claim for migrated legacy generations).  require_input never
+# recovering-after-claim for migrated legacy generations, or private preparation
+# before any consumed claim).  require_input never
 # rewrites the phase, so every one of these cells is a canonical input-required
 # state and must project coherently (each is already coherent under running).
 _INPUT_REQUIRED_PHASES: frozenset[LifecycleOperationPhase] = frozenset(
@@ -100,6 +102,7 @@ _INPUT_REQUIRED_PHASES: frozenset[LifecycleOperationPhase] = frozenset(
         "memory-commit",
         "ledger-commit",
         "recovering-after-claim",
+        "recovering-private-preparation",
         *_DIRECT_PHASES,
     }
 )
@@ -115,7 +118,7 @@ class LifecycleProjectionStateRule:
 
 STATE_MATRIX: dict[LifecycleOperationStatus, LifecycleProjectionStateRule] = {
     "queued": LifecycleProjectionStateRule(
-        frozenset({"queued", "recovering-after-claim"}),
+        frozenset({"queued", "recovering-after-claim", "recovering-private-preparation"}),
         frozenset({"live", "exited"}),
         frozenset({"none", "progress", "recovery", "developer-decision"}),
         frozenset({"recover", "cancel", "revise", "supersede"}),

@@ -14,6 +14,8 @@ from agents_remember.memory_quality.style.citations import (
     source_index_cache as citation_cache_api,
 )
 from agents_remember.models.task_document import CanonicalTaskObservation
+from agents_remember.memory_quality.prepared_certification import PreparedMemoryCertificationAdapter
+from agents_remember.worktrees.integration.closeout.preparation.continuation import PreparedCloseoutContinuation
 from agents_remember.providers import provider_setup as provider_setup_api
 from agents_remember.worktrees.services import (
     ProviderSetupRequestSpec,
@@ -200,6 +202,8 @@ def build_default_worktree_services() -> WorktreeServices:
         memory_quality=MemoryQualityAdapter(),
         citation_guard=CitationGuardAdapter(),
         certification_memory_rails=CertificationMemoryRailsAdapter(),
+        certification_continuation=PreparedCloseoutContinuation(),
+        prepared_memory_certification=PreparedMemoryCertificationAdapter(),
     )
 
 

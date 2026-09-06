@@ -593,6 +593,13 @@ def _require_resolved_worker_termination(record: LifecycleOperationRecord, name:
 
 
 def _require_resolved_mutations(record: LifecycleOperationRecord, name: str) -> None:
+    if record.preparation is not None:
+        raise _operation_refusal(
+            "terminal-archive-operation-preparation-retained",
+            f"{name} retains private preparation without an explicit retention disposition",
+            name=name,
+            observed={"preparationGeneration": record.preparation.generation},
+        )
     if any(item.state == "mutation-intent" for item in record.mutationEvidence.values()):
         raise _operation_refusal(
             "terminal-archive-operation-mutation-ambiguous",

@@ -28,8 +28,29 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, overload
+
+from agents_remember.kernel.git_closeout_publication import (
+    _CLOSEOUT_PUBLICATION_AUTHORITY,
+    GitCloseoutPublicationBinding,
+    GitCloseoutPublicationCapability,
+    GitCloseoutPublicationError,
+    GitCloseoutPublicationObservation,
+    GitCloseoutPublicationResult,
+)
+from agents_remember.kernel.git_preparation import (
+    _PREPARATION_AUTHORITY,
+    GitPreparationError,
+    PreparationAction,
+    PrivateGitPreparationBinding,
+    PrivateGitPreparationCapability,
+    PrivateGitPreparationObservation,
+    require_git_object_id,
+    require_physical_tree,
+)
 
 GIT_REPOSITORY_SELECTOR_ENV = (
     "GIT_DIR",
@@ -72,6 +93,15 @@ GIT_LOCAL_TIMEOUT_SECONDS = 300
 GIT_REMOTE_TIMEOUT_SECONDS = 120
 GIT_METADATA_TIMEOUT_SECONDS = 30
 GIT_BULK_REMOTE_TIMEOUT_SECONDS = 1800
+
+
+@dataclass(frozen=True)
+class GitCommandPlan:
+    """Exact runner input and complete argv for the caller's durable command intent."""
+
+    cwd: Path
+    args: tuple[str, ...]
+    argv: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -198,32 +228,479 @@ def run_git_with_isolated_index_and_objects(
     )
 
 
+def _git_argv(repo_root: Path, args: list[str], work_dir: Path) -> list[str]:
+    return [
+        "git",
+        "-C",
+        work_dir.as_posix(),
+        "-c",
+        "core.longpaths=true",
+        "-c",
+        f"safe.directory={repo_root.as_posix()}",
+        *args,
+    ]
+
+
+@overload
 def _run_git(
-    repo_root: Path, args: list[str], execution: _GitRun
-) -> subprocess.CompletedProcess[str]:
+    repo_root: Path, args: list[str], execution: _GitRun, *, raw_output: Literal[True]
+) -> subprocess.CompletedProcess[bytes]: ...
+
+
+@overload
+def _run_git(
+    repo_root: Path, args: list[str], execution: _GitRun, *, raw_output: Literal[False] = False
+) -> subprocess.CompletedProcess[str]: ...
+
+
+def _run_git(
+    repo_root: Path, args: list[str], execution: _GitRun, *, raw_output: bool = False
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
     stdin_kwargs: dict[str, object] = (
         {"input": execution.input_text}
         if execution.input_text is not None
         else {"stdin": subprocess.DEVNULL}
     )
     return subprocess.run(
-        [
-            "git",
-            "-C",
-            execution.work_dir.as_posix(),
-            "-c",
-            "core.longpaths=true",
-            "-c",
-            f"safe.directory={repo_root.as_posix()}",
-            *args,
-        ],
+        _git_argv(repo_root, args, execution.work_dir),
         cwd=execution.work_dir,
-        text=True,
-        encoding="utf-8",
-        errors="surrogateescape",
+        text=not raw_output,
+        encoding=None if raw_output else "utf-8",
+        errors=None if raw_output else "surrogateescape",
         capture_output=True,
         env=execution.environment,
         timeout=execution.timeout,
         check=False,
         **stdin_kwargs,  # type: ignore[arg-type]
     )
+
+
+def _read_git_bytes(root: Path, args: list[str]) -> bytes:
+    result = _run_git(
+        root,
+        args,
+        _GitRun(root, None, GIT_LOCAL_TIMEOUT_SECONDS, git_environment()),
+        raw_output=True,
+    )
+    if result.returncode:
+        raise GitPreparationError(f"exact Git observation failed: {result.stderr!r}")
+    return result.stdout
+
+
+def read_git_configuration_bytes(root: Path) -> bytes:
+    """Read exact effective config bytes with this runner's normal config/environment."""
+    return _read_git_bytes(root, ["config", "--null", "--list"])
+
+
+def read_git_commit_bytes(root: Path, commit: str) -> bytes:
+    """Read one fully named commit's original bytes, without newline normalization."""
+    require_git_object_id(commit)
+    return _read_git_bytes(root, ["cat-file", "commit", commit])
+
+
+def read_git_blob_bytes(root: Path, blob_id: str) -> bytes:
+    """Read one fully named original blob without decoding or newline normalization."""
+    require_git_object_id(blob_id)
+    return _read_git_bytes(root, ["cat-file", "blob", blob_id])
+
+
+def read_git_tree_bytes(root: Path, tree: str) -> bytes:
+    """Read recursive NUL-delimited tree rows with original pathname bytes."""
+    require_git_object_id(tree)
+    return _read_git_bytes(root, ["ls-tree", "-r", "-z", tree])
+
+
+def _preparation_output(root: Path, args: list[str]) -> str:
+    result = run_git(root, args)
+    if result.returncode:
+        raise GitPreparationError(f"private Git observation failed: {result.stderr.strip()}")
+    return result.stdout
+
+
+def _require_logical_preparation_binding(binding: PrivateGitPreparationBinding) -> None:
+    root = binding.logical_root
+    _preparation_output(root, ["check-ref-format", binding.logical_ref])
+    facts = (
+        (["rev-parse", "--show-toplevel"], root.as_posix()),
+        (
+            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            binding.common_directory.as_posix(),
+        ),
+        (["symbolic-ref", "--quiet", "HEAD"], binding.logical_ref),
+        (["rev-parse", "--verify", binding.logical_ref], binding.expected_logical_commit),
+        (["rev-parse", "--verify", f"{binding.parent_commit}^{{commit}}"], binding.parent_commit),
+        (["rev-parse", "--verify", f"{binding.admitted_tree}^{{tree}}"], binding.admitted_tree),
+    )
+    for args, expected in facts:
+        if _preparation_output(root, args).strip() != expected:
+            raise GitPreparationError("logical Git preparation binding changed")
+
+
+def _preparation_tree_entries(root: Path, tree: str) -> dict[str, tuple[str, str]]:
+    output = read_git_tree_bytes(root, tree)
+    entries: dict[str, tuple[str, str]] = {}
+    for row in output.split(b"\0"):
+        if not row:
+            continue
+        metadata, path_bytes = row.split(b"\t", 1)
+        mode, kind, object_id = metadata.decode("ascii").split(" ")
+        path = os.fsdecode(path_bytes)
+        if kind != "blob" or mode not in ("100644", "100755", "120000"):
+            raise GitPreparationError("preparation does not admit submodules or special sources")
+        if (
+            path in entries
+            or Path(path).is_absolute()
+            or any(part in ("", ".", "..", ".git") for part in path.split("/"))
+        ):
+            raise GitPreparationError("preparation tree source path is not canonical")
+        entries[path] = (mode, object_id)
+    return entries
+
+
+def _require_preparation_index(root: Path, entries: dict[str, tuple[str, str]]) -> None:
+    index = Path(
+        _preparation_output(
+            root, ["rev-parse", "--path-format=absolute", "--git-path", "index"]
+        ).strip()
+    )
+    git_dir = Path(_preparation_output(root, ["rev-parse", "--absolute-git-dir"]).strip())
+    if index != git_dir / "index" or index.resolve() != index or not index.is_file():
+        raise GitPreparationError("preparation index is not its regular worktree-owned file")
+    output = _read_git_bytes(root, ["ls-files", "--stage", "-z"])
+    actual: dict[str, tuple[str, str]] = {}
+    for row in output.split(b"\0"):
+        if not row:
+            continue
+        metadata, path_bytes = row.split(b"\t", 1)
+        mode, object_id, stage = metadata.decode("ascii").split(" ")
+        path = os.fsdecode(path_bytes)
+        if stage != "0" or path in actual:
+            raise GitPreparationError("preparation index contains unmerged entries")
+        actual[path] = (mode, object_id)
+    if actual != entries:
+        raise GitPreparationError("preparation index differs from admitted tree")
+    flags = _read_git_bytes(root, ["ls-files", "-v", "-z"])
+    if any(row and not row.startswith(b"H ") for row in flags.split(b"\0")):
+        raise GitPreparationError("preparation index contains hidden source flags")
+    require_physical_tree(root, entries)
+
+
+def _require_logical_git_root(
+    root: Path, common_directory: Path, logical_ref: str, commit: str
+) -> None:
+    for path in (root, common_directory):
+        if not path.is_absolute() or path.resolve() != path:
+            raise GitPreparationError("existing preparation paths must be absolute and canonical")
+    require_git_object_id(commit)
+    if not logical_ref.startswith("refs/heads/"):
+        raise GitPreparationError("existing preparation requires an exact logical branch ref")
+    _preparation_output(root, ["check-ref-format", logical_ref])
+    for args, expected in (
+        (["rev-parse", "--show-toplevel"], root.as_posix()),
+        (["rev-parse", "--path-format=absolute", "--git-common-dir"], common_directory.as_posix()),
+        (["symbolic-ref", "--quiet", "HEAD"], logical_ref),
+        (["rev-parse", "--verify", logical_ref], commit),
+        (["rev-parse", "--verify", "HEAD^{commit}"], commit),
+    ):
+        if _preparation_output(root, args).strip() != expected:
+            raise GitPreparationError("existing logical preparation binding changed")
+
+
+def _require_existing_preparation(
+    root: Path, common_directory: Path, logical_ref: str, commit: str, tree: str
+) -> None:
+    _require_logical_git_root(root, common_directory, logical_ref, commit)
+    require_git_object_id(tree)
+    if _preparation_output(root, ["rev-parse", "--verify", "HEAD^{tree}"]).strip() != tree:
+        raise GitPreparationError("existing logical preparation tree changed")
+    _require_preparation_index(root, _preparation_tree_entries(root, tree))
+
+
+def inspect_existing_git_preparation(
+    root: Path, *, common_directory: Path, logical_ref: str, commit: str, tree: str
+) -> bytes:
+    """Prove one existing logical output and return original bytes without private authority.
+
+    The caller owns live journal/config authorization around this read-only observation.
+    Both censuses prove the exact original logical ref, HEAD, index and physical tree.
+    """
+    _require_existing_preparation(root, common_directory, logical_ref, commit, tree)
+    raw = read_git_commit_bytes(root, commit)
+    _require_existing_preparation(root, common_directory, logical_ref, commit, tree)
+    return raw
+
+
+def _named_private_registration(binding: PrivateGitPreparationBinding) -> bool:
+    output = _preparation_output(binding.logical_root, ["worktree", "list", "--porcelain", "-z"])
+    matching = [
+        field for field in output.split("\0") if field == f"worktree {binding.private_root}"
+    ]
+    if len(matching) > 1:
+        raise GitPreparationError("private checkout has ambiguous Git registration")
+    return bool(matching)
+
+
+def _require_private_repository(binding: PrivateGitPreparationBinding) -> Path:
+    for args, expected in (
+        (["rev-parse", "--show-toplevel"], binding.private_root.as_posix()),
+        (
+            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            binding.common_directory.as_posix(),
+        ),
+    ):
+        if _preparation_output(binding.private_root, args).strip() != expected:
+            raise GitPreparationError("private checkout repository identity changed")
+    symbolic = run_git(binding.private_root, ["symbolic-ref", "--quiet", "HEAD"])
+    if symbolic.returncode != 1 or symbolic.stdout:
+        raise GitPreparationError("private checkout must retain a detached HEAD")
+    git_dir = Path(
+        _preparation_output(binding.private_root, ["rev-parse", "--absolute-git-dir"]).strip()
+    )
+    if git_dir.resolve() != git_dir or not git_dir.is_relative_to(
+        binding.common_directory / "worktrees"
+    ):
+        raise GitPreparationError("private Git administration is outside linked-worktree storage")
+    backlink = git_dir / "gitdir"
+    if (
+        backlink.is_symlink()
+        or backlink.read_bytes() != os.fsencode(binding.private_root / ".git") + b"\n"
+    ):
+        raise GitPreparationError("private linked-worktree backlink changed")
+    if (git_dir / "HEAD").is_symlink():
+        raise GitPreparationError("private HEAD must not redirect to another output")
+    return git_dir
+
+
+def _observe_private_preparation(
+    binding: PrivateGitPreparationBinding,
+) -> PrivateGitPreparationObservation:
+    _require_logical_preparation_binding(binding)
+    entries = _preparation_tree_entries(binding.logical_root, binding.admitted_tree)
+    registered = _named_private_registration(binding)
+    if not binding.private_root.exists():
+        if registered:
+            raise GitPreparationError(
+                "named private checkout registration exists without its directory"
+            )
+        return PrivateGitPreparationObservation("absent")
+    if (
+        not registered
+        or not (binding.private_root / ".git").is_file()
+        or (binding.private_root / ".git").is_symlink()
+    ):
+        raise GitPreparationError("private checkout lacks its exact linked-worktree registration")
+    git_dir = _require_private_repository(binding)
+    head = _preparation_output(binding.private_root, ["rev-parse", "--verify", "HEAD"]).strip()
+    index = Path(
+        _preparation_output(
+            binding.private_root, ["rev-parse", "--path-format=absolute", "--git-path", "index"]
+        ).strip()
+    )
+    if index != git_dir / "index":
+        raise GitPreparationError("private index redirects outside its named worktree")
+    if not index.exists():
+        if head != binding.parent_commit or set(binding.private_root.iterdir()) != {
+            binding.private_root / ".git"
+        }:
+            raise GitPreparationError("unmaterialized private checkout contains unexpected state")
+        return PrivateGitPreparationObservation("created", head=head)
+    if index.is_symlink() or not index.is_file():
+        raise GitPreparationError("private index is not a regular file")
+    _require_preparation_index(binding.private_root, entries)
+    if head == binding.parent_commit:
+        return PrivateGitPreparationObservation(
+            "materialized", head=head, tree=binding.admitted_tree
+        )
+    return _observe_private_commit(binding, head)
+
+
+def _observe_private_commit(
+    binding: PrivateGitPreparationBinding, head: str
+) -> PrivateGitPreparationObservation:
+    tree = _preparation_output(
+        binding.private_root, ["rev-parse", "--verify", "HEAD^{tree}"]
+    ).strip()
+    lineage = (
+        _preparation_output(binding.private_root, ["rev-list", "--parents", "-n", "1", "HEAD"])
+        .strip()
+        .split()
+    )
+    parents = tuple(lineage[1:])
+    if tree != binding.admitted_tree or parents != (binding.parent_commit,):
+        raise GitPreparationError("private commit differs from the admitted tree or sole parent")
+    raw = read_git_commit_bytes(binding.private_root, head)
+    return PrivateGitPreparationObservation("committed", head, tree, parents, raw)
+
+
+def admit_private_git_preparation(
+    binding: PrivateGitPreparationBinding,
+    *,
+    authorize: Callable[[PrivateGitPreparationBinding], None],
+) -> PrivateGitPreparationCapability:
+    """Bind one journal-authorized detached output; this grants no logical publication.
+
+    The upper owner must hold its actual operation lease, admit the exact durable intent
+    and check hook/config equivalence in ``authorize``. Recovery supplies that same intent;
+    this factory neither discovers another output nor claims an incomplete command worked.
+    """
+    capability = PrivateGitPreparationCapability(binding, authorize, _PREPARATION_AUTHORITY)
+    inspect_git_preparation(capability)
+    return capability
+
+
+def inspect_git_preparation(
+    capability: PrivateGitPreparationCapability,
+) -> PrivateGitPreparationObservation:
+    """Observe only the named output, preserving original raw Git commit bytes."""
+    capability.require_authority()
+    try:
+        observed = _observe_private_preparation(capability.binding)
+        _require_logical_preparation_binding(capability.binding)
+        return observed
+    finally:
+        capability.require_authority()
+
+
+def preparation_command(
+    binding: PrivateGitPreparationBinding, action: PreparationAction
+) -> GitCommandPlan:
+    """Describe the sole allowed command for a journal to persist before execution."""
+    binding.validate()
+    if action == "create":
+        root = binding.logical_root
+        args = [
+            "worktree",
+            "add",
+            "--detach",
+            "--no-checkout",
+            binding.private_root.as_posix(),
+            binding.parent_commit,
+        ]
+    elif action == "materialize":
+        root = binding.private_root
+        args = ["read-tree", "--reset", "-u", binding.admitted_tree]
+    elif action == "commit":
+        root = binding.private_root
+        args = ["commit"]
+        if binding.hook_policy == "strict-code-no-verify":
+            args.append("--no-verify")
+        args.extend(["-m", binding.message])
+    else:
+        raise GitPreparationError("unknown private preparation action")
+    return GitCommandPlan(root, tuple(args), tuple(_git_argv(root, args, root)))
+
+
+def run_git_preparation(
+    capability: PrivateGitPreparationCapability,
+    action: PreparationAction,
+) -> subprocess.CompletedProcess[str]:
+    """Perform one admitted command once, with exact before/after readback.
+
+    Timeouts propagate; callers must retain the durable intent and inspect its one named
+    output. An existing committed output is observation-only and can never be recommitted.
+    Normal identity, signing, prepare-commit-msg and post-commit semantics remain Git-owned.
+    """
+    before = inspect_git_preparation(capability)
+    binding = capability.binding
+    required = {"create": "absent", "materialize": "created", "commit": "materialized"}
+    if action not in required or before.state != required[action]:
+        raise GitPreparationError(
+            f"private preparation action {action!r} is not admitted from {before.state}"
+        )
+    command = preparation_command(binding, action)
+    capability.require_authority()
+    result = run_git(command.cwd, list(command.args))
+    after = inspect_git_preparation(capability)
+    expected = {"create": "created", "materialize": "materialized", "commit": "committed"}
+    if result.returncode == 0 and after.state != expected[action]:
+        raise GitPreparationError("successful Git command did not produce its exact private state")
+    return result
+
+
+def _observe_closeout_publication(
+    binding: GitCloseoutPublicationBinding,
+) -> GitCloseoutPublicationObservation:
+    current = _preparation_output(
+        binding.root, ["rev-parse", "--verify", binding.logical_ref]
+    ).strip()
+    if current not in (binding.expected_old_commit, binding.prepared_commit):
+        raise GitCloseoutPublicationError(
+            "named closeout ref is outside its original old/new publication states"
+        )
+    _require_logical_git_root(binding.root, binding.common_directory, binding.logical_ref, current)
+    binding.require_prepared_bytes(read_git_commit_bytes(binding.root, binding.prepared_commit))
+    _require_preparation_index(
+        binding.root, _preparation_tree_entries(binding.root, binding.prepared_tree)
+    )
+    _require_logical_git_root(binding.root, binding.common_directory, binding.logical_ref, current)
+    state = (
+        "existing"
+        if binding.expected_old_commit == binding.prepared_commit
+        else "new"
+        if current == binding.prepared_commit
+        else "old"
+    )
+    return GitCloseoutPublicationObservation(state, current, binding.prepared_tree)
+
+
+def admit_git_closeout_publication(
+    binding: GitCloseoutPublicationBinding,
+    *,
+    authorize: Callable[[GitCloseoutPublicationBinding], None],
+) -> GitCloseoutPublicationCapability:
+    """Admit one actual closeout journal/approval owner, never integration authority."""
+    capability = GitCloseoutPublicationCapability(
+        binding, authorize, _CLOSEOUT_PUBLICATION_AUTHORITY
+    )
+    inspect_git_closeout_publication(capability)
+    return capability
+
+
+def inspect_git_closeout_publication(
+    capability: GitCloseoutPublicationCapability,
+) -> GitCloseoutPublicationObservation:
+    """Reprove only the named old/new ref and its already-materialized candidate."""
+    capability.require_authority()
+    try:
+        return _observe_closeout_publication(capability.binding)
+    except GitPreparationError as error:
+        raise GitCloseoutPublicationError(str(error)) from error
+    finally:
+        capability.require_authority()
+
+
+def closeout_publication_command(binding: GitCloseoutPublicationBinding) -> GitCommandPlan:
+    """Describe the one expected-old CAS for the caller's durable publication intent."""
+    binding.validate()
+    if binding.expected_old_commit == binding.prepared_commit:
+        raise GitCloseoutPublicationError("existing closeout output is observation-only")
+    args = ["update-ref", binding.logical_ref, binding.prepared_commit, binding.expected_old_commit]
+    return GitCommandPlan(
+        binding.root, tuple(args), tuple(_git_argv(binding.root, args, binding.root))
+    )
+
+
+def publish_git_closeout_ref(
+    capability: GitCloseoutPublicationCapability,
+) -> GitCloseoutPublicationResult:
+    """CAS one ref once; this neither materializes files nor promises cross-repo atomicity.
+
+    A timeout remains the upper journal owner's unknown command. Already-new and
+    no-op existing states return read-only evidence with no command. A failed after
+    proof retains an available actual command result on the typed refusal.
+    """
+    before = inspect_git_closeout_publication(capability)
+    if before.state != "old":
+        return GitCloseoutPublicationResult(before, before, None)
+    command = closeout_publication_command(capability.binding)
+    capability.require_authority()
+    result = run_git(command.cwd, list(command.args))
+    try:
+        after = inspect_git_closeout_publication(capability)
+        if result.returncode == 0 and after.state != "new":
+            raise GitCloseoutPublicationError(
+                "successful closeout CAS did not retain the prepared ref"
+            )
+    except GitCloseoutPublicationError as error:
+        raise GitCloseoutPublicationError(str(error), command=result) from error
+    return GitCloseoutPublicationResult(before, after, result)
