@@ -869,6 +869,8 @@ def _execute_corrected_successor(
         == disposition
     )
     assert selected.recovery.semanticEnvelope.reusePlan.firstGateToRun == 1
+    # Observe corrected code certification at the memory continuation boundary.
+    bind_worktree_services(replace(worktree_services(), certification_continuation=None))
     monkeypatch.setattr(gate, "run_clean_quality", _executor(NODE_FIXTURE, case.calls))
     runtime = OperationRuntime(store)
     with pytest.raises(CertificationContractError) as pending:

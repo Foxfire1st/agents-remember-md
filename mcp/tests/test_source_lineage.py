@@ -12,6 +12,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest import mock
 
+import pytest
+
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
@@ -272,6 +274,7 @@ class SourceLineageTests(unittest.TestCase):
                 fixture.leaf_contract.contract_path.as_posix(),
             )
 
+    @pytest.mark.integration
     def test_attach_refuses_before_stale_task_context_is_resumed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fixture = _fixture(Path(tmp))

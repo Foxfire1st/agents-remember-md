@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
+import pytest
 from agents_remember.controlplane.agent_notifier_signals import AgentNotifierSignalCooldownStore
 from agents_remember.controlplane.expectation_rows import ExpectationRowStore
 from agents_remember.controlplane.operator_inbox_records import (
@@ -226,6 +227,7 @@ def _accepted_paster() -> TerminalPaster:
     return cast(TerminalPaster, _AcceptedPaster())
 
 
+@pytest.mark.integration
 class CompoundIdleRelayTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()

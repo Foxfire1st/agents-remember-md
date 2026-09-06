@@ -31,6 +31,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import pytest
+
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 MCP_TESTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(MCP_SRC))
@@ -53,6 +55,10 @@ from agents_remember.application.provider_tools import (
 from agents_remember.application.task_docs.task_doc_tools import TaskDocEdit, TaskDocTarget
 from agents_remember.application.task_docs.task_ref import TaskRef
 from agents_remember.application.terminal_tools import RetiredSpawnInputs
+from agents_remember.application.worktree_services import (
+    bind_worktree_services,
+    build_default_worktree_services,
+)
 from agents_remember.application.worktree_tools import (
     CloseoutApproval,
     CloseoutCommitMessages,
@@ -102,6 +108,7 @@ from agents_remember.tasks import TaskDocument, write_task_doc
 from agents_remember.worktrees.queue.closeout_projection_publication import (
     refresh_closeout_projection,
 )
+from agents_remember.worktrees.services import reset_worktree_services
 from agents_remember.worktrees.worktree_contract import (
     ContractTask,
     LeafIdentity,
@@ -1014,32 +1021,39 @@ def _recursive_keys(value: object) -> set[str]:
     return set()
 
 
-class ToolResponseConformanceTests(unittest.TestCase):
+@pytest.mark.integration
+class ToolPayloadIntegrationTests(unittest.TestCase):
     payloads: dict[str, dict]
     _temp_dirs: list[str]
 
     @classmethod
     def setUpClass(cls) -> None:
         cls._temp_dirs = [tempfile.mkdtemp() for _ in range(8)]
-        base, worktree, carryover, lifecycle, task_doc_root, gate_root, inbox_root, orch_root = (
-            Path(d) for d in cls._temp_dirs
-        )
-        cls.payloads = {}
-        cls.payloads.update(_simple_payloads(_base_fixture(base)))
-        cls.payloads.update(_worktree_payloads(worktree))
-        cls.payloads.update(_carryover_payloads(carryover))
-        cls.payloads.update(_lifecycle_payloads(lifecycle))
-        cls.payloads.update(_task_doc_payloads(task_doc_root))
-        cls.payloads.update(_gate_payloads(_base_fixture(gate_root)))
-        cls.payloads.update(_operator_inbox_payloads(_base_fixture(inbox_root)))
-        cls.payloads.update(_orchestration_payloads(_base_fixture(orch_root)))
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        # Git worktrees leave read-only pack files; ignore_errors avoids flaky
-        # cleanup failures on Windows.
-        for path in cls._temp_dirs:
-            shutil.rmtree(path, ignore_errors=True)
+        for directory in cls._temp_dirs:
+            cls.addClassCleanup(shutil.rmtree, directory, ignore_errors=True)
+        bind_worktree_services(build_default_worktree_services())
+        try:
+            (
+                base,
+                worktree,
+                carryover,
+                lifecycle,
+                task_doc_root,
+                gate_root,
+                inbox_root,
+                orch_root,
+            ) = (Path(d) for d in cls._temp_dirs)
+            cls.payloads = {}
+            cls.payloads.update(_simple_payloads(_base_fixture(base)))
+            cls.payloads.update(_worktree_payloads(worktree))
+            cls.payloads.update(_carryover_payloads(carryover))
+            cls.payloads.update(_lifecycle_payloads(lifecycle))
+            cls.payloads.update(_task_doc_payloads(task_doc_root))
+            cls.payloads.update(_gate_payloads(_base_fixture(gate_root)))
+            cls.payloads.update(_operator_inbox_payloads(_base_fixture(inbox_root)))
+            cls.payloads.update(_orchestration_payloads(_base_fixture(orch_root)))
+        finally:
+            reset_worktree_services()
 
     def test_every_modeled_tool_has_a_representative_payload(self) -> None:
         self.assertEqual(set(self.payloads), set(TOOL_RESPONSE_MODELS))
@@ -1092,6 +1106,10 @@ class ToolResponseConformanceTests(unittest.TestCase):
         for tool_name, payload in self.payloads.items():
             with self.subTest(tool=tool_name):
                 self.assertFalse(prohibited & _recursive_keys(payload))
+
+
+class ToolResponseConformanceTests(unittest.TestCase):
+    """Direct model checks need no application workspace or service composition."""
 
     def test_generic_flexible_payload_preserves_lifecycle_named_provider_fields(self) -> None:
         provider_payload = {

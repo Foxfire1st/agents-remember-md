@@ -41,6 +41,7 @@ from test_lifecycle_operation_controls_l2 import (
 from test_lifecycle_operations import _contract
 from test_worktree_support import git
 
+pytestmark = pytest.mark.integration
 
 def _request(contract, record, *, dry_run: bool = False) -> OperationControlRequest:
     return OperationControlRequest(

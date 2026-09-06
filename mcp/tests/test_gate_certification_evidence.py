@@ -109,6 +109,7 @@ def _record(prepared, publication, payload):
     return certification_evidence.read_gate_records(prepared.directory)
 
 
+@pytest.mark.integration
 def test_unchanged_certificate_reuses_original_generation_and_provenance(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
     first, payload = _publish(prepared, execution)
@@ -147,6 +148,7 @@ def test_unchanged_certificate_reuses_original_generation_and_provenance(tmp_pat
         )
 
 
+@pytest.mark.integration
 def test_selected_certificate_generation_survives_pruning_until_selection_releases_it(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
     first, payload = _publish(prepared, execution)
@@ -165,6 +167,7 @@ def test_selected_certificate_generation_survives_pruning_until_selection_releas
 
 
 @pytest.mark.parametrize("fault", ["missing", "corrupt", "oversized", "symlink", "parent-link"])
+@pytest.mark.integration
 def test_actual_evidence_fault_refuses_certificate_issuance(tmp_path, fault):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, payload = _publish(prepared, execution)
@@ -196,6 +199,7 @@ def test_actual_evidence_fault_refuses_certificate_issuance(tmp_path, fault):
 
 
 @pytest.mark.parametrize("field", ["sha256", "size", "reference"])
+@pytest.mark.integration
 def test_payload_binding_must_match_accepted_inventory(tmp_path, field):
     _code, _group, prepared, execution = _arrange(tmp_path)
     publication, payload = _publish(prepared, execution)
@@ -208,6 +212,7 @@ def test_payload_binding_must_match_accepted_inventory(tmp_path, field):
     assert _refusals(result)[0]["refusalCode"].startswith("certificate-evidence-")
 
 
+@pytest.mark.integration
 def test_reuse_does_not_substitute_current_generation_for_missing_retained_generation(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
     first, payload = _publish(prepared, execution)
@@ -224,6 +229,7 @@ def test_reuse_does_not_substitute_current_generation_for_missing_retained_gener
     assert _publication(records[0])["generation"] != second.generation
 
 
+@pytest.mark.integration
 def test_selected_publication_snapshot_cannot_be_rebound_to_another_generation(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
     first, payload = _publish(prepared, execution)
@@ -312,6 +318,7 @@ def _damage_selected_snapshot(prepared, records):
         "runtimeAuthorityDigest",
     ],
 )
+@pytest.mark.integration
 def test_reuse_refuses_valid_foreign_authority_with_identical_artifact_bytes(tmp_path, field):
     _code, group, prepared, execution = _arrange(tmp_path)
     original, payload = _publish(prepared, execution)
@@ -331,6 +338,7 @@ def test_reuse_refuses_valid_foreign_authority_with_identical_artifact_bytes(tmp
 
 
 @pytest.mark.parametrize("field", ["candidateTree", "profileDigest", "profileSelectionId"])
+@pytest.mark.integration
 def test_journal_publication_refuses_foreign_authority_without_replacing_valid_selection(
     tmp_path, field
 ):
@@ -349,6 +357,7 @@ def test_journal_publication_refuses_foreign_authority_without_replacing_valid_s
 
 
 @pytest.mark.parametrize("field", ["candidateTree", "profileDigest", "profileSelectionId"])
+@pytest.mark.integration
 def test_pruning_refuses_a_valid_foreign_selected_publication(tmp_path, field):
     _code, group, prepared, execution = _arrange(tmp_path)
     original, payload = _publish(prepared, execution)
@@ -366,6 +375,7 @@ def test_pruning_refuses_a_valid_foreign_selected_publication(tmp_path, field):
 
 
 @pytest.mark.parametrize("field", ["profileDigest", "profilePlanDigest", "profileSelectionId"])
+@pytest.mark.integration
 def test_current_publication_must_match_the_actual_admitted_repository_plan(tmp_path, field):
     _code, group, prepared, execution = _arrange(tmp_path)
     original, payload = _publish(prepared, execution)
@@ -375,6 +385,7 @@ def test_current_publication_must_match_the_actual_admitted_repository_plan(tmp_
     assert certification_evidence.read_gate_records(prepared.directory) == ()
 
 
+@pytest.mark.integration
 def test_journal_capacity_refuses_without_overwriting_the_prior_selection(tmp_path, monkeypatch):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, payload = _publish(prepared, execution)
@@ -399,6 +410,7 @@ def test_malformed_selected_journal_is_not_treated_as_empty(tmp_path, payload):
 
 
 @pytest.mark.parametrize("fault", ["unreadable", "oversized"])
+@pytest.mark.integration
 def test_unavailable_selected_journal_refuses_publication_without_releasing_generations(
     tmp_path, monkeypatch, fault
 ):
@@ -449,6 +461,7 @@ def test_unavailable_selected_journal_refuses_publication_without_releasing_gene
         ("nonhex-manifest", "binding-missing", "invalid selected manifest"),
     ],
 )
+@pytest.mark.integration
 def test_invalid_selected_records_cannot_replace_a_live_journal(tmp_path, fault, code, detail):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, payload = _publish(prepared, execution)
@@ -479,6 +492,7 @@ def test_invalid_selected_records_cannot_replace_a_live_journal(tmp_path, fault,
     ) == {publication.generation}
 
 
+@pytest.mark.integration
 def test_selected_gate_cannot_claim_another_gates_certificate(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, payload = _publish(prepared, execution)
@@ -493,6 +507,7 @@ def test_selected_gate_cannot_claim_another_gates_certificate(tmp_path):
     assert path.read_bytes() == original
 
 
+@pytest.mark.integration
 def test_reuse_refuses_certificate_rebound_to_another_existing_result(tmp_path):
     _code, _group, prepared, execution = _arrange(tmp_path)
     first, payload = _publish(prepared, execution)
@@ -511,6 +526,7 @@ def test_reuse_refuses_certificate_rebound_to_another_existing_result(tmp_path):
     assert (prepared.directory / "gates.json").read_bytes() == original
 
 
+@pytest.mark.integration
 def test_actual_host_gate_refuses_green_process_with_unavailable_certificate_bytes(
     tmp_path, monkeypatch
 ):
@@ -542,6 +558,7 @@ def test_actual_host_gate_refuses_green_process_with_unavailable_certificate_byt
         )
 
 
+@pytest.mark.integration
 def test_admission_reuse_preserves_original_bytes_and_provenance(tmp_path):
     _code, _group, prepared, _execution = _arrange(tmp_path)
     first = certification_records._persist_admission(prepared)
@@ -562,6 +579,7 @@ def test_admission_reuse_preserves_original_bytes_and_provenance(tmp_path):
 
 
 @pytest.mark.parametrize("attestation", [None, {"producer": "gate-owner", "digest": "a" * 64}])
+@pytest.mark.integration
 def test_exact_manifest_snapshot_roundtrips_all_generation_authority(tmp_path, attestation):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, _payload = _publish(
@@ -584,6 +602,7 @@ def test_exact_manifest_snapshot_roundtrips_all_generation_authority(tmp_path, a
 
 
 @pytest.mark.parametrize("fault", ["relative-name", "generation"])
+@pytest.mark.integration
 def test_unsafe_retained_locator_refuses_before_opening_any_path(tmp_path, monkeypatch, fault):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, _payload = _publish(prepared, execution)
@@ -609,6 +628,7 @@ def test_unsafe_retained_locator_refuses_before_opening_any_path(tmp_path, monke
     "relative",
     ["dashboard-e2e-result.json", "provider-integration-result.json", "teardown-proof.json"],
 )
+@pytest.mark.integration
 def test_missing_required_gate_four_artifact_preserves_only_the_green_prefix(tmp_path, relative):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, payload = _publish(prepared, execution)
@@ -623,6 +643,7 @@ def test_missing_required_gate_four_artifact_preserves_only_the_green_prefix(tmp
     assert _refusals(result)[0]["refusalCode"] == "certificate-evidence-unavailable"
 
 
+@pytest.mark.integration
 def test_missing_live_generation_refuses_before_creating_another_generation(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
     first, payload = _publish(prepared, execution)
@@ -638,6 +659,7 @@ def test_missing_live_generation_refuses_before_creating_another_generation(tmp_
 
 
 @pytest.mark.parametrize("disposition", ["red", "interrupted"])
+@pytest.mark.integration
 def test_complete_failed_catalog_retains_typed_manifest_and_physical_generation(
     tmp_path, disposition
 ):
@@ -690,6 +712,7 @@ def test_complete_failed_catalog_retains_typed_manifest_and_physical_generation(
         "contradictory-disposition",
     ],
 )
+@pytest.mark.integration
 def test_invalid_failed_catalog_never_synthesizes_a_terminal_result(tmp_path, damage):
     _code, _group, prepared, execution = _arrange(tmp_path)
 
@@ -721,6 +744,7 @@ def test_invalid_failed_catalog_never_synthesizes_a_terminal_result(tmp_path, da
     assert _refusals(recorded.as_payload())[0]["refusalCode"] == expected
 
 
+@pytest.mark.integration
 def test_supplied_frozen_run_reconstruction_ignores_mutable_profile_and_summary(
     tmp_path, monkeypatch
 ):
@@ -744,6 +768,7 @@ def test_supplied_frozen_run_reconstruction_ignores_mutable_profile_and_summary(
     "fault",
     ["none", "missing-selection", "started", "nonboolean", "changed-provenance", "missing-object"],
 )
+@pytest.mark.integration
 def test_reused_catalog_selects_original_typed_objects_without_reissuing(
     tmp_path, monkeypatch, fault
 ):

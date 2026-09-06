@@ -13,6 +13,7 @@ from unittest import mock
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
+from _quality_admission import QUALITY_TEST_ADMISSION
 from agents_remember.kernel.primitives import memory_cap
 from agents_remember_test_support.code_quality import check
 
@@ -163,6 +164,7 @@ class MemoryCapPlanningTests(unittest.TestCase):
 
 
 class WrapperMemoryCapTests(unittest.TestCase):
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_main_refuses_a_non_positive_cap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = minimal_repository(Path(tmp))
@@ -182,6 +184,7 @@ class WrapperMemoryCapTests(unittest.TestCase):
             self.assertTrue(any("must be a positive integer" in line for line in output))
             self.assertTrue(any("result: quality-wrapper FAIL" in line for line in output))
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_main_applies_the_cap_and_names_the_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = minimal_repository(Path(tmp))
@@ -217,6 +220,7 @@ class WrapperMemoryCapTests(unittest.TestCase):
                 )
             )
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_main_refuses_loudly_when_the_cap_cannot_be_applied(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = minimal_repository(Path(tmp))
@@ -243,6 +247,7 @@ class WrapperMemoryCapTests(unittest.TestCase):
             self.assertTrue(any("memory-cap could not be applied" in line for line in output))
             self.assertTrue(any("result: quality-wrapper FAIL" in line for line in output))
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_main_reports_cap_exceeded_with_the_policy_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = minimal_repository(Path(tmp))
@@ -270,6 +275,7 @@ class WrapperMemoryCapTests(unittest.TestCase):
             self.assertTrue(any("memory cap exceeded" in line for line in output))
             self.assertTrue(any(memory_cap.QUALITY_MEMORY_CAP_POLICY in line for line in output))
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_main_reports_a_memory_error_without_a_cap_as_out_of_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = minimal_repository(Path(tmp))

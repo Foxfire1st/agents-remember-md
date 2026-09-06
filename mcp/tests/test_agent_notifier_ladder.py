@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
+import pytest
 from _scaling import assert_bounded_count
 from agents_remember.controlplane import operator_inbox_transitions as inbox_transitions
 from agents_remember.controlplane.agent_notifier_signals import AgentNotifierSignalCooldownStore
@@ -253,6 +254,7 @@ class InactivityChainProgressTests(unittest.TestCase):
             self.assertTrue(_inactivity_signal_chain_progressed(catalog, topology, current))
 
 
+@pytest.mark.integration
 class LadderWalkIntegrationTests(unittest.TestCase):
     """R6 fixtures: silent seat, dead intermediate, dead manager with live workers."""
 
@@ -795,6 +797,7 @@ class LadderWalkIntegrationTests(unittest.TestCase):
         self.assertEqual(legacy_events, [])
 
 
+@pytest.mark.integration
 class Cs6SweepScalingTests(unittest.TestCase):
     """260707-HFX2-L12 CS-6 sweep regressions: the store reads + escalation emission a single
     sweep does must NOT scale with the finding count (the L7 accidental-quadratic floor)."""

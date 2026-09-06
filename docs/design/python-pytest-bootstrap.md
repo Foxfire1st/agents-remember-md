@@ -3,7 +3,8 @@
 Ordinary development uses `mcp/.venv/bin/python -m pytest`, or an explicit test file.
 The default marker expression is `not integration`; four workers run independent tests.
 Use `-n=0` for serial debugging. There is no Dagger admission, coverage scoring, evidence
-catalog scan, or automatic application composition in this command.
+source census, or automatic application composition in this command. The existing
+file membership list is read once to skip integration modules before importing them.
 
 Delivery boundaries run with `mcp/.venv/bin/python -m pytest -m integration`.
 They retain real temporary code/memory Git publication, interruption and retry, competing
@@ -13,7 +14,8 @@ remain in the ordinary population even when the product feature concerns certifi
 
 The existing Dagger delivery plan explicitly supplies `--certify -m ""` to run both
 populations together. The combined branch-coverage artifact feeds changed-production
-coverage (90%) and production CRAP (unchanged threshold 30). No host run can create a
+coverage (90%) and production CRAP (unchanged threshold 30). Coverage.py also measures
+real Python subprocesses during that delivery run. No host run can create a
 Dagger admission capability or become certifying by omitting that option.
 
 Root conftest pins candidate imports, reuses the existing reversible Git environment setup

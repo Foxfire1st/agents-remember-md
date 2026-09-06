@@ -103,10 +103,8 @@ def _fixture(root: Path) -> _Fixture:
     )
     assert frozen is not None
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
-    # Private preparation must remain cancellable even without published-mutation cells.
-    queued = _queued(contract, operation_input, frozen.prepared.candidateTree).model_copy(
-        update={"mutationEvidence": {}}
-    )
+    # Enabled legs retain their initial pre-mutation cells during private preparation.
+    queued = _queued(contract, operation_input, frozen.prepared.candidateTree)
     record, created = store.create(queued)
     assert created
     record = select_initial_certification(contract, store, record, frozen)
@@ -174,7 +172,8 @@ def _command(fixture: _Fixture, intent: CloseoutPreparationIntent) -> Preparatio
 def _assert_unpublished(fixture: _Fixture) -> None:
     record = fixture.store.read()
     assert record is not None
-    assert record.mutationEvidence == {}
+    assert set(record.mutationEvidence) == {"code"}
+    assert all(evidence.state == "pre-mutation" for evidence in record.mutationEvidence.values())
     assert record.recoveryCommits is None
     assert not record.approvalClaimed and not record.irreversibleBoundaryEntered
     assert record.closeoutFinalizedContractSha256 is None
@@ -439,4 +438,5 @@ def test_private_recovery_phase_survives_failure_requeue_launch_and_public_proje
     assert (started.status, started.phase) == ("running", "recovering-private-preparation")
     assert started.preparation == retained
     assert not started.approvalClaimed and not started.irreversibleBoundaryEntered
-    assert not started.mutationEvidence and started.recoveryCommits is None
+    assert started.mutationEvidence == fixture.record.mutationEvidence
+    assert started.recoveryCommits is None

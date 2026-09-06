@@ -126,6 +126,7 @@ def _validate(record: LifecycleOperationRecord) -> LifecycleOperationRecord:
         ("cancelled", "cancelled", None, False),
     ],
 )
+@pytest.mark.integration
 def test_every_lifecycle_status_projects_one_bound_matrix_cell(
     tmp_path: Path,
     status: str,
@@ -169,6 +170,7 @@ def test_state_matrix_exhausts_status_and_phase_vocabularies() -> None:
     assert len(STATE_MATRIX) == 7
 
 
+@pytest.mark.integration
 def test_healthy_live_worker_is_legal_to_cancel_but_recommended_to_observe(
     tmp_path: Path,
 ) -> None:
@@ -190,6 +192,7 @@ def test_healthy_live_worker_is_legal_to_cancel_but_recommended_to_observe(
 
 
 @pytest.mark.parametrize("phase", ["quality", "memory-preflight"])
+@pytest.mark.integration
 def test_generation_11_and_15_contradictions_refuse_without_controls(
     tmp_path: Path,
     phase: str,
@@ -214,6 +217,7 @@ def test_generation_11_and_15_contradictions_refuse_without_controls(
     assert projected.cancellable is False
 
 
+@pytest.mark.integration
 def test_real_termination_recovery_recommends_its_exact_legal_cancel(
     tmp_path: Path,
 ) -> None:
@@ -239,6 +243,7 @@ def test_real_termination_recovery_recommends_its_exact_legal_cancel(
     assert projected.recommendedAction.arguments == projected.legalControls[0]["arguments"]
 
 
+@pytest.mark.integration
 def test_exit_proven_cancellation_keeps_only_same_generation_cancel(
     tmp_path: Path,
 ) -> None:
@@ -263,6 +268,7 @@ def test_exit_proven_cancellation_keeps_only_same_generation_cancel(
     assert projected.recommendedAction.action == "cancel"
 
 
+@pytest.mark.integration
 def test_adjacent_revision_race_refuses_stale_result_approval_and_worker_facts(
     tmp_path: Path,
 ) -> None:
@@ -286,6 +292,7 @@ def test_adjacent_revision_race_refuses_stale_result_approval_and_worker_facts(
         assert projected.recommendedAction is None
 
 
+@pytest.mark.integration
 def test_adjacent_generation_candidate_fact_cannot_splice_into_current_projection(
     tmp_path: Path,
 ) -> None:
@@ -309,6 +316,7 @@ def test_adjacent_generation_candidate_fact_cannot_splice_into_current_projectio
     assert projected.legalControls == []
 
 
+@pytest.mark.integration
 def test_store_revision_is_monotonic_and_stale_cas_cannot_publish(tmp_path: Path) -> None:
     _contract, store, _record = _claimed_contract_and_record(tmp_path)
     del _contract, _record
@@ -350,6 +358,7 @@ def test_cross_task_next_step_is_omitted_while_exact_and_external_guidance_remai
     assert bound_next_step(WorktreeStatusResponse(ok=True), contaminated) == contaminated
 
 
+@pytest.mark.integration
 def test_projection_owned_decision_rebinds_every_component_and_clears_controls(
     tmp_path: Path,
 ) -> None:
@@ -375,6 +384,7 @@ def test_projection_owned_decision_rebinds_every_component_and_clears_controls(
     assert decision.cancellable is False
 
 
+@pytest.mark.integration
 def test_projection_rejects_recommendation_or_control_for_another_task(tmp_path: Path) -> None:
     contract, store, record = _claimed_contract_and_record(tmp_path)
     del store
@@ -401,6 +411,7 @@ def test_projection_rejects_recommendation_or_control_for_another_task(tmp_path:
         LifecycleOperationProjection.model_validate(control_payload)
 
 
+@pytest.mark.integration
 def test_projection_rejects_live_cancel_guidance_and_invalid_control_matrix(
     tmp_path: Path,
 ) -> None:
@@ -442,6 +453,7 @@ def test_projection_rejects_live_cancel_guidance_and_invalid_control_matrix(
         LifecycleOperationProjection.model_validate(unreadable_control)
 
 
+@pytest.mark.integration
 def test_terminal_archive_uses_observed_exit_without_rewriting_audit_identity(
     tmp_path: Path,
 ) -> None:
@@ -518,6 +530,7 @@ def test_state_matrix_exhaustiveness_failure_is_raised(monkeypatch) -> None:
         validate_state_matrix_is_exhaustive()
 
 
+@pytest.mark.integration
 def test_validate_projection_state_refuses_cancel_request_outside_termination(
     tmp_path: Path,
 ) -> None:
@@ -540,6 +553,7 @@ def test_validate_projection_state_refuses_cancel_request_outside_termination(
     assert projected.legalControls == []
 
 
+@pytest.mark.integration
 def test_projection_envelope_refusal_cells_are_bounded(tmp_path: Path) -> None:
     contract, store, record = _claimed_contract_and_record(tmp_path)
     del store
@@ -571,6 +585,7 @@ def test_projection_envelope_refusal_cells_are_bounded(tmp_path: Path) -> None:
         LifecycleOperationProjection.model_validate(controls_binding_conflict)
 
 
+@pytest.mark.integration
 def test_incoherent_envelope_refuses_advertised_authority(tmp_path: Path) -> None:
     contract, store, record = _claimed_contract_and_record(tmp_path)
     del store
@@ -613,6 +628,7 @@ def test_coherent_components_refuse_non_coherent_status() -> None:
         _require_coherent_projection_components(incoherent_envelope)
 
 
+@pytest.mark.integration
 def test_coherent_components_require_an_explicit_worker_observation(
     tmp_path: Path,
 ) -> None:
@@ -626,6 +642,7 @@ def test_coherent_components_require_an_explicit_worker_observation(
         LifecycleOperationProjection.model_validate(workerless)
 
 
+@pytest.mark.integration
 def test_recommendation_must_match_one_exact_mutating_legal_control(
     tmp_path: Path,
 ) -> None:
@@ -681,6 +698,7 @@ def test_bound_next_step_omits_multi_address_guidance() -> None:
     assert bound_next_step(response, step) is None
 
 
+@pytest.mark.integration
 def test_bind_projection_result_without_guidance_keeps_envelope(
     tmp_path: Path,
 ) -> None:
@@ -692,6 +710,7 @@ def test_bind_projection_result_without_guidance_keeps_envelope(
     assert rebound.result == {"state": "terminal-edge"}
 
 
+@pytest.mark.integration
 def test_rebind_projection_refuses_identityless_envelope(tmp_path: Path) -> None:
     contract, store, record = _claimed_contract_and_record(tmp_path)
     del store
@@ -711,6 +730,7 @@ def test_rebind_projection_refuses_identityless_envelope(tmp_path: Path) -> None
         bind_projection_result(unreadable, {"state": "not-visible"})
 
 
+@pytest.mark.integration
 def test_dependent_identity_requires_door_binding(tmp_path: Path) -> None:
     _contract, store, record = _claimed_contract_and_record(tmp_path)
     del store
@@ -764,6 +784,7 @@ def test_worker_binding_projection_guards_refuse_incoherent_cells() -> None:
         )
 
 
+@pytest.mark.integration
 def test_store_revision_discipline_guards_are_enforced(tmp_path: Path) -> None:
     _contract, store, record = _claimed_contract_and_record(tmp_path)
     del record

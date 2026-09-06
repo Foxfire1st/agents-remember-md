@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from _quality_admission import QUALITY_TEST_ADMISSION
 from agents_remember.certification.digests import content_digest
 from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles import (
@@ -39,7 +40,6 @@ from agents_remember.certification.repository_profiles.models import (
 from agents_remember.errors import CertificationProfileError
 from agents_remember.models.certification.base import RailIdentity
 from agents_remember_test_support.code_quality import profile_rails, profile_selection
-from agents_remember_test_support.testing.dagger_admission import require_dagger_admission
 from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
     NODE_FIXTURE,
@@ -968,7 +968,7 @@ def test_full_python_rail_uses_canonical_selector_order_and_still_refuses_scope_
         reports=tmp_path / "reports",
         memory_cap_bytes=0,
     )
-    config = profile_rails._profile_config(args, require_dagger_admission())
+    config = profile_rails._profile_config(args, QUALITY_TEST_ADMISSION)
     assert config.selection_digest == selection.selectionDigest
     paths = config.scope.size_paths
     assert sorted(path.as_posix() for path in paths) == list(

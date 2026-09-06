@@ -229,6 +229,7 @@ class GateScopeDerivationTests(unittest.TestCase):
                 str(raised.exception),
             )
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_scope_failure_exits_non_zero_with_an_explanation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output: list[str] = []
@@ -238,6 +239,7 @@ class GateScopeDerivationTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertTrue(any("gate scope could not be derived" in line for line in output))
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_a_derivable_scope_runs_the_gate_and_main_reports_its_verdict(self) -> None:
         """``main`` owns no verdict of its own: it derives the scope, then hands back
         whatever the gate decided. The scope it hands over is the one derived from the
@@ -277,7 +279,8 @@ class PytestConfigurationTests(unittest.TestCase):
     """The pytest configuration this repository had none of until 260731-EFA-L2."""
 
     def test_strictness_switches_are_on(self) -> None:
-        self.assertIn("-n=auto", ini_strings("addopts"))
+        self.assertIn("-n=4", ini_strings("addopts"))
+        self.assertIn("not integration", ini_strings("addopts"))
         self.assertIn("--strict-markers", ini_strings("addopts"))
         self.assertIn("--strict-config", ini_strings("addopts"))
         self.assertIs(pytest_ini_options()["xfail_strict"], True)

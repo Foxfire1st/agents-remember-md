@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from typing import cast
 from unittest import mock
 
+import pytest
 from agents_remember.application import operator_inbox_tools as inbox_application
 from agents_remember.application.terminal_tools import session_retire_tool
 from agents_remember.controlplane import operator_inbox_transitions as inbox_transitions
@@ -97,6 +98,7 @@ def _config(root: Path) -> McpRuntimeConfig:
     )
 
 
+@pytest.mark.integration
 class ScopedArchitectCustodyTests(unittest.TestCase):
     """R13: repository+sprint-scoped architect custody; global first-match is a test failure."""
 
@@ -174,6 +176,7 @@ class ScopedArchitectCustodyTests(unittest.TestCase):
             derive_architect_owner(self.catalog, self.topology, task_document_ref=LEAF_1_REF)
 
 
+@pytest.mark.integration
 class PostTimeOwnerRebindingTests(unittest.TestCase):
     """N14(a): every owner-addressed post re-derives the current qualified owner."""
 
@@ -229,6 +232,7 @@ class PostTimeOwnerRebindingTests(unittest.TestCase):
             self.assertEqual(posted["recipientRole"], "manager")
 
 
+@pytest.mark.integration
 class PostTimeAddressBranchTests(unittest.TestCase):
     """N14(a) address-shape branches: role-only, unknown-seat, lifecycle, peer-preserve."""
 
@@ -335,6 +339,7 @@ class PostTimeAddressBranchTests(unittest.TestCase):
         )
 
 
+@pytest.mark.integration
 class ExplicitSupersessionTests(unittest.TestCase):
     """R11/R2: superseded is always explicit and skipped by every retry/evaluation path."""
 
@@ -403,6 +408,7 @@ class ExplicitSupersessionTests(unittest.TestCase):
         self.assertEqual(polled["entries"][0]["id"], "pending-1")
 
 
+@pytest.mark.integration
 class TtlAndCapEvictionTests(unittest.TestCase):
     """§9/D4: pending rows resolve terminal before retention; cap drops are counted/surfaced."""
 
@@ -560,6 +566,7 @@ class SettingsResilienceTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("using last-good settings", logs.output[-1])
 
 
+@pytest.mark.integration
 class RelayDeathWatchTests(unittest.TestCase):
     """N5: the relay never relays its own death; a dashboard-side watcher posts instead."""
 
@@ -656,6 +663,7 @@ class RelayDeathLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("relay-death watch failed", logs.output[0])
 
 
+@pytest.mark.integration
 class RetireSurfacingTests(unittest.TestCase):
     """N2: session_retire surfaces stranded rows to the retiring authority and never refuses."""
 

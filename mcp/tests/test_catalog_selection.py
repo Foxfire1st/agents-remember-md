@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from agents_remember_test_support.code_quality.catalog_selection import changed_catalog_consumers
+from agents_remember_test_support.code_quality.dependency_ownership import GLOBAL_TEST_INPUTS
 
 
 def _catalog(consumers: str, *, scope: str = "exact") -> str:
@@ -41,3 +42,9 @@ def test_comment_and_consumer_order_changes_do_not_select_tests() -> None:
 )
 def test_non_consumer_policy_changes_keep_global_selection(after: str) -> None:
     assert changed_catalog_consumers(_catalog('"a.py"'), after) is None
+
+
+def test_population_configuration_is_global_but_consumer_metadata_is_not() -> None:
+    assert Path("pyproject.toml") in GLOBAL_TEST_INPUTS
+    assert Path("mcp/tests/test-evidence-lanes.toml") in GLOBAL_TEST_INPUTS
+    assert Path("mcp/tests/evidence-lifecycle.toml") not in GLOBAL_TEST_INPUTS

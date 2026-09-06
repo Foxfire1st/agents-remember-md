@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast, get_args
 
+import pytest
 from agents_remember.application.worktree_status import worktree_status_packet
 from agents_remember.kernel.git_facts import git_facts_to_packet, read_git_facts
 from agents_remember.kernel.git_freshness import freshness_to_packet, read_branch_freshness
@@ -266,6 +267,7 @@ class ContractBoundaryTests(unittest.TestCase):
         self.assertEqual(contract.workflow_kind, "light-task")
         self.assertEqual(contract.unknown_cells, ())
 
+    @pytest.mark.integration
     def test_every_vocabulary_cell_degrades_rather_than_stranding_the_task(self) -> None:
         for line, edit, (wire_field, raw, expected) in self.OFF_VOCABULARY_CELLS:
             with self.subTest(cell=edit.strip()):
@@ -477,6 +479,7 @@ class ContractBoundaryTests(unittest.TestCase):
     def test_no_contract_path_is_the_inactive_state(self) -> None:
         self.assertEqual(worktree_status_packet(self.config, None).state, "inactive")
 
+    @pytest.mark.integration
     def test_a_live_contract_projects_onto_the_wire_model(self) -> None:
         """The whole seam end to end, offline: no worktrees, no repo, no remote probe.
 
@@ -491,6 +494,7 @@ class ContractBoundaryTests(unittest.TestCase):
         self.assertEqual(summary.cleanup, "pending")
         self.assertIsNone(summary.unknownContractCells)
 
+    @pytest.mark.integration
     def test_a_healthy_contract_omits_the_next_required_args_it_has_none_of(self) -> None:
         """The declared wire shape, pinned so it cannot move again unannounced.
 

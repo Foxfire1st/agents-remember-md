@@ -562,6 +562,8 @@ def test_public_worker_selects_real_code_terminals_then_resumes_only_the_memory_
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, profile: FixtureRepository
 ) -> None:
     fixture = _fixture(tmp_path, profile)
+    # Select code terminals before the separately supplied memory continuation.
+    bind_worktree_services(replace(worktree_services(), certification_continuation=None))
     contract = fixture.contracts[MASTER_A]
     before_head = git(contract.code_worktree, "rev-parse", "HEAD")
     with mock.patch.object(lifecycle_operations, "launch_detached_worker") as launch:
@@ -679,6 +681,8 @@ def test_presentation_write_failure_preserves_selected_original_terminal_catalog
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
 ) -> None:
     fixture = _fixture(tmp_path)
+    # Select code terminals before the separately supplied memory continuation.
+    bind_worktree_services(replace(worktree_services(), certification_continuation=None))
     contract = fixture.contracts[MASTER_A]
     with mock.patch.object(lifecycle_operations, "launch_detached_worker"):
         assert _apply(fixture)["state"] == "queued"
@@ -759,6 +763,8 @@ def test_cancellation_during_green_prefix_readback_prevents_memory_handoff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = _fixture(tmp_path)
+    # Select code terminals before the separately supplied memory continuation.
+    bind_worktree_services(replace(worktree_services(), certification_continuation=None))
     contract = fixture.contracts[MASTER_A]
     with mock.patch.object(lifecycle_operations, "launch_detached_worker"):
         assert _apply(fixture)["state"] == "queued"

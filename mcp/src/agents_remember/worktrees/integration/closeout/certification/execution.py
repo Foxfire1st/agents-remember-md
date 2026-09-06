@@ -278,20 +278,15 @@ def _observe_current_memory(
         refuse("certification-memory-inputs-invalid", "current canonical Gate-5 inputs", str(error))
 
 
-def execute_selected_closeout(
-    contract: WorktreeContract,
-    record: LifecycleOperationRecord,
-    store: LifecycleOperationStore,
-) -> WorktreeCommandResult:
-    """R21 alone controls actual starts; absent downstream composition cannot complete."""
-    from agents_remember.worktrees.integration.closeout.preparation.finalization import resume_prepared_closeout
-    from agents_remember.worktrees.integration.closeout.preparation.code_view import prepare_code_view
+def _refresh_selected_recovery(
+    handoff: CloseoutCertificationHandoff,
+) -> CloseoutCertificationHandoff:
+    """Reobserve memory inputs before choosing which selected certificates can be reused."""
+    # Preparation imports this module's handoff owners; defer until they are defined.
+    from agents_remember.worktrees.integration.closeout.preparation.code_view import (  # noqa: PLC0415
+        prepare_code_view,
+    )
 
-    recovered = resume_prepared_closeout(contract, record, store)
-    if recovered is not None:
-        return recovered
-    handoff = current_certification_handoff(contract, record, store)
-    require_unchanged_retry_admissible(handoff.selected)
     selected_certificates = tuple(
         item.certificate.identity
         for item in handoff.selected.terminals
@@ -315,6 +310,26 @@ def execute_selected_closeout(
         handoff = _advance_recovery(
             handoff, memory_inputs=memory_inputs, inherited_memory=inherited_memory
         )
+    return handoff
+
+
+def execute_selected_closeout(
+    contract: WorktreeContract,
+    record: LifecycleOperationRecord,
+    store: LifecycleOperationStore,
+) -> WorktreeCommandResult:
+    """R21 alone controls actual starts; absent downstream composition cannot complete."""
+    # Finalization imports preparation, which imports this module's handoff owners.
+    from agents_remember.worktrees.integration.closeout.preparation.finalization import (  # noqa: PLC0415
+        resume_prepared_closeout,
+    )
+
+    recovered = resume_prepared_closeout(contract, record, store)
+    if recovered is not None:
+        return recovered
+    handoff = current_certification_handoff(contract, record, store)
+    require_unchanged_retry_admissible(handoff.selected)
+    handoff = _refresh_selected_recovery(handoff)
     first = handoff.selected.recovery.semanticEnvelope.reusePlan.firstGateToRun
     if first in (1, 2, 3, 4):
         handoff = _run_code(handoff)

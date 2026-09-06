@@ -28,6 +28,7 @@ from agents_remember_test_support.testing.evidence_lifecycle import (
 GLOBAL_TEST_INPUTS = frozenset(
     {
         Path("pyproject.toml"),
+        Path("mcp/tests/test-evidence-lanes.toml"),
     }
 )
 CATALOG_PATH = Path("mcp/tests/evidence-lifecycle.toml")

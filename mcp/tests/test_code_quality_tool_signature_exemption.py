@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from typing import TypeGuard
 
+import pytest
 from _quality_admission import QUALITY_TEST_ADMISSION
 from _ruff_repository_evidence import (
     REPOSITORY_ROOT,
@@ -57,6 +58,7 @@ class ToolSignatureExemptionTests(unittest.TestCase):
 
         self.assertEqual(exempted, {TOOL_DECLARATION_PATTERN})
 
+    @pytest.mark.integration
     def test_every_function_in_the_exempted_path_is_a_published_tool_declaration(self) -> None:
         modules = exempted_tool_modules()
         self.assertEqual(
@@ -69,6 +71,7 @@ class ToolSignatureExemptionTests(unittest.TestCase):
             with self.subTest(module=module.name):
                 self.assertEqual(ordinary_code_in_tool_module(module), [])
 
+    @pytest.mark.integration
     def test_no_suppression_directive_in_the_tree_holds_an_argument_count_finding_down(
         self,
     ) -> None:

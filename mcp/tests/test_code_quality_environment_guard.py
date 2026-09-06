@@ -10,6 +10,7 @@ from unittest import mock
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
+from _quality_admission import QUALITY_TEST_ADMISSION
 from agents_remember_test_support.code_quality import check
 from agents_remember_test_support.testing import dagger_admission
 
@@ -51,6 +52,7 @@ class CodeQualityEnvironmentGuardTests(unittest.TestCase):
         parser.assert_not_called()
         self.assertIn("do not match", str(printer.call_args_list))
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_main_uses_the_report_environment_to_select_its_native_temp_root(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             report = Path(tmp) / "reports" / "quality-progress.json"
@@ -70,10 +72,10 @@ class CodeQualityEnvironmentGuardTests(unittest.TestCase):
 
             self.assertEqual(native.call_args.kwargs["temp_root"], check.QUALITY_TEMP_ROOT)
 
+    @mock.patch.object(check, "require_dagger_admission", new=lambda **_: QUALITY_TEST_ADMISSION)
     def test_main_without_a_report_uses_the_native_default_temp_root(self) -> None:
         with (
             mock.patch.dict(os.environ, {}, clear=True),
-            mock.patch.object(check, "require_dagger_admission"),
             mock.patch.object(
                 check,
                 "native_subprocess_environment",

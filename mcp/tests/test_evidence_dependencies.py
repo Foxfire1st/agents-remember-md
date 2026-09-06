@@ -241,6 +241,7 @@ def test_supplied_record_closure_refuses_cycles_without_scanning_for_external_ro
     )
 
 
+@pytest.mark.integration
 def test_door_and_operation_dependencies_refuse_missing_or_stale_inputs(tmp_path: Path) -> None:
     contract = _contract(tmp_path / "lifecycle", selected_profile=True)
     _operation_input, store, _finalized = _publish_mutated_code_generation(contract)

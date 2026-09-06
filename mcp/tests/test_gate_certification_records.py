@@ -80,6 +80,7 @@ from gate_certification_test_support import (
 )
 
 
+@pytest.mark.integration
 class GateCertificationRecordsTests:
     def _run_green_gate(self, tmp_path: Path, mode: ProfileMode = "targeted", name: str = "run"):
         worktree = _checkout_with_profile(tmp_path / name / "code")

@@ -3,46 +3,73 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
 from agents_remember.certification.digests import content_digest
+from agents_remember.certification.repository_profiles import load_repository_profile
 from agents_remember.controlplane.enforcement import CLOSEOUT_GATE_KIND, evaluate_closeout_gate
 from agents_remember.controlplane.store import GateStore
 from agents_remember.kernel.authority import require_repo
 from agents_remember.kernel.git_closeout_publication import GitCloseoutPublicationBinding
 from agents_remember.kernel.git_command import (
-    admit_git_closeout_publication, inspect_existing_git_preparation,
-    inspect_git_closeout_publication, publish_git_closeout_ref,
-    read_git_blob_bytes, read_git_commit_bytes,
+    admit_git_closeout_publication,
+    inspect_existing_git_preparation,
+    inspect_git_closeout_publication,
+    publish_git_closeout_ref,
+    read_git_blob_bytes,
+    read_git_commit_bytes,
 )
 from agents_remember.kernel.memory_ledger import ledger_to_text, parse_ledger_text, write_ledger
 from agents_remember.kernel.primitives.gate_policy import (
-    DecisionRole, GatePolicyRule, make_gate_policy,
+    DecisionRole,
+    GatePolicyRule,
+    make_gate_policy,
 )
 from agents_remember.kernel.primitives.observer_paths import observer_logs_root
 from agents_remember.kernel.primitives.runtime_config import load_config
-from agents_remember.models.lifecycles.mutation_evidence import CloseoutMutationLeg, GitMutationEvidence
+from agents_remember.models.lifecycles.mutation_evidence import (
+    CloseoutMutationLeg,
+    GitMutationEvidence,
+)
 from agents_remember.models.lifecycles.operation import (
-    CloseoutOperationInput, LifecycleOperationRecord, LifecycleOperationRecoveryCommits,
+    CloseoutOperationInput,
+    LifecycleOperationRecord,
+    LifecycleOperationRecoveryCommits,
 )
 from agents_remember.models.lifecycles.preparation import (
-    PreparedCloseoutOutput, require_prepared_output_matches_intent,
+    PreparedCloseoutOutput,
+    require_prepared_output_matches_intent,
 )
 from agents_remember.models.structural.gates import GateKind
 from agents_remember.observer.events import now_iso
-from agents_remember.certification.repository_profiles import load_repository_profile
-from agents_remember.worktrees.integration.closeout.certification.execution import CloseoutCertificationHandoff
-from agents_remember.worktrees.integration.closeout.certification.observation import (
-    CandidateObservationRequest, observe_certification_candidate, refuse,
+from agents_remember.worktrees.integration.closeout.certification.execution import (
+    CloseoutCertificationHandoff,
 )
-from agents_remember.worktrees.integration.closeout.certification.selection import load_typed, require_selected_certification
-from agents_remember.worktrees.integration.closeout.ledger_recovery import classify_closeout_ledger_recovery
-from agents_remember.worktrees.integration.closeout.preparation_selection import selected_preparation_intents
-from agents_remember.worktrees.integration.closeout.recovery_projection import derive_closeout_recovery_commits
-from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import closeout_contract_sha256
-from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import LifecycleOperationStore
+from agents_remember.worktrees.integration.closeout.certification.observation import (
+    CandidateObservationRequest,
+    observe_certification_candidate,
+    refuse,
+)
+from agents_remember.worktrees.integration.closeout.certification.selection import (
+    load_typed,
+    require_selected_certification,
+)
+from agents_remember.worktrees.integration.closeout.ledger_recovery import (
+    classify_closeout_ledger_recovery,
+)
+from agents_remember.worktrees.integration.closeout.preparation_selection import (
+    selected_preparation_intents,
+)
+from agents_remember.worktrees.integration.closeout.recovery_projection import (
+    derive_closeout_recovery_commits,
+)
+from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import (
+    closeout_contract_sha256,
+)
+from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
+    LifecycleOperationStore,
+)
 from agents_remember.worktrees.integration.mutation_evidence import ephemeral_git_mutation_snapshot
 from agents_remember.worktrees.modules.closeout import _amended_closeout_contract
 from agents_remember.worktrees.modules.git import require_git
@@ -52,7 +79,11 @@ from agents_remember.worktrees.modules.quality.certification_records import cert
 from agents_remember.worktrees.queue.closeout_recovery import prove_closeout_recovery_commits
 from agents_remember.worktrees.queue.closeout_staged_quality import PreparedStagedCode
 from agents_remember.worktrees.route_review import require_current_route_review
-from agents_remember.worktrees.worktree_contract import WorktreeContract, load_contract, write_contract
+from agents_remember.worktrees.worktree_contract import (
+    WorktreeContract,
+    load_contract,
+    write_contract,
+)
 
 from .memory_output import PreparedMemoryOutputs
 from .policy import observe_git_preparation_policy
@@ -136,7 +167,10 @@ def _published_head(bundle: PreparedMemoryOutputs, record: LifecycleOperationRec
     head = require_git(root, ["rev-parse", "--verify", intent.logicalRef])
     initial = bundle.memory.intent.expectedOldCommit if leg == "ledger" else intent.expectedOldCommit
     allowed = {initial}
-    for name, item in (("code", bundle.code), ("memory", bundle.memory), ("ledger", bundle.ledger)):
+    legs: tuple[tuple[CloseoutMutationLeg, SelectedCloseoutPreparation], ...] = (
+        ("code", bundle.code), ("memory", bundle.memory), ("ledger", bundle.ledger),
+    )
+    for name, item in legs:
         if Path(item.intent.logicalRoot) != root or not item.intent.writeEnabled:
             continue
         proof = record.mutationEvidence.get(name)
@@ -181,7 +215,9 @@ def _live(bundle: PreparedMemoryOutputs) -> LifecycleOperationRecord:
     selected = require_selected_certification(contract, record)
     if len(selected.terminals) != 5 or any(item.certificate is None for item in selected.terminals):
         refuse("finalization-certificate-prefix-incomplete", "five original green certificates", selected.state)
-    inputs = selected.terminals[-1].certificate.semanticEnvelope.gateFiveInputs
+    final_certificate = selected.terminals[-1].certificate
+    assert final_certificate is not None  # The complete prefix was checked above.
+    inputs = final_certificate.semanticEnvelope.gateFiveInputs
     certified_tree = bundle.memory.intent.admittedTree if bundle.memory.intent.existingMemoryProof is None else bundle.memory.intent.existingMemoryProof.logicalHeadTree
     if inputs is None or inputs.memoryTree.value != certified_tree or bundle.memory.intent.gateFiveCertificate != selected.terminals[-1].certificateReference:
         refuse("finalization-memory-tree-unbound", certified_tree, inputs)
@@ -253,27 +289,60 @@ def _materialize_ledger(bundle: PreparedMemoryOutputs, record: LifecycleOperatio
         refuse("finalization-ledger-write-moved", selected.intent.intentDigest, "physical bytes")
 
 
-def _publish_leg(bundle: PreparedMemoryOutputs, selected: SelectedCloseoutPreparation, leg: CloseoutMutationLeg) -> None:
-    record = _live(bundle)
-    output = _output(selected)
+def _retain_existing_leg(
+    bundle: PreparedMemoryOutputs,
+    selected: SelectedCloseoutPreparation,
+    leg: CloseoutMutationLeg,
+    record: LifecycleOperationRecord,
+    output: PreparedCloseoutOutput,
+) -> None:
+    """Retain an unchanged output under the already observed live generation."""
     root = Path(selected.intent.logicalRoot)
-    if not selected.intent.writeEnabled:
-        ledger_proof = record.mutationEvidence.get("ledger")
-        if leg == "memory" and ledger_proof is not None and ledger_proof.state in {"mutation-intent", "commit-proven"}:
-            if record.recoveryCommits is None or record.recoveryCommits.memoryContentCommit != output.commit:
-                refuse("finalization-existing-memory-proof-missing", output.commit, record.recoveryCommits)
-            return
-        head = require_git(root, ["rev-parse", "HEAD"])
-        tree = require_git(root, ["rev-parse", "HEAD^{tree}"])
-        expected_head = selected.intent.expectedOldCommit
-        if head != expected_head:
-            refuse("finalization-existing-head-moved", expected_head, head)
-        inspect_existing_git_preparation(root, common_directory=Path(selected.intent.repositoryIdentity), logical_ref=selected.intent.logicalRef, commit=head, tree=tree)
-        field = {"code": "codeCommit", "memory": "memoryContentCommit", "ledger": "ledgerCommit"}[leg]
-        cells = record.recoveryCommits.model_dump() if record.recoveryCommits else {"codeCommit": "", "memoryContentCommit": "", "ledgerCommit": ""}
-        cells[field] = output.commit
-        _cas(bundle, record, {"recoveryCommits": LifecycleOperationRecoveryCommits.model_validate(cells)})
+    ledger_proof = record.mutationEvidence.get("ledger")
+    if leg == "memory" and ledger_proof is not None and ledger_proof.state in {"mutation-intent", "commit-proven"}:
+        if record.recoveryCommits is None or record.recoveryCommits.memoryContentCommit != output.commit:
+            refuse("finalization-existing-memory-proof-missing", output.commit, record.recoveryCommits)
         return
+    head = require_git(root, ["rev-parse", "HEAD"])
+    tree = require_git(root, ["rev-parse", "HEAD^{tree}"])
+    expected_head = selected.intent.expectedOldCommit
+    if head != expected_head:
+        refuse("finalization-existing-head-moved", expected_head, head)
+    inspect_existing_git_preparation(root, common_directory=Path(selected.intent.repositoryIdentity), logical_ref=selected.intent.logicalRef, commit=head, tree=tree)
+    field = {"code": "codeCommit", "memory": "memoryContentCommit", "ledger": "ledgerCommit"}[leg]
+    cells = record.recoveryCommits.model_dump() if record.recoveryCommits else {"codeCommit": "", "memoryContentCommit": "", "ledgerCommit": ""}
+    cells[field] = output.commit
+    _cas(bundle, record, {"recoveryCommits": LifecycleOperationRecoveryCommits.model_validate(cells)})
+    return
+
+
+def _observe_proven_leg(
+    bundle: PreparedMemoryOutputs,
+    selected: SelectedCloseoutPreparation,
+    leg: CloseoutMutationLeg,
+    record: LifecycleOperationRecord,
+    output: PreparedCloseoutOutput,
+) -> None:
+    """Reobserve a previously published ref, accounting for subsequent ledger publication."""
+    if leg == "memory" and record.mutationEvidence.get("ledger") is not None and record.mutationEvidence["ledger"].state in {"mutation-intent", "commit-proven"}:
+        return
+    def authorize_existing(_binding: GitCloseoutPublicationBinding) -> None:
+        _live(bundle)
+    capability = admit_git_closeout_publication(_binding(selected), authorize=authorize_existing)
+    if inspect_git_closeout_publication(capability).state != "new":
+        refuse("finalization-proven-ref-moved", output.commit, "old ref")
+    return
+
+
+def _publication_intent(
+    bundle: PreparedMemoryOutputs,
+    selected: SelectedCloseoutPreparation,
+    leg: CloseoutMutationLeg,
+    record: LifecycleOperationRecord,
+    output: PreparedCloseoutOutput,
+) -> tuple[LifecycleOperationRecord, GitMutationEvidence]:
+    """Journal the exact prestate once before publishing a prepared output."""
+    root = Path(selected.intent.logicalRoot)
     proof = record.mutationEvidence.get(leg)
     if proof is None or proof.state == "pre-mutation":
         before = ephemeral_git_mutation_snapshot(root)
@@ -284,14 +353,19 @@ def _publish_leg(bundle: PreparedMemoryOutputs, selected: SelectedCloseoutPrepar
         mutations = dict(record.mutationEvidence)
         mutations[leg] = proof
         record = _cas(bundle, record, {"mutationEvidence": mutations, "phase": "recovering-after-claim", "currentCommand": f"publish prepared {leg}"})
+    return record, proof
+
+
+def _publish_leg(bundle: PreparedMemoryOutputs, selected: SelectedCloseoutPreparation, leg: CloseoutMutationLeg) -> None:
+    record = _live(bundle)
+    output = _output(selected)
+    root = Path(selected.intent.logicalRoot)
+    if not selected.intent.writeEnabled:
+        _retain_existing_leg(bundle, selected, leg, record, output)
+        return
+    record, proof = _publication_intent(bundle, selected, leg, record, output)
     if proof.state == "commit-proven":
-        if leg == "memory" and record.mutationEvidence.get("ledger") is not None and record.mutationEvidence["ledger"].state in {"mutation-intent", "commit-proven"}:
-            return
-        def authorize_existing(_binding: GitCloseoutPublicationBinding) -> None:
-            _live(bundle)
-        capability = admit_git_closeout_publication(_binding(selected), authorize=authorize_existing)
-        if inspect_git_closeout_publication(capability).state != "new":
-            refuse("finalization-proven-ref-moved", output.commit, "old ref")
+        _observe_proven_leg(bundle, selected, leg, record, output)
         return
     if proof.state != "mutation-intent":
         refuse("finalization-original-mutation-unavailable", "original mutation intent", proof)
@@ -329,7 +403,10 @@ def finalize_prepared_closeout(bundle: PreparedMemoryOutputs) -> WorktreeCommand
     if not record.approvalClaimed:
         _approval(bundle, record, claim=True)
         record = _cas(bundle, _owner(bundle), {"approvalClaimed": True, "phase": "recovering-after-claim"})
-    for leg, selected in (("code", bundle.code), ("memory", bundle.memory), ("ledger", bundle.ledger)):
+    legs: tuple[tuple[CloseoutMutationLeg, SelectedCloseoutPreparation], ...] = (
+        ("code", bundle.code), ("memory", bundle.memory), ("ledger", bundle.ledger),
+    )
+    for leg, selected in legs:
         _publish_leg(bundle, selected, leg)
     record = _live(bundle)
     commits = record.recoveryCommits

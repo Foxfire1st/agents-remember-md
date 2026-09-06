@@ -103,6 +103,7 @@ def selected_execution(tmp_path: Path, first: int = 3, *, report_transform=None)
     return selected, request, profile
 
 
+@pytest.mark.integration
 def test_untrusted_digest_consistent_certificate_cannot_promote_a_red_result(
     tmp_path: Path,
 ) -> None:
@@ -183,6 +184,7 @@ def test_untrusted_digest_consistent_certificate_cannot_promote_a_red_result(
         ("result-reference", "original stored bytes"),
     ],
 )
+@pytest.mark.integration
 def test_selected_code_terminal_verification_refuses_incomplete_or_rebound_originals(
     tmp_path: Path, fault: str, detail: str
 ) -> None:
@@ -252,6 +254,7 @@ def test_selected_code_terminal_verification_refuses_incomplete_or_rebound_origi
 
 
 @pytest.mark.parametrize("diff_base", ["", " HEAD", "HEAD\n"])
+@pytest.mark.integration
 def test_selected_execution_manifest_refuses_missing_or_noncanonical_comparison_authority(
     tmp_path: Path, diff_base: str
 ) -> None:
@@ -262,6 +265,7 @@ def test_selected_execution_manifest_refuses_missing_or_noncanonical_comparison_
     assert selected.payload(diff_base=request.diff_base) == original
 
 
+@pytest.mark.integration
 def test_selected_sandbox_rejects_profile_growth_before_admission(tmp_path: Path) -> None:
     selected, request, _profile = selected_execution(tmp_path)
     prepared = clean_executor._prepare_sandbox(request)
@@ -280,6 +284,7 @@ def test_selected_sandbox_rejects_profile_growth_before_admission(tmp_path: Path
     assert not (prepared.root / "manifest.json").exists()
 
 
+@pytest.mark.integration
 def test_selected_sandbox_refuses_real_equal_tree_base_movement_before_transport(
     tmp_path: Path,
 ) -> None:
@@ -328,6 +333,7 @@ def test_selected_sandbox_refuses_real_equal_tree_base_movement_before_transport
 
 
 @pytest.mark.parametrize("first", (1, 2, 3, 4))
+@pytest.mark.integration
 def test_exact_suffix_reuses_original_objects_and_only_selected_files(tmp_path, first):
     selected, request, _profile = selected_execution(tmp_path, first)
     selected.validate()
@@ -352,6 +358,7 @@ def test_exact_suffix_reuses_original_objects_and_only_selected_files(tmp_path, 
 
 
 @pytest.mark.parametrize("first", (None, 5))
+@pytest.mark.integration
 def test_zero_code_start_decisions_refuse_before_authority_or_sandbox(tmp_path, first):
     selected, request, _profile = selected_execution(tmp_path)
     reuse = selected.reuse_plan.model_copy(
@@ -369,6 +376,7 @@ def test_zero_code_start_decisions_refuse_before_authority_or_sandbox(tmp_path, 
 
 
 @pytest.mark.parametrize("fault", ("chain", "recovery", "prefix", "result", "publication"))
+@pytest.mark.integration
 def test_selected_identity_conflicts_never_resolve_a_report_path(tmp_path, monkeypatch, fault):
     selected, request, _profile = selected_execution(tmp_path)
     if fault == "chain":
@@ -410,6 +418,7 @@ def test_selected_identity_conflicts_never_resolve_a_report_path(tmp_path, monke
 
 
 @pytest.mark.parametrize("fault", ("missing", "corrupt", "symlink", "parent-symlink"))
+@pytest.mark.integration
 def test_missing_unsafe_or_corrupt_original_gate_two_artifact_refuses(tmp_path, fault):
     selected, request, _profile = selected_execution(tmp_path)
     root = (
@@ -440,6 +449,7 @@ def test_missing_unsafe_or_corrupt_original_gate_two_artifact_refuses(tmp_path, 
     assert not (tmp_path / "snapshot").exists()
 
 
+@pytest.mark.integration
 def test_transport_population_bound_precedes_any_file_read(tmp_path, monkeypatch):
     selected, request, _profile = selected_execution(tmp_path)
     monkeypatch.setattr(retained_reports, "MAX_RETAINED_FILES", 1)
@@ -454,6 +464,7 @@ def test_transport_population_bound_precedes_any_file_read(tmp_path, monkeypatch
         )
 
 
+@pytest.mark.integration
 def test_source_mutation_after_resolution_does_not_enter_snapshot(tmp_path, monkeypatch):
     selected, request, _profile = selected_execution(tmp_path)
     resolve = retained_reports.published_report_path_from_manifest
@@ -472,6 +483,7 @@ def test_source_mutation_after_resolution_does_not_enter_snapshot(tmp_path, monk
     assert not (tmp_path / "snapshot/coverage.json").exists()
 
 
+@pytest.mark.integration
 def test_selected_sandbox_uses_frozen_profile_and_binds_exact_base(tmp_path, monkeypatch):
     selected, request, _profile = selected_execution(tmp_path)
     prepared = clean_executor._prepare_sandbox(request)
@@ -493,6 +505,7 @@ def test_selected_sandbox_uses_frozen_profile_and_binds_exact_base(tmp_path, mon
     assert payload["retained"] == [item.payload() for item in selected.retained]
 
 
+@pytest.mark.integration
 def test_adapter_transports_only_explicitly_declared_retained_directory(tmp_path):
     _selected, _request, profile = selected_execution(tmp_path)
     request = RepositoryExecutionRequest(
@@ -591,6 +604,7 @@ def test_generated_input_declarations_refuse_ambiguous_or_unsafe_authority(fault
     assert expected in {finding.code for finding in report.findings}
 
 
+@pytest.mark.integration
 def test_real_coverage_above_old_transport_cap_uses_frozen_publication_bound(tmp_path):
     coverage_size = 64 * 1024 * 1024 + 1
 
@@ -626,6 +640,7 @@ def test_real_coverage_above_old_transport_cap_uses_frozen_publication_bound(tmp
 
 
 @pytest.mark.parametrize("cancel", [False, True])
+@pytest.mark.integration
 def test_current_operation_authority_is_rechecked_after_snapshot_before_executor(tmp_path, cancel):
     selected, request, _profile = selected_execution(tmp_path)
     observed = []
@@ -678,6 +693,7 @@ def _record_bytes(group: Path) -> dict[Path, bytes]:
 
 
 @pytest.mark.parametrize("diff_base", ["", " HEAD", "HEAD\n"])
+@pytest.mark.integration
 def test_clean_selected_run_refuses_noncanonical_base_before_sandbox(tmp_path, diff_base):
     _selected, request, _profile = selected_execution(tmp_path)
     records = _record_bytes(request.worktree_group)
@@ -694,6 +710,7 @@ def test_clean_selected_run_refuses_noncanonical_base_before_sandbox(tmp_path, d
     assert pointer.read_bytes() == before_pointer
 
 
+@pytest.mark.integration
 def test_clean_selected_run_requires_launch_owner_after_real_preparation(tmp_path):
     selected, request, _profile = selected_execution(tmp_path)
     records = _record_bytes(request.worktree_group)
@@ -718,6 +735,7 @@ def test_clean_selected_run_requires_launch_owner_after_real_preparation(tmp_pat
 
 
 @pytest.mark.parametrize("fault", ["index-moved", "mode-moved"])
+@pytest.mark.integration
 def test_strict_selected_gate_refuses_drift_before_executor_or_terminal_selection(tmp_path, fault):
     selected, request, _profile = selected_execution(tmp_path)
     target = code_quality_gate.QualityGateTarget(
@@ -764,6 +782,7 @@ def test_strict_selected_gate_refuses_drift_before_executor_or_terminal_selectio
 
 
 @pytest.mark.parametrize("fault", ["duplicate-selection", "omitted-retained-gate"])
+@pytest.mark.integration
 def test_physical_suffix_catalog_refuses_duplicate_or_unreported_original_prefix(tmp_path, fault):
     selected, request, profile = selected_execution(tmp_path)
     prepared = certification_records.prepared_from_frozen_run(request.worktree_group, selected.run)
@@ -808,6 +827,7 @@ def test_physical_suffix_catalog_refuses_duplicate_or_unreported_original_prefix
     selected.validate()
 
 
+@pytest.mark.integration
 def test_invalid_selected_generation_protection_refuses_before_publication_or_pruning(tmp_path):
     selected, request, profile = selected_execution(tmp_path)
     prepared = certification_records.prepared_from_frozen_run(request.worktree_group, selected.run)

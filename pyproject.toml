@@ -69,6 +69,8 @@ executionEnvironments = [
 # CRAP and diff coverage consume Coverage.py statement and branch units. The CRAP reader
 # refuses JSON whose ``meta.branch_coverage`` is not true; keep branch measurement enabled.
 branch = true
+# Real Python children contribute to delivery coverage; ordinary pytest remains unmeasured.
+patch = ["subprocess"]
 
 [tool.agents_remember]
 # S4 (260731-EFA-L7): armed at full scope after L16 landed and worktree_sync completed

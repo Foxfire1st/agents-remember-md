@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import base64
-
 from dataclasses import dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Literal
 
 from agents_remember.kernel.git_command import (
     read_git_blob_bytes,
@@ -48,7 +48,7 @@ from .memory_port import PreparedMemoryCertificationResult
 from .memory_reuse import observe_existing_memory_proof
 from .output_selection import retain_prepared_output
 from .policy import observe_git_preparation_policy
-from .private_execution import prepare_private_output
+from .private_execution import observe_private_output, prepare_private_output
 from .selected import SelectedCloseoutPreparation
 
 
@@ -61,14 +61,18 @@ class PreparedMemoryOutputs:
     ledgerBytes: bytes
 
 
+@dataclass(frozen=True, kw_only=True)
+class _MemoryIntentSelection:
+    leg: Literal["memory-content", "ledger"]
+    parent: str
+    tree: str
+    proof: ExistingMemoryPreparationProof | None
+    enabled: bool
+
+
 def _intent(
     result: PreparedMemoryCertificationResult,
-    *,
-    leg: str,
-    parent: str,
-    tree: str,
-    proof: ExistingMemoryPreparationProof | None,
-    enabled: bool,
+    selection: _MemoryIntentSelection,
 ) -> CloseoutPreparationIntent:
     handoff = result.handoff
     contract = handoff.contract
@@ -76,13 +80,16 @@ def _intent(
     if root is None or not isinstance(handoff.record.input, CloseoutOperationInput):
         refuse("prepared-memory-route", "external-memory closeout", root)
     effective = handoff.record.input.effectiveInput
-    input_leg = "memory" if leg == "memory-content" else "ledger"
-    if enabled and not effective.enabled(input_leg):
+    input_leg = "memory" if selection.leg == "memory-content" else "ledger"
+    if selection.enabled and not effective.enabled(input_leg):
         refuse("prepared-memory-write-disabled", input_leg, effective)
     policy = observe_git_preparation_policy(root)
     private = (
-        contract.worktree_group / "preparation" / handoff.record.operationKey
-        / f"generation-{handoff.record.generation}" / leg
+        contract.worktree_group
+        / "preparation"
+        / handoff.record.operationKey
+        / f"generation-{handoff.record.generation}"
+        / selection.leg
     )
     payload = {
         "schemaVersion": "closeout-preparation-intent/v1",
@@ -90,18 +97,18 @@ def _intent(
         "generation": handoff.record.generation,
         "contractPath": contract.contract_path.as_posix(),
         "contractSha256": closeout_contract_sha256(contract),
-        "leg": leg,
-        "writeEnabled": enabled,
+        "leg": selection.leg,
+        "writeEnabled": selection.enabled,
         "repositoryIdentity": require_git(
             root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]
         ),
         "logicalRoot": root.as_posix(),
         "logicalRef": f"refs/heads/{contract.memory_work_branch}",
         "expectedOldCommit": require_git(root, ["rev-parse", "--verify", "HEAD"]),
-        "parentCommit": parent,
-        "admittedTree": tree,
-        "privateRoot": private.as_posix() if enabled else None,
-        "normalizedMessage": effective.message_for(input_leg) if enabled else None,
+        "parentCommit": selection.parent,
+        "admittedTree": selection.tree,
+        "privateRoot": private.as_posix() if selection.enabled else None,
+        "normalizedMessage": effective.message_for(input_leg) if selection.enabled else None,
         "hookPolicy": "ordinary",
         "gitConfigSha256": policy.git_config_sha256,
         "hooksSha256": policy.hooks_sha256,
@@ -113,7 +120,9 @@ def _intent(
             if item.certificateReference is not None
         ],
         "gateFiveCertificate": result.certificate.model_dump(mode="json"),
-        "existingMemoryProof": None if proof is None else proof.model_dump(mode="json"),
+        "existingMemoryProof": None
+        if selection.proof is None
+        else selection.proof.model_dump(mode="json"),
     }
     return CloseoutPreparationIntent.model_validate(
         {**payload, "intentDigest": canonical_sha256(payload)}
@@ -143,8 +152,7 @@ def _selected(
 def _output(selected: SelectedCloseoutPreparation) -> PreparedCloseoutOutput:
     assert selected.handoff.record.preparation is not None
     state = next(
-        item for item in selected.handoff.record.preparation.legs
-        if item.leg == selected.intent.leg
+        item for item in selected.handoff.record.preparation.legs if item.leg == selected.intent.leg
     )
     if state.output is None:
         refuse("prepared-memory-output-missing", selected.intent.leg, None)
@@ -168,7 +176,8 @@ def _prepare(
             refuse("prepared-memory-selection-moved", intent.intentDigest, originals)
         if intent.existingMemoryProof is not None:
             proof = observe_existing_memory_proof(
-                Path(intent.logicalRoot), repository_name=actual.handoff.contract.repo_name,
+                Path(intent.logicalRoot),
+                repository_name=actual.handoff.contract.repo_name,
                 code_commit=actual.candidate.codeView.codeCommit,
                 certified_tree=actual.candidate.memoryTree,
             )
@@ -177,14 +186,13 @@ def _prepare(
         return replace(observed, handoff=actual.handoff)
 
     selected = reobserve(selected)
+    assert selected.handoff.record.preparation is not None
     state = next(
-        item for item in selected.handoff.record.preparation.legs
-        if item.leg == intent.leg
+        item for item in selected.handoff.record.preparation.legs if item.leg == intent.leg
     )
     if state.output is not None:
         # Previously selected output is immutable. Physical reproof is still required.
         if intent.writeEnabled:
-            from .private_execution import observe_private_output
             observe_private_output(selected, reobserve=reobserve)
         else:
             raw = read_git_commit_bytes(Path(intent.logicalRoot), _output(selected).commit)
@@ -232,14 +240,20 @@ def prepare_memory_outputs(result: PreparedMemoryCertificationResult) -> Prepare
         refuse("prepared-memory-route", "external-memory closeout", None)
     head = require_git(root, ["rev-parse", "--verify", "HEAD"])
     proof = observe_existing_memory_proof(
-        root, repository_name=result.handoff.contract.repo_name,
+        root,
+        repository_name=result.handoff.contract.repo_name,
         code_commit=result.candidate.codeView.codeCommit,
         certified_tree=result.candidate.memoryTree,
     )
     memory_intent = _intent(
-        result, leg="memory-content", parent=head if proof is None else proof.memoryContentCommit,
-        tree=result.candidate.memoryTree if proof is None else proof.memoryContentTree,
-        proof=proof, enabled=proof is None,
+        result,
+        _MemoryIntentSelection(
+            leg="memory-content",
+            parent=head if proof is None else proof.memoryContentCommit,
+            tree=result.candidate.memoryTree if proof is None else proof.memoryContentTree,
+            proof=proof,
+            enabled=proof is None,
+        ),
     )
     memory = _prepare(result, memory_intent)
     result = current_prepared_memory_result(replace(result, handoff=memory.handoff))
@@ -250,17 +264,27 @@ def prepare_memory_outputs(result: PreparedMemoryCertificationResult) -> Prepare
     if ledger.repo_name != result.handoff.contract.repo_name:
         refuse("prepared-ledger-repository", result.handoff.contract.repo_name, ledger.repo_name)
     mapping = find_mapping(ledger, result.candidate.codeView.codeCommit)
-    reuse = proof is not None and mapping is not None and mapping.memory_commit == memory_output.commit
-    ledger_bytes = old_bytes if reuse else ledger_to_text(
-        prepend_mapping(ledger, result.candidate.codeView.codeCommit, memory_output.commit)
-    ).encode("utf-8")
+    reuse = (
+        proof is not None and mapping is not None and mapping.memory_commit == memory_output.commit
+    )
+    ledger_bytes = (
+        old_bytes
+        if reuse
+        else ledger_to_text(
+            prepend_mapping(ledger, result.candidate.codeView.codeCommit, memory_output.commit)
+        ).encode("utf-8")
+    )
     parent = memory_output.commit if memory_intent.writeEnabled else head
     tree = (
-        proof.logicalHeadTree if reuse and proof is not None
+        proof.logicalHeadTree
+        if reuse and proof is not None
         else _ledger_tree(root, result.handoff.contract.worktree_group, parent, ledger_bytes)
     )
     ledger_intent = _intent(
-        result, leg="ledger", parent=parent, tree=tree, proof=proof, enabled=not reuse
+        result,
+        _MemoryIntentSelection(
+            leg="ledger", parent=parent, tree=tree, proof=proof, enabled=not reuse
+        ),
     )
     final = _prepare(result, ledger_intent)
     return PreparedMemoryOutputs(

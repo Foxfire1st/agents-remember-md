@@ -86,6 +86,7 @@ def _redigest_execution(manifest):
 
 
 @pytest.mark.parametrize("first", (1, 2, 3, 4))
+@pytest.mark.integration
 def test_frozen_suffix_starts_only_selected_gates_and_preserves_original_results(tmp_path, first):
     selected, request, _profile = selected_execution(tmp_path, first)
     module = load_dagger_module()
@@ -149,6 +150,7 @@ def test_frozen_suffix_starts_only_selected_gates_and_preserves_original_results
 
 
 @pytest.mark.parametrize("fault", ("missing", "corrupt", "symlink", "parent-symlink"))
+@pytest.mark.integration
 def test_dagger_rechecks_actual_transported_bytes_before_any_suffix_rail(tmp_path, fault):
     selected, request, _profile = selected_execution(tmp_path)
     directory = tmp_path / "retained"
@@ -192,6 +194,7 @@ def test_dagger_rechecks_actual_transported_bytes_before_any_suffix_rail(tmp_pat
 @pytest.mark.parametrize(
     "fault", ("digest", "base", "plan", "prefix", "inventory", "first-five", "zero-start", "result")
 )
+@pytest.mark.integration
 def test_detached_or_contradictory_execution_inputs_refuse_before_engine_use(tmp_path, fault):
     selected, request, _profile = selected_execution(tmp_path)
     module = load_dagger_module()
@@ -229,6 +232,7 @@ def test_detached_or_contradictory_execution_inputs_refuse_before_engine_use(tmp
     assert fake_dag.container_value.commands == []
 
 
+@pytest.mark.integration
 def test_failed_suffix_publishes_complete_red_gate_and_zero_start_successors(tmp_path):
     selected, request, _profile = selected_execution(tmp_path)
     directory = tmp_path / "retained"
@@ -271,6 +275,7 @@ def test_failed_suffix_publishes_complete_red_gate_and_zero_start_successors(tmp
     assert payload["gates"][3]["rails"] == []
 
 
+@pytest.mark.integration
 def test_transport_presence_and_declaration_are_exact(tmp_path):
     selected, request, _profile = selected_execution(tmp_path)
     load_dagger_module()
@@ -302,6 +307,7 @@ def test_transport_presence_and_declaration_are_exact(tmp_path):
 
 
 @pytest.mark.parametrize("fault", ("missing", "different-declaration", "omitted-entry"))
+@pytest.mark.integration
 def test_environment_reconstruction_refuses_missing_or_changed_original_before_suffix(
     tmp_path, fault
 ):
@@ -342,6 +348,7 @@ def test_environment_reconstruction_refuses_missing_or_changed_original_before_s
 
 
 @pytest.mark.parametrize("fault", ("oversized", "wrong-gate", "undeclared"))
+@pytest.mark.integration
 def test_retained_member_bound_comes_from_frozen_producer_publications(tmp_path, fault):
     selected, request, _profile = selected_execution(tmp_path)
     load_dagger_module()
@@ -420,6 +427,7 @@ def test_manifest_confines_environment_paths_before_runtime_use(field, value):
 
 
 @pytest.mark.parametrize("fault", ("future-only", "future-before-retained"))
+@pytest.mark.integration
 def test_resume_manifest_refuses_duplicate_paths_before_retained_gate_filter(tmp_path, fault):
     selected, request, _profile = selected_execution(tmp_path, 3)
     load_dagger_module()

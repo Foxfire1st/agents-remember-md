@@ -10,11 +10,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import signal
+import subprocess
+import sys
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from unittest import mock
+from uuid import uuid4
 
 import pytest
 from agents_remember.application import worktree_tools
@@ -530,8 +536,16 @@ class _Fixture:
     code_calls: list[clean_executor.CleanQualityRequest]
 
 
-def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> _Fixture:
+def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch, *, live_worker: bool = False) -> _Fixture:
     queue = QueueFixture(root, memory_mode="external")
+    # This fixture stops at the scheduler continuation boundary before publishing Gate 5.
+    bind_worktree_services(replace(worktree_services(), certification_continuation=None))
+    # C preparation is a separate tested boundary. These scheduler scenarios supply
+    # its unchanged handoff and exercise real memory evidence and reuse decisions.
+    monkeypatch.setattr(
+        "agents_remember.worktrees.integration.closeout.preparation.code_view.prepare_code_view",
+        lambda handoff: (handoff, None),
+    )
     contract = queue.contracts[MASTER_A]
     path = install_fixture_profile(contract.code_worktree, contract.repo_name, NODE_FIXTURE)
     profile = RepositoryCertificationProfile.model_validate_json(path.read_bytes())
@@ -590,7 +604,25 @@ def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> _Fixture:
     assert admitted["ok"] is True and admitted["state"] == "queued", admitted
     launch.assert_called_once()
     store = _store(contract)
-    owner = OperationRuntime(store).start()
+    lease = None
+    if live_worker:
+        from agents_remember.worktrees.integration.lifecycle.worker.termination import (  # noqa: PLC0415
+            worker_process_fingerprint,
+        )
+
+        fingerprint = worker_process_fingerprint(os.getpid())
+        assert fingerprint is not None
+        lease = uuid4().hex * 2
+        store.update(
+            lambda record: record.model_copy(
+                update={
+                    "workerPid": os.getpid(),
+                    "workerLease": lease,
+                    "workerProcessFingerprint": fingerprint,
+                }
+            )
+        )
+    owner = OperationRuntime(store, worker_lease=lease).start()
     calls: list[clean_executor.CleanQualityRequest] = []
     monkeypatch.setattr(gate, "run_clean_quality", _executor(NODE_FIXTURE, calls))
     with pytest.raises(CertificationContractError) as unbound:
@@ -977,3 +1009,112 @@ def test_preparation_policy_binds_identity_environment_without_disclosing_values
     captured = capsys.readouterr()
     assert secret not in repr(observed) + str(refused.value) + captured.out + captured.err
     assert git(logical, "rev-parse", "HEAD") == intent.expectedOldCommit
+
+
+@pytest.mark.integration
+def test_real_gate_five_prepares_then_publishes_memory_and_ledger(tmp_path: Path) -> None:
+    script = "\n".join(
+        (
+            "import sys",
+            "from pathlib import Path",
+            "from agents_remember_test_support.testing.global_state import begin_pytest_process",
+            "from agents_remember.application.worktree_services import build_default_worktree_services",
+            "from agents_remember.worktrees.services import bind_worktree_services",
+            "begin_pytest_process()",
+            "bind_worktree_services(build_default_worktree_services())",
+            "from test_closeout_memory_certification_reuse import _prepare_memory_output_scenario",
+            "_prepare_memory_output_scenario(Path(sys.argv[1]))",
+        )
+    )
+    with subprocess.Popen(
+        [sys.executable, "-B", "-c", script, str(tmp_path)],
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=600)
+        except subprocess.TimeoutExpired:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate()
+            pytest.fail(f"memory preparation worker timed out\n{stdout}\n{stderr}")
+        assert process.returncode == 0, stdout + stderr
+
+
+def _prepare_memory_output_scenario(root: Path) -> None:
+    from agents_remember.kernel.memory_ledger import (  # noqa: PLC0415
+        find_mapping,
+        parse_ledger_text,
+    )
+    from agents_remember.worktrees.integration.closeout.preparation.code_view import (  # noqa: PLC0415
+        prepare_code_view,
+    )
+    from agents_remember.worktrees.integration.closeout.preparation.memory_execution import (  # noqa: PLC0415
+        observe_prepared_memory_candidate,
+    )
+    from agents_remember.worktrees.integration.closeout.preparation.memory_output import (  # noqa: PLC0415
+        prepare_memory_outputs,
+    )
+    from agents_remember.worktrees.integration.closeout.preparation.memory_port import (  # noqa: PLC0415
+        PreparedMemoryCertificationResult,
+    )
+
+    with pytest.MonkeyPatch.context() as patch:
+        fixture = _fixture(root, patch, live_worker=True)
+    # Restore the scheduler-only code-view stub before exercising the actual owner.
+    handoff, view = prepare_code_view(fixture.handoff)
+    assert view.disposition == "existing"
+    candidate = observe_prepared_memory_candidate(handoff, view)
+    terminal = handoff.selected.terminals[-1]
+    assert fixture.r08.gateFiveInputs is not None and terminal.certificateReference is not None
+    certified = PreparedMemoryCertificationResult(
+        handoff,
+        candidate,
+        fixture.r08.gateFiveInputs,
+        terminal.resultReference,
+        terminal.certificateReference,
+    )
+    memory_root = handoff.contract.memory_worktree
+    assert memory_root is not None
+    roots = (handoff.contract.code_worktree, memory_root)
+    before = tuple(git(path, "rev-parse", "HEAD") for path in roots)
+    ledger_before = (memory_root / "memory.md").read_bytes()
+    prepared = prepare_memory_outputs(certified)
+    assert prepared.memory.intent.writeEnabled and prepared.ledger.intent.writeEnabled
+    memory_private = Path(prepared.memory.intent.privateRoot or "")
+    ledger_private = Path(prepared.ledger.intent.privateRoot or "")
+    memory_commit = git(memory_private, "rev-parse", "HEAD")
+    ledger_commit = git(ledger_private, "rev-parse", "HEAD")
+    assert git(memory_private, "rev-parse", "HEAD^{tree}") == candidate.memoryTree
+    assert git(memory_private, "rev-parse", "HEAD^") == before[1]
+    assert git(ledger_private, "rev-parse", "HEAD^") == memory_commit
+    assert git(memory_root, "diff", "--name-only", memory_commit, ledger_commit) == "memory.md"
+    mapping = find_mapping(parse_ledger_text(prepared.ledgerBytes.decode()), view.codeCommit)
+    assert mapping is not None and mapping.memory_commit == memory_commit
+    assert (ledger_private / "memory.md").read_bytes() == prepared.ledgerBytes
+    journal = handoff.store.path.read_bytes()
+    repeated = prepare_memory_outputs(replace(certified, handoff=prepared.handoff))
+    assert repeated == prepared
+    assert handoff.store.path.read_bytes() == journal
+    assert tuple(git(path, "rev-parse", "HEAD") for path in roots) == before
+    assert (memory_root / "memory.md").read_bytes() == ledger_before
+
+    from agents_remember.worktrees.integration.closeout.preparation.finalization import (  # noqa: PLC0415
+        finalize_prepared_closeout,
+    )
+
+    closed = finalize_prepared_closeout(prepared)
+    assert closed.returncode == 0
+    assert git(roots[0], "rev-parse", "HEAD") == view.codeCommit
+    assert git(memory_root, "rev-parse", "HEAD") == ledger_commit
+    assert (memory_root / "memory.md").read_bytes() == prepared.ledgerBytes
+    contract = load_contract(handoff.contract.contract_path)
+    assert contract.closeout_status == "completed"
+    assert (contract.code_commit, contract.memory_content_commit, contract.ledger_commit) == (
+        view.codeCommit,
+        memory_commit,
+        ledger_commit,
+    )

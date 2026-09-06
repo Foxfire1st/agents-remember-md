@@ -94,7 +94,7 @@ evidence_node = "mcp/tests/test_harness_control_claude_stream_1.py::ClaudeStream
 [[contract]]
 id = "synthetic-test-evidence-candidate"
 owner = "mcp/test_support/agents_remember_test_support/testing/evidence_lifecycle.py"
-evidence_node = "mcp/tests/test_evidence_lifecycle.py::EvidenceLifecycleTests::test_repository_inventory_is_closed_over_governed_artifacts"
+evidence_node = "mcp/tests/test_evidence_lifecycle.py::test_repository_inventory_is_closed_over_governed_artifacts"
 
 [[contract]]
 id = "ambient-role-chat-e2e"
@@ -239,16 +239,18 @@ owner = "quality-test-admission"
 category = "architecture-fitness"
 fidelity = "repository-structure"
 cadence = "affected"
-source_version_or_generator = "the certifying pytest composition root"
+source_version_or_generator = "explicit modeled admission input for quality-plan tests"
 introduced_by = "260731-EFA-L7"
 lifetime = "permanent"
-permanence_rationale = "Focused quality tests share the opaque Dagger admission minted by the root composition."
+permanence_rationale = "Focused quality-plan tests share a modeled admission input; real delivery still requires its own Dagger admission."
 replacement_contract = "contract:dagger-admission-capability"
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_causal_quality_preflight.py",
   "mcp/tests/test_code_quality_check.py",
   "mcp/tests/test_code_quality_check_scope.py",
+  "mcp/tests/test_code_quality_environment_guard.py",
+  "mcp/tests/test_code_quality_memory_cap.py",
   "mcp/tests/test_code_quality_targeted.py",
   "mcp/tests/test_code_quality_tool_signature_exemption.py",
   "mcp/tests/test_diff_coverage.py",
@@ -258,6 +260,7 @@ consumers = [
   "mcp/tests/test_layering.py",
   "mcp/tests/test_quality_retry_proof.py",
   "mcp/tests/test_quality_scope_reporting.py",
+  "mcp/tests/test_repository_certification_profiles.py",
 ]
 
 [[artifact]]
@@ -1529,7 +1532,36 @@ introduced_by = "260827-PDLS-remediation"
 lifetime = "permanent"
 permanence_rationale = "The manifest removes the unmarked-unit fallback and binds selection, cadence, retry, and reporting to one explicit population."
 replacement_contract = "node:mcp/tests/test_evidence_lanes.py::EvidenceLaneRegistryTests::test_item_category_is_exact_and_provider_gates_are_provider_evidence"
-consumer_scope = "all-tests"
+consumer_scope = "exact"
+consumers = [
+  "mcp/tests/test_cadence_runner.py",
+  "mcp/tests/test_causal_quality_preflight.py",
+  "mcp/tests/test_code_quality_check.py",
+  "mcp/tests/test_code_quality_check_scope.py",
+  "mcp/tests/test_code_quality_environment_guard.py",
+  "mcp/tests/test_code_quality_memory_cap.py",
+  "mcp/tests/test_code_quality_targeted.py",
+  "mcp/tests/test_code_quality_tool_signature_exemption.py",
+  "mcp/tests/test_dependency_ownership_ast_helpers.py",
+  "mcp/tests/test_diff_coverage.py",
+  "mcp/tests/test_evidence_lanes.py",
+  "mcp/tests/test_evidence_lifecycle.py",
+  "mcp/tests/test_file_size_detector.py",
+  "mcp/tests/test_gate_scope.py",
+  "mcp/tests/test_git_closeout_publication.py",
+  "mcp/tests/test_git_command.py",
+  "mcp/tests/test_l6_diff_coverage_code_quality.py",
+  "mcp/tests/test_l6_diff_coverage_crap.py",
+  "mcp/tests/test_pytest_bootstrap_boundaries.py",
+  "mcp/tests/test_python_test_evidence_firewall.py",
+  "mcp/tests/test_quality_evidence_helper_invariants.py",
+  "mcp/tests/test_quality_retry_proof.py",
+  "mcp/tests/test_quality_scope_reporting.py",
+  "mcp/tests/test_rail_evidence_publication.py",
+  "mcp/tests/test_repository_certification_profiles.py",
+  "mcp/tests/test_repository_source_applicability.py",
+  "mcp/tests/test_worktree_closeout_gate_scope.py",
+]
 
 [[artifact]]
 path = "scripts/e2e_harness/codex_driver.py"
