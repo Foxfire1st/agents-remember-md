@@ -152,6 +152,7 @@ def test_exact_dotted_module_literal_is_an_observable_test_consumer(tmp_path: Pa
 
 @pytest.mark.integration
 def test_repository_inputs_reach_their_supported_consumers() -> None:
+    # The graph validates the complete artifact catalog as part of this one real census.
     graph = DependencyOwnershipGraph(Path(__file__).parents[2])
     for source, consumer in (
         (CODEX_CONFIG_PATH, Path("mcp/tests/test_starter_renderers.py")),

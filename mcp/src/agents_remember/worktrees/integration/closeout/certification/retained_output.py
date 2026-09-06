@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents_remember.certification.digests import content_digest
+from agents_remember.models.lifecycles.mutation_evidence import GitMutationEvidence
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     closeout_generation_retained,
@@ -33,6 +34,53 @@ def require_retained_output_currentness(
     the certified candidate. Nothing is republished or substituted into the selected
     record; all other observed authorities must still equal the original admission.
     """
+    proof = _require_original_code_proof(contract, record, selected, current)
+    envelope = selected.authorities.semanticEnvelope
+    expected = selected.admission.lifecycle.semanticEnvelope.candidate
+    original_head = envelope.worktree.headCommit
+    owned_edges = tuple(
+        index
+        for index, edge in enumerate(envelope.source.edges)
+        if edge.side == "code"
+        and edge.repositoryRoot == contract.code_repo_path.as_posix()
+        and edge.descendantRef == envelope.worktree.workRef
+        and edge.contractPath == contract.contract_path.as_posix()
+        and edge.descendantTip == original_head
+    )
+    if len(owned_edges) != 1:
+        refuse("selected-code-output-lineage-mismatch", "one original leaf code edge", owned_edges)
+    source = envelope.source.model_copy(
+        update={
+            "edges": tuple(
+                edge.model_copy(update={"descendantTip": proof.commit})
+                if index == owned_edges[0]
+                else edge
+                for index, edge in enumerate(envelope.source.edges)
+            )
+        }
+    )
+    worktree = envelope.worktree.model_copy(update={"headCommit": proof.commit})
+    permitted_envelope = envelope.model_copy(update={"source": source, "worktree": worktree})
+    permitted_candidate = expected.model_copy(
+        update={
+            "sourceAuthorityDigest": content_digest(source),
+            "worktreeRuleDigest": content_digest(worktree),
+        }
+    )
+    if (
+        current.authorities.semanticEnvelope != permitted_envelope
+        or current.candidate != permitted_candidate
+    ):
+        refuse("selected-candidate-authority-moved", permitted_candidate, current.candidate)
+
+
+def _require_original_code_proof(
+    contract: WorktreeContract,
+    record: LifecycleOperationRecord,
+    selected: LoadedCertificationSelection,
+    current: ObservedCertificationCandidate,
+) -> GitMutationEvidence:
+    """Validate the retained journal prestate and current physical commit before comparison."""
     envelope = selected.authorities.semanticEnvelope
     expected = selected.admission.lifecycle.semanticEnvelope.candidate
     proof = record.mutationEvidence.get("code")
@@ -72,37 +120,4 @@ def require_retained_output_currentness(
         commit=proof.commit,
     ):
         refuse("selected-code-output-proof-mismatch", proof, actual)
-    owned_edges = tuple(
-        index
-        for index, edge in enumerate(envelope.source.edges)
-        if edge.side == "code"
-        and edge.repositoryRoot == contract.code_repo_path.as_posix()
-        and edge.descendantRef == envelope.worktree.workRef
-        and edge.contractPath == contract.contract_path.as_posix()
-        and edge.descendantTip == original_head
-    )
-    if len(owned_edges) != 1:
-        refuse("selected-code-output-lineage-mismatch", "one original leaf code edge", owned_edges)
-    source = envelope.source.model_copy(
-        update={
-            "edges": tuple(
-                edge.model_copy(update={"descendantTip": proof.commit})
-                if index == owned_edges[0]
-                else edge
-                for index, edge in enumerate(envelope.source.edges)
-            )
-        }
-    )
-    worktree = envelope.worktree.model_copy(update={"headCommit": proof.commit})
-    permitted_envelope = envelope.model_copy(update={"source": source, "worktree": worktree})
-    permitted_candidate = expected.model_copy(
-        update={
-            "sourceAuthorityDigest": content_digest(source),
-            "worktreeRuleDigest": content_digest(worktree),
-        }
-    )
-    if (
-        current.authorities.semanticEnvelope != permitted_envelope
-        or current.candidate != permitted_candidate
-    ):
-        refuse("selected-candidate-authority-moved", permitted_candidate, current.candidate)
+    return proof

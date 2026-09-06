@@ -94,7 +94,7 @@ evidence_node = "mcp/tests/test_harness_control_claude_stream_1.py::ClaudeStream
 [[contract]]
 id = "synthetic-test-evidence-candidate"
 owner = "mcp/test_support/agents_remember_test_support/testing/evidence_lifecycle.py"
-evidence_node = "mcp/tests/test_evidence_lifecycle.py::test_repository_inventory_is_closed_over_governed_artifacts"
+evidence_node = "mcp/tests/test_dependency_ownership_ast_helpers.py::test_repository_inputs_reach_their_supported_consumers"
 
 [[contract]]
 id = "ambient-role-chat-e2e"
@@ -1535,6 +1535,7 @@ replacement_contract = "node:mcp/tests/test_evidence_lanes.py::EvidenceLaneRegis
 consumer_scope = "exact"
 consumers = [
   "mcp/tests/test_cadence_runner.py",
+  "mcp/tests/test_catalog_selection.py",
   "mcp/tests/test_causal_quality_preflight.py",
   "mcp/tests/test_code_quality_check.py",
   "mcp/tests/test_code_quality_check_scope.py",

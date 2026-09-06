@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-import pytest
 from agents_remember_test_support.testing.evidence_governance import LIFECYCLE_CATALOG_PATH
 from agents_remember_test_support.testing.evidence_lifecycle import (
     CATALOG_SCHEMA,
@@ -17,8 +16,6 @@ from agents_remember_test_support.testing.evidence_lifecycle import (
     governed_artifact_paths,
     load_evidence_inventory,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -113,14 +110,6 @@ consumers = [{rendered_consumers}]
                 "def test_owner():\n"
                 "    Path(ARTIFACT).read_text(encoding='utf-8')\n",
             )
-
-
-@pytest.mark.integration
-def test_repository_inventory_is_closed_over_governed_artifacts() -> None:
-    inventory = load_evidence_inventory(REPO_ROOT)
-    assert {item.path for item in inventory.artifacts} == governed_artifact_paths(
-        REPO_ROOT, large_fixture_bytes=inventory.large_fixture_bytes
-    )
 
 
 class EvidenceLifecycleTests(unittest.TestCase):

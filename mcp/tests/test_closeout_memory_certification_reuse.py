@@ -532,11 +532,17 @@ def _publish_fifth(
 class _Fixture:
     queue: QueueFixture
     handoff: CloseoutCertificationHandoff
-    r08: FinalCertificationResult
+    r08: FinalCertificationResult | None
     code_calls: list[clean_executor.CleanQualityRequest]
 
 
-def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch, *, live_worker: bool = False) -> _Fixture:
+def _fixture(
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    live_worker: bool = False,
+    publish_memory: bool = True,
+) -> _Fixture:
     queue = QueueFixture(root, memory_mode="external")
     # This fixture stops at the scheduler continuation boundary before publishing Gate 5.
     bind_worktree_services(replace(worktree_services(), certification_continuation=None))
@@ -630,6 +636,8 @@ def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch, *, live_worker: bool =
     assert unbound.value.findings[0]["code"] == "certification-continuation-unbound"
     handoff = current_certification_handoff(contract, owner, store)
     assert tuple(item.result.gate for item in handoff.selected.terminals) == (1, 2, 3, 4)
+    if not publish_memory:
+        return _Fixture(queue, handoff, None, calls)
     handoff, r08 = _publish_fifth(handoff)
     return _Fixture(queue, handoff, r08, calls)
 
@@ -691,6 +699,7 @@ def test_current_producer_backed_gate_five_resumes_only_finalization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = _fixture(tmp_path, monkeypatch)
+    assert fixture.r08 is not None
     before = fixture.handoff.selected.state.terminals
     originals = _originals(fixture.handoff)
     continuation = _Continuation()
@@ -742,6 +751,7 @@ def test_metadata_successor_selects_the_exact_inherited_fifth_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = _fixture(tmp_path, monkeypatch)
+    assert fixture.r08 is not None
     handoff = fixture.handoff
     originals = _originals(handoff)
     original_terminals = handoff.selected.state.terminals
@@ -1035,7 +1045,7 @@ def test_real_gate_five_prepares_then_publishes_memory_and_ledger(tmp_path: Path
         text=True,
     ) as process:
         try:
-            stdout, stderr = process.communicate(timeout=600)
+            stdout, stderr = process.communicate(timeout=900)
         except subprocess.TimeoutExpired:
             with suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
@@ -1049,6 +1059,9 @@ def _prepare_memory_output_scenario(root: Path) -> None:
         find_mapping,
         parse_ledger_text,
     )
+    from agents_remember.memory_quality.prepared_certification import (  # noqa: PLC0415
+        PreparedMemoryCertificationAdapter,
+    )
     from agents_remember.worktrees.integration.closeout.preparation.code_view import (  # noqa: PLC0415
         prepare_code_view,
     )
@@ -1059,24 +1072,20 @@ def _prepare_memory_output_scenario(root: Path) -> None:
         prepare_memory_outputs,
     )
     from agents_remember.worktrees.integration.closeout.preparation.memory_port import (  # noqa: PLC0415
-        PreparedMemoryCertificationResult,
+        PreparedMemoryCertificationRequest,
     )
 
     with pytest.MonkeyPatch.context() as patch:
-        fixture = _fixture(root, patch, live_worker=True)
+        fixture = _fixture(root, patch, live_worker=True, publish_memory=False)
     # Restore the scheduler-only code-view stub before exercising the actual owner.
     handoff, view = prepare_code_view(fixture.handoff)
     assert view.disposition == "existing"
     candidate = observe_prepared_memory_candidate(handoff, view)
-    terminal = handoff.selected.terminals[-1]
-    assert fixture.r08.gateFiveInputs is not None and terminal.certificateReference is not None
-    certified = PreparedMemoryCertificationResult(
-        handoff,
-        candidate,
-        fixture.r08.gateFiveInputs,
-        terminal.resultReference,
-        terminal.certificateReference,
-    )
+    assert len(handoff.selected.terminals) == 4
+    request = PreparedMemoryCertificationRequest(handoff, candidate)
+    adapter = PreparedMemoryCertificationAdapter()
+    certified = adapter.certify(request)
+    assert adapter.observe(replace(request, handoff=certified.handoff)) == certified.memoryInputs
     memory_root = handoff.contract.memory_worktree
     assert memory_root is not None
     roots = (handoff.contract.code_worktree, memory_root)
@@ -1102,19 +1111,59 @@ def _prepare_memory_output_scenario(root: Path) -> None:
     assert tuple(git(path, "rev-parse", "HEAD") for path in roots) == before
     assert (memory_root / "memory.md").read_bytes() == ledger_before
 
-    from agents_remember.worktrees.integration.closeout.preparation.finalization import (  # noqa: PLC0415
-        finalize_prepared_closeout,
+    _publish_and_recover_memory_outputs(
+        prepared, view.codeCommit, memory_commit, ledger_commit, ledger_before
     )
 
-    closed = finalize_prepared_closeout(prepared)
-    assert closed.returncode == 0
-    assert git(roots[0], "rev-parse", "HEAD") == view.codeCommit
+
+def _publish_and_recover_memory_outputs(
+    prepared, code_commit: str, memory_commit: str, ledger_commit: str, ledger_before: bytes
+) -> None:
+    from agents_remember.worktrees.integration.closeout.preparation import (  # noqa: PLC0415
+        finalization,
+    )
+
+    handoff = prepared.handoff
+    memory_root = handoff.contract.memory_worktree
+    assert memory_root is not None
+    publish = finalization.publish_git_closeout_ref
+
+    def interrupt_after_memory_publication(capability):
+        result = publish(capability)
+        if capability.binding.prepared_commit == memory_commit:
+            assert result.after.state == "new"
+            raise RuntimeError("interrupt after actual memory ref publication")
+        return result
+
+    with (
+        mock.patch.object(
+            finalization, "publish_git_closeout_ref", interrupt_after_memory_publication
+        ),
+        pytest.raises(RuntimeError, match="interrupt after actual memory ref publication"),
+    ):
+        finalization.finalize_prepared_closeout(prepared)
+    interrupted = handoff.store.read()
+    assert interrupted is not None
+    assert interrupted.mutationEvidence["memory"].state == "mutation-intent"
+    assert git(memory_root, "rev-parse", "HEAD") == memory_commit
+    assert (memory_root / "memory.md").read_bytes() == ledger_before
+    closed = finalization.resume_prepared_closeout(handoff.contract, interrupted, handoff.store)
+    assert closed is not None and closed.returncode == 0
+    assert git(handoff.contract.code_worktree, "rev-parse", "HEAD") == code_commit
     assert git(memory_root, "rev-parse", "HEAD") == ledger_commit
     assert (memory_root / "memory.md").read_bytes() == prepared.ledgerBytes
     contract = load_contract(handoff.contract.contract_path)
     assert contract.closeout_status == "completed"
     assert (contract.code_commit, contract.memory_content_commit, contract.ledger_commit) == (
-        view.codeCommit,
+        code_commit,
         memory_commit,
         ledger_commit,
     )
+
+    current = handoff.store.read()
+    assert current is not None
+    journal = handoff.store.path.read_bytes()
+    reopened = finalization.resume_prepared_closeout(contract, current, handoff.store)
+    assert reopened == closed
+    assert handoff.store.path.read_bytes() == journal
+    assert git(memory_root, "rev-parse", "HEAD") == ledger_commit
