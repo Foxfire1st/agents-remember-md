@@ -16,17 +16,17 @@ from typing import Annotated, Literal, Self
 from pydantic import AfterValidator, Field, model_validator
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    CertificationContractFinding,
-    FrozenContractModel,
-    GateId,
-    RailIdentity,
-    SemanticText,
-)
+from agents_remember.certification.models import CertificationContractFinding
 from agents_remember.certification.telemetry.models import (
     CatalogCounts,
     CatalogRailRecord,
     TelemetrySpanKind,
+)
+from agents_remember.models.certification.base import (
+    FrozenContractModel,
+    GateId,
+    RailIdentity,
+    SemanticText,
 )
 
 MeasuredSpanCategory = TelemetrySpanKind

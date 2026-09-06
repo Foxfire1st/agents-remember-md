@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import pytest
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import CertificationContractFinding, GateId
+from agents_remember.certification.models import CertificationContractFinding
 from agents_remember.certification.replay.measure import measure_replay_run
 from agents_remember.certification.replay.models import (
     GateRunMeasurement,
@@ -37,6 +37,7 @@ from agents_remember.certification.telemetry.models import (
     catalog_manifest_digest,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId
 
 _DIGEST = "a" * 64
 

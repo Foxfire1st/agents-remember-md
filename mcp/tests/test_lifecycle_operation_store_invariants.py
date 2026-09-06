@@ -18,7 +18,7 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationRecoveryCommits,
 )
 from agents_remember.models.lifecycles.termination import WorkerTerminationEvidence
-from agents_remember.worktrees.integration.lifecycle.lifecycle_generation_resume import (
+from agents_remember.worktrees.integration.lifecycle.generation.resume import (
     requeued_same_generation,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_controls import (
@@ -46,12 +46,16 @@ from closeout_input_test_support import (
 )
 from lifecycle_control_test_support import cancel_current_generation
 from pydantic import ValidationError
+from selected_lifecycle_test_support import (
+    completed_selected_closeout_for_integration,
+    selected_contract,
+    selected_successor,
+)
 from test_closeout_queue import MASTER_A
-from test_lifecycle_operations import _completed_closeout_for_integration, _contract
 
 
 def _closeout_store(root: Path) -> tuple[WorktreeContract, LifecycleOperationStore]:
-    contract = _contract(root)
+    contract = selected_contract(root)
     start_closeout_operation(closeout_operation_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     return contract, store
@@ -64,7 +68,6 @@ def _external_store(root: Path) -> LifecycleOperationStore:
     start_closeout_operation(
         operation_input,
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
     return LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
 
@@ -105,7 +108,7 @@ def test_proven_integration_claim_timestamp_is_nonempty_and_strictly_read(
             _proven_publication("5" * 64, transferred_at="")
         )
 
-    contract = _completed_closeout_for_integration(_contract(tmp_path))
+    contract = completed_selected_closeout_for_integration(selected_contract(tmp_path))
     operation_input = IntegrateOperationInput(
         configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
         contractPath=contract.contract_path.as_posix(),
@@ -155,26 +158,33 @@ def test_store_replacement_and_recovery_require_valid_terminal_identity(tmp_path
             update={"status": "failed", "phase": "failed", "finishedAt": "2026-08-22T00:00Z"}
         )
     )
-    candidate = current.model_copy(update={"fingerprint": "d" * 64, "operationKey": "e" * 64})
+    previous = store.read()
+    assert previous is not None
+    candidate, select_initial = selected_successor(_contract_value, previous)
     with pytest.raises(RuntimeError, match="cannot change taskId"):
-        store.replace_terminal(candidate.model_copy(update={"taskId": "different"}))
-    assert store.replace_terminal(candidate).attempt == 1
+        store.replace_terminal(
+            candidate.model_copy(update={"taskId": "different"}),
+            initial_certification=select_initial,
+        )
+    assert store.replace_terminal(candidate, initial_certification=select_initial).attempt == 1
 
 
 @pytest.mark.parametrize(
-    ("field", "value", "message"),
+    ("field", "value", "error_type", "message"),
     [
-        ("taskName", "other", "cannot change taskName"),
-        ("operationKey", "f" * 64, "cannot change its durable input"),
-        ("status", "completed", "invalid lifecycle operation transition"),
+        ("taskName", "other", RuntimeError, "cannot change taskName"),
+        ("operationKey", "f" * 64, ValidationError, "certification selection must name its exact"),
+        ("status", "completed", RuntimeError, "invalid lifecycle operation transition"),
     ],
 )
 def test_store_refuses_immutable_identity_and_status_transitions(
-    tmp_path: Path, field: str, value: str, message: str
+    tmp_path: Path, field: str, value: str, error_type: type[Exception], message: str
 ) -> None:
     _contract_value, store = _closeout_store(tmp_path)
-    with pytest.raises(RuntimeError, match=message):
+    before = store.path.read_bytes()
+    with pytest.raises(error_type, match=message):
         store.update(lambda record: record.model_copy(update={field: value}))
+    assert store.path.read_bytes() == before
 
 
 def _worker_termination(
@@ -248,8 +258,9 @@ def test_store_refuses_claim_boundary_and_ambiguous_cancellation(tmp_path: Path)
     with pytest.raises(RuntimeError, match="cannot become unclaimed"):
         claimed_store.update(lambda record: record.model_copy(update={"approvalClaimed": False}))
 
-    contract = _contract(tmp_path / "ambiguous")
-    (contract.code_worktree / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    contract = selected_contract(
+        tmp_path / "ambiguous", candidate_file=("candidate.txt", "candidate\n")
+    )
     start_closeout_operation(closeout_operation_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     store.update(with_mutation_intent)
@@ -260,8 +271,7 @@ def test_store_refuses_claim_boundary_and_ambiguous_cancellation(tmp_path: Path)
 
 
 def test_store_refuses_clearing_or_cancelling_commit_boundary(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
-    (contract.code_worktree / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    contract = selected_contract(tmp_path, candidate_file=("candidate.txt", "candidate\n"))
     start_closeout_operation(closeout_operation_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     store.update(with_mutation_intent)
@@ -289,7 +299,7 @@ def test_store_refuses_clearing_or_cancelling_commit_boundary(tmp_path: Path) ->
 
 
 def test_integrate_boundary_cannot_be_cleared_or_cancelled(tmp_path: Path) -> None:
-    contract = _completed_closeout_for_integration(_contract(tmp_path))
+    contract = completed_selected_closeout_for_integration(selected_contract(tmp_path))
     operation_input = IntegrateOperationInput(
         configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
         contractPath=contract.contract_path.as_posix(),
@@ -576,7 +586,7 @@ def test_external_finalization_requires_complete_recovery_tuple(tmp_path: Path) 
 
 
 def test_completed_integration_retains_its_exact_parameters(tmp_path: Path) -> None:
-    contract = _completed_closeout_for_integration(_contract(tmp_path))
+    contract = completed_selected_closeout_for_integration(selected_contract(tmp_path))
     first = IntegrateOperationInput(
         configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
         contractPath=contract.contract_path.as_posix(),

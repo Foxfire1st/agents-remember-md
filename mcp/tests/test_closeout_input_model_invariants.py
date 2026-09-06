@@ -36,8 +36,11 @@ from closeout_input_test_support import (
     with_commit_proven,
 )
 from pydantic import ValidationError
+from selected_lifecycle_test_support import (
+    completed_selected_closeout_for_integration,
+    selected_contract,
+)
 from test_closeout_queue import MASTER_A
-from test_lifecycle_operations import _completed_closeout_for_integration, _contract
 
 
 def _snapshot(seed: str = "a") -> GitMutationSnapshot:
@@ -174,7 +177,9 @@ def test_mutation_evidence_refuses_impossible_prestate_and_commit_proof() -> Non
 
 def test_operation_model_refuses_cross_kind_authority_and_results(tmp_path: Path) -> None:
     closeout = _external_record(tmp_path / "closeout")
-    contract = _completed_closeout_for_integration(_contract(tmp_path / "integrate"))
+    contract = completed_selected_closeout_for_integration(
+        selected_contract(tmp_path / "integrate")
+    )
     integrate_input = IntegrateOperationInput(
         configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
         contractPath=contract.contract_path.as_posix(),
@@ -235,7 +240,7 @@ def test_operation_model_refuses_closeout_input_and_evidence_mismatches(tmp_path
 
 
 def test_public_closeout_admission_refuses_a_non_closeout_journal(tmp_path: Path) -> None:
-    contract = _completed_closeout_for_integration(_contract(tmp_path))
+    contract = completed_selected_closeout_for_integration(selected_contract(tmp_path))
     integrate_input = IntegrateOperationInput(
         configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
         contractPath=contract.contract_path.as_posix(),

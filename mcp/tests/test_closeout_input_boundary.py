@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -12,6 +13,7 @@ import pytest
 from agents_remember.application import worktree_tools
 from agents_remember.application.lifecycle import lifecycle_operation_worker
 from agents_remember.errors import (
+    CertificationContractError,
     CuratorCoherenceError,
     MemoryCandidatePairError,
     MemoryCandidatePairFailure,
@@ -633,6 +635,7 @@ def test_public_retry_uses_accepted_plan_after_each_proven_output_cut(
         "memory": operation_input.effectiveInput.message_for("memory"),
         "ledger": operation_input.effectiveInput.message_for("ledger"),
     }
+    before_retry = store.path.read_bytes()
     with mock.patch.object(
         lifecycle_operations.lifecycle_worker_launch, "launch_or_fail"
     ) as launch:
@@ -642,7 +645,19 @@ def test_public_retry_uses_accepted_plan_after_each_proven_output_cut(
             worktree_tools.CloseoutCommitMessages(**messages),
             worktree_tools.CloseoutApproval(intent_note=operation_input.approvalNote),
         )
-    assert observed["lifecycleOperation"]["status"] == "running"
+    if output_cut == "code":
+        assert observed["lifecycleOperation"]["status"] == "running"
+    else:
+        # L33 recognizes the exact proven code output. L34 owns the later
+        # prepared-memory/publication view; a raw memory or ledger writer must
+        # not make its changed source edge acceptable to selected admission.
+        assert observed["status"] == "certification-admission-refused", observed
+        assert observed["gateStarts"] == 0
+        assert {item["code"] for item in observed["findings"]} == {
+            "selected-candidate-authority-moved"
+        }
+        assert store.path.read_bytes() == before_retry
+        assert store.read() == proven
     launch.assert_not_called()
     before_invalid = store.path.read_bytes()
     messages[output_cut] = " "
@@ -760,14 +775,30 @@ def test_atomic_proof_publication_and_restart_repair_each_recovery_projection(
     store.path.write_text(json.dumps(payload), encoding="utf-8")
 
     launches: list[int] = []
-    start_closeout_operation(
-        operation_input,
-        launcher=lambda _contract, recovered: launches.append(recovered.attempt),
-    )
+
+    def launcher(_contract, recovered):
+        launches.append(recovered.attempt)
+
+    if output_cut == "code":
+        start_closeout_operation(operation_input, launcher=launcher)
+        assert launches == [2]
+    else:
+        before_retry = store.path.read_bytes()
+        with pytest.raises(CertificationContractError) as raised:
+            start_closeout_operation(operation_input, launcher=launcher)
+        assert {item["code"] for item in raised.value.findings} == {
+            "selected-candidate-authority-moved"
+        }
+        assert store.path.read_bytes() == before_retry
+        assert launches == []
+        # Exercise the actual restart reconciler while L34's prepared memory view
+        # remains unavailable to public selected admission.
+        lifecycle_operations._reconcile_closeout_store(
+            LifecycleOperationStore(store.path), now=datetime.now(UTC), fresh_dead_worker=False
+        )
 
     repaired = store.read()
     assert repaired is not None and repaired.recoveryCommits is not None
-    assert launches == [2]
     assert repaired.mutationEvidence == durable.mutationEvidence
     assert getattr(repaired.recoveryCommits, field) == proof.commit
 

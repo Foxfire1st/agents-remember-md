@@ -17,7 +17,6 @@ from agents_remember.certification.certificate_models import (
     GateCertificate,
     GateCertificateIdentity,
 )
-from agents_remember.certification.models import GateId
 from agents_remember.memory_quality.check import AVAILABLE_CHECKS, DRIFT_CHECK_NAME
 from agents_remember.memory_quality.incremental_scope import affected_planning
 from agents_remember.memory_quality.incremental_scope.affected_execution import (
@@ -48,7 +47,6 @@ from agents_remember.memory_quality.incremental_scope.execution_registry import 
     checker_execution_registry_version,
 )
 from agents_remember.memory_quality.incremental_scope.models import (
-    CanonicalTaskObservation,
     DependencySnapshot,
     GitPathChange,
     GitTreeDelta,
@@ -61,7 +59,9 @@ from agents_remember.memory_quality.incremental_scope.models import (
 )
 from agents_remember.memory_quality.incremental_scope.registry import checker_scope_registry
 from agents_remember.memory_quality.style.citations.range_resolution import CHECK_NAME
+from agents_remember.models.certification.base import GateId
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
+from agents_remember.models.task_document import CanonicalTaskObservation
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import (
     TaskIntentIdentity,

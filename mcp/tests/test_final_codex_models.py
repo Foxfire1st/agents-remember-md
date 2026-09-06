@@ -38,7 +38,6 @@ from agents_remember.certification.models import (
     CandidateIdentity,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     GateResultAdmission,
     GateResultManifest,
     RailAdapterDefinition,
@@ -48,7 +47,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailPosture,
     RailRegistry,
     RailRuntimeInputs,
@@ -61,6 +59,7 @@ from agents_remember.certification.results import (
     compile_gate_result_manifest,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 from agents_remember.worktrees.modules.quality import dagger_authority as authority
 
 CERT_PROFILE = "portable-ci"

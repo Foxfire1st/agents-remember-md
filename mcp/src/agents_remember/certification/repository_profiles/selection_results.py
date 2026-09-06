@@ -9,13 +9,9 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    ArtifactId,
-    CandidateIdentity,
-    FrozenContractModel,
-    SemanticText,
-)
+from agents_remember.certification.models import ArtifactId, CandidateIdentity
 from agents_remember.certification.repository_profiles.models import ProfileMode
+from agents_remember.models.certification.base import FrozenContractModel, SemanticText
 
 SelectionPopulation = Literal["empty", "targeted", "full"]
 SelectionFailureCode = Literal["test-selection-ownership-incomplete"]

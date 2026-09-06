@@ -11,10 +11,19 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.repository_profiles.authority import load_repository_profile
 from agents_remember.certification.repository_profiles.execution import (
     AdmittedRepositoryProfileExecution,
+    admit_repository_profile_execution,
 )
-from agents_remember.certification.repository_profiles.models import ProfileMode
+from agents_remember.certification.repository_profiles.models import (
+    ProfileMode,
+    RepositoryProfilePlan,
+)
+from agents_remember.certification.repository_profiles.source_selection.git import (
+    observe_candidate_source_selection,
+)
 from agents_remember.errors import CertificationExecutorPrerequisiteError
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
 from agents_remember.worktrees.modules.quality import (
@@ -28,6 +37,7 @@ from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
     agents_remember_profile_execution,
     install_agents_remember_profile,
+    write_source_selection_artifacts,
 )
 
 CANDIDATE_TREE = "c" * 40
@@ -37,7 +47,7 @@ def quality_request(
     repository_root: Path,
     worktree_group: Path,
     mode: str,
-    diff_base: str = "",
+    diff_base: str = "HEAD",
     *,
     memory_cap_bytes: int | None = None,
 ) -> CleanQualityRequest:
@@ -85,13 +95,16 @@ def publish_reports(
     candidate_tree: str = CANDIDATE_TREE,
     profile_execution: AdmittedRepositoryProfileExecution | None = None,
 ):
+    execution = profile_execution or agents_remember_profile_execution(
+        candidate_tree=candidate_tree
+    )
+    if source.is_dir():
+        write_source_selection_artifacts(source, execution.plan)
     return clean_quality_executor._publish_reports(
         source,
         destination,
         candidate_tree=candidate_tree,
-        profile_execution=(
-            profile_execution or agents_remember_profile_execution(candidate_tree=candidate_tree)
-        ),
+        profile_execution=execution,
     )
 
 
@@ -149,10 +162,23 @@ class CleanQualityExecutorTests(unittest.TestCase):
             f"--execution-manifest={(sandbox / 'manifest.json').as_posix()}",
             calls[0],
         )
-        profile = json.loads(
-            (source / "mcp/certification-profile-v1.json").read_text(encoding="utf-8")
+        candidate = CandidateIdentity(kind="git-tree", value=git(source, "write-tree"))
+        expected = admit_repository_profile_execution(
+            load_repository_profile("agents-remember", source, AGENTS_REMEMBER_PROFILE_REFERENCE),
+            purpose="closeout",
+            mode="targeted",
+            candidate_identity=candidate,
+            source_selection=observe_candidate_source_selection(source, candidate, "HEAD"),
         )
-        self.assertEqual(manifest["publishedArtifacts"], profile["publishedArtifacts"])
+        self.assertEqual(manifest["profilePlan"], expected.plan.model_dump(mode="json"))
+        self.assertEqual(manifest["profile"]["sourceSha256"], expected.admitted.source_sha256)
+        self.assertEqual(
+            manifest["profile"]["profileDigest"], expected.admitted.canonical.profileDigest
+        )
+        self.assertEqual(
+            manifest["publishedArtifacts"],
+            [artifact.model_dump(mode="json") for artifact in expected.published_artifacts],
+        )
         self.assertNotIn("--attempt-nonce", " ".join(calls[0]))
         self.assertNotIn("--candidate-head", " ".join(calls[0]))
         self.assertNotIn("docker", " ".join(item for call in calls for item in call).lower())
@@ -168,13 +194,17 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 json.loads(proof.read_text(encoding="utf-8"))["schema"],
                 "ar-python-runtime-proof/v1",
             )
-        e2e_summary = clean_quality_executor.published_report_path(
-            group / "reports", "ambient-role-chat-e2e/summary.json"
+        selection = clean_quality_executor.published_report_path(
+            group / "reports", "source-selection/ambient-role.json"
         )
+        decision = json.loads(selection.read_bytes())
+        self.assertEqual(decision["applicability"]["status"], "not-applicable")
+        self.assertEqual(decision["selectedPaths"], [])
         self.assertEqual(
-            json.loads(e2e_summary.read_text(encoding="utf-8"))["status"],
-            "passed",
+            decision["sourceSelection"]["changedPaths"], ["created.txt", "tracked.txt"]
         )
+        self.assertEqual(decision["sourceSelection"], manifest["profilePlan"]["sourceSelection"])
+        self.assertFalse((sandbox / "export/ambient-role-chat-e2e").exists())
 
     def test_exact_staged_candidate_is_passed_to_one_pinned_dagger_pipeline(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
@@ -206,6 +236,12 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 (export / "python-venv-runtime.json").write_text(
                     '{"schema":"ar-python-runtime-proof/v1"}\n', encoding="utf-8"
                 )
+                admission = json.loads((cwd.parent / "manifest.json").read_bytes())
+                plan = RepositoryProfilePlan.model_validate(admission["profilePlan"])
+                decisions = write_source_selection_artifacts(export, plan)
+                self.assertEqual(len(decisions), 1)
+                if decisions[0].applicability.status == "not-applicable":
+                    return subprocess.CompletedProcess(command, 0, stdout="exported\n", stderr="")
                 e2e = export / "ambient-role-chat-e2e"
                 e2e.mkdir()
                 (e2e / "summary.json").write_text(
@@ -250,6 +286,21 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 authority=_test_authority(),
             )
             self.assertFalse((sandbox / "obsolete").exists())
+            e2e_summary = clean_quality_executor.published_report_path(
+                group / "reports", "ambient-role-chat-e2e/summary.json"
+            )
+            self.assertEqual(json.loads(e2e_summary.read_bytes())["status"], "passed")
+            for run in (1, 2):
+                proof = clean_quality_executor.published_report_path(
+                    group / "reports", f"ambient-role-chat-e2e/run-{run}.json"
+                )
+                self.assertEqual(json.loads(proof.read_bytes())["run"], run)
+            decision = clean_quality_executor.published_report_path(
+                group / "reports", "source-selection/ambient-role.json"
+            )
+            self.assertEqual(
+                json.loads(decision.read_bytes())["applicability"]["status"], "applicable"
+            )
 
     def test_public_runner_refuses_invalid_mode_and_windows_interop_root(self) -> None:
         request = quality_request(Path("/repo"), Path("/enclosure"), "quick")
@@ -473,7 +524,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, stdout="exported\n", stderr="")
 
             result = run_clean_quality(
-                quality_request(repo, root / "group", "full", "base"),
+                quality_request(repo, root / "group", "full", git(repo, "rev-parse", "HEAD")),
                 runner=runner,
                 executor_resolver=lambda _env: "dagger",
                 authority=_test_authority(),
@@ -551,7 +602,7 @@ class CleanQualityExecutorTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "contradictory result"):
                 run_clean_quality(
-                    quality_request(repo, root / "group", "full", "base"),
+                    quality_request(repo, root / "group", "full", git(repo, "rev-parse", "HEAD")),
                     runner=contradictory,
                     executor_resolver=lambda _env: "dagger",
                     authority=_test_authority(),

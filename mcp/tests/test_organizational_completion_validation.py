@@ -6,6 +6,7 @@ import unittest
 from typing import cast
 
 from agents_remember.models.lifecycles.operation import IntegrationQualityCertification
+from integration_certification_test_support import structural_quality_references
 
 
 def _result(*, cap: int | None = None) -> dict[str, object]:
@@ -29,6 +30,7 @@ def _payload(*, cap: int | None = None) -> dict[str, object]:
         json.dumps(result, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return {
+        **structural_quality_references(),
         "completionFingerprint": "f" * 64,
         "codeCommit": "c" * 40,
         "candidateTree": "d" * 40,

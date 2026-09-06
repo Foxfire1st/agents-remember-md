@@ -12,9 +12,7 @@ from agents_remember.certification.digests import content_digest
 from agents_remember.certification.models import (
     CandidateIdentity,
     CertificationContractFinding,
-    GateId,
     GatePlan,
-    RailIdentity,
     RailResult,
 )
 from agents_remember.certification.telemetry import (
@@ -63,6 +61,7 @@ from agents_remember.certification.telemetry.models import (
     event_matrix_cell,
     rail_terminal_class,
 )
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 _DIGEST = "a" * 64
 _CANDIDATE = CandidateIdentity(kind="content-digest", value="c" * 64)

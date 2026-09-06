@@ -163,7 +163,7 @@ def test_status_tool_projects_sync_and_controlled_admission_refusals(tmp_path: P
         mock.patch.object(worktree_application, "observe_sync_operation", return_value=projection),
         mock.patch.object(
             worktree_application,
-            "_project_contract_status",
+            "project_contract_status",
             side_effect=lambda _config, payload, _path, _caller: payload,
         ),
     ):
@@ -180,19 +180,19 @@ def test_status_tool_projects_sync_and_controlled_admission_refusals(tmp_path: P
     terminal_result: dict[str, object] = {}
     with (
         mock.patch.object(
-            worktree_application,
+            status_application,
             "admit_configured_terminal_contract",
             return_value=terminal_refusal,
         ),
         mock.patch.object(
-            worktree_application,
+            status_application,
             "project_configured_contract_refusal",
             return_value={"status": "terminal-archive-invalid"},
         ),
-        mock.patch.object(worktree_application, "_replace_operation_status") as replace_status,
+        mock.patch.object(status_application, "_replace_operation_status") as replace_status,
     ):
         assert (
-            worktree_application._project_contract_status(
+            status_application.project_contract_status(
                 config,
                 terminal_result,
                 contract.contract_path,
@@ -207,17 +207,17 @@ def test_status_tool_projects_sync_and_controlled_admission_refusals(tmp_path: P
     ordinary_refusal = replace(terminal_refusal, status="configured-contract-authority-invalid")
     with (
         mock.patch.object(
-            worktree_application,
+            status_application,
             "admit_configured_terminal_contract",
             return_value=ordinary_refusal,
         ),
         mock.patch.object(
-            worktree_application,
+            status_application,
             "resolve_lifecycle_caller",
             side_effect=caller_error,
         ),
     ):
-        refused = worktree_application._project_contract_status(
+        refused = status_application.project_contract_status(
             config,
             {},
             contract.contract_path,

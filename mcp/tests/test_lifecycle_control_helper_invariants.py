@@ -136,6 +136,7 @@ def _replacement(kind: str, *, status: str = "cancelled", state: str = "next") -
         contract=_contract(),
         operation_input=_value(kind=kind),
         candidate=_value(state=state),
+        initial_certification=mock.Mock(),
     )
 
 
@@ -152,7 +153,13 @@ def test_cancelled_generation_replacement_requires_an_exact_successor() -> None:
         operations, "_replace_cancelled_closeout", return_value=(closeout.queued, True)
     ) as replace_closeout:
         assert operations._replace_cancelled_generation(closeout) == (closeout.queued, True)
-    replace_closeout.assert_called_once()
+    replace_closeout.assert_called_once_with(
+        closeout.store,
+        closeout.queued,
+        closeout.current,
+        closeout.contract,
+        closeout.initial_certification,
+    )
 
     with pytest.raises(RuntimeError, match="explicit task-addressed"):
         operations._replace_cancelled_generation(_replacement("direct-landing"))
@@ -187,23 +194,31 @@ def test_cancelled_closeout_and_completed_replacement_bind_release_proof() -> No
     store = mock.Mock()
     queued = _value()
     store.replace_terminal.return_value = queued
+    initial_certification = mock.Mock()
 
     assert operations._replace_cancelled_closeout(
-        store, queued, current, _contract(closeout_door=successor)
+        store, queued, current, _contract(closeout_door=successor), initial_certification
     ) == (queued, True)
+    store.replace_terminal.assert_called_once_with(
+        queued, initial_certification=initial_certification
+    )
 
     current.cancellationEvidence.workerExitProven = False
     with pytest.raises(RuntimeError, match="proven worker exit"):
         operations._replace_cancelled_closeout(
-            store, queued, current, _contract(closeout_door=successor)
+            store, queued, current, _contract(closeout_door=successor), initial_certification
         )
 
     current.cancellationEvidence.workerExitProven = True
     successor.disposition = "deferred"
     with pytest.raises(RuntimeError, match="current waiting door"):
         operations._replace_cancelled_closeout(
-            store, queued, current, _contract(closeout_door=successor)
+            store, queued, current, _contract(closeout_door=successor), initial_certification
         )
+    store.replace_terminal.assert_called_once_with(
+        queued, initial_certification=initial_certification
+    )
+    initial_certification.assert_not_called()
 
     replacement = _replacement("integrate", status="completed")
     replacement.store.replace_terminal.return_value = replacement.queued
@@ -217,6 +232,9 @@ def test_cancelled_closeout_and_completed_replacement_bind_release_proof() -> No
         )
     release.assert_called_once()
     advance.assert_called_once()
+    replacement.store.replace_terminal.assert_called_once_with(
+        replacement.queued, initial_certification=replacement.initial_certification
+    )
 
     with (
         mock.patch.object(operations, "closeout_generation_retained", return_value=True),

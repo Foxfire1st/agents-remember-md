@@ -604,31 +604,35 @@ def test_lifecycle_closeout_candidate_and_legacy_replacement_boundaries(
     assert stale.value.status == "closeout-door-task-intent-stale"
 
     active = LifecycleOperationRecord.model_validate(_closeout_record_payload(status="running"))
-    active_store = _value(create=lambda _queued: (active, False))
+    active_store = _value(create=lambda _queued, *, initial_certification=None: (active, False))
     with pytest.raises(lifecycle_operations_module.LifecycleControlError) as active_refusal:
         lifecycle_operations_module._create_or_replace_generation(
             active_store,
             cast(LifecycleOperationRecord, object()),
-            contract=cast(Any, object()),
-            operation_input=cast(Any, object()),
-            candidate=candidate,
+            creation=lifecycle_operations_module._GenerationCreation(
+                contract=cast(Any, object()),
+                operation_input=cast(Any, object()),
+                candidate=candidate,
+            ),
         )
     assert active_refusal.value.status == ("lifecycle-operation-task-intent-unavailable")
 
     terminal = LifecycleOperationRecord.model_validate(_closeout_record_payload(status="failed"))
     replacement = cast(LifecycleOperationRecord, object())
     terminal_store = _value(
-        create=lambda _queued: (terminal, False),
+        create=lambda _queued, *, initial_certification=None: (terminal, False),
         replace_terminal=mock.Mock(return_value=replacement),
     )
     assert lifecycle_operations_module._create_or_replace_generation(
         terminal_store,
         replacement,
-        contract=cast(Any, object()),
-        operation_input=cast(Any, object()),
-        candidate=candidate,
+        creation=lifecycle_operations_module._GenerationCreation(
+            contract=cast(Any, object()),
+            operation_input=cast(Any, object()),
+            candidate=candidate,
+        ),
     ) == (replacement, True)
-    terminal_store.replace_terminal.assert_called_once_with(replacement)
+    terminal_store.replace_terminal.assert_called_once_with(replacement, initial_certification=None)
 
 
 def test_legacy_bridge_preserves_task_intent_refusal(

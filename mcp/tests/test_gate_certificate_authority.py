@@ -33,6 +33,7 @@ from agents_remember.certification.certificate_models import (
     CertificationAdmissionManifest,
     CoherenceSubrecordIdentity,
     CreationProvenance,
+    FinalizationCertificateAuthority,
     FinalizationCurrentInputs,
     GateCertificate,
     GateCertificateIssuanceContext,
@@ -49,7 +50,6 @@ from agents_remember.certification.models import (
     CanonicalRailRegistry,
     CertificationPlan,
     CompiledRail,
-    GateId,
     GatePlan,
     GateResultAdmission,
     GateResultManifest,
@@ -60,7 +60,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailRegistry,
     RailRuntimeInputs,
     RailStatus,
@@ -76,6 +75,7 @@ from agents_remember.certification.repository_profiles.models import (
     RepositoryProfilePlan,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 from repository_profile_test_support import fixture_profile
 
 _CANDIDATE = CandidateIdentity(kind="git-tree", value="c" * 40)
@@ -603,23 +603,26 @@ def test_content_store_is_exact_atomic_bounded_and_has_no_historical_lookup(
         ),
     )
 
-    path = store.publish_admission(scenario.admission)
-    assert store.load_admission(scenario.admission.admissionDigest) == scenario.admission
-    assert store.publish_result_manifest(red).is_file()
+    path = store.publish(scenario.admission)
+    assert (
+        store.load(CertificationAdmissionManifest, scenario.admission.admissionDigest)
+        == scenario.admission
+    )
+    assert store.publish(red).is_file()
     with ThreadPoolExecutor(max_workers=4) as pool:
-        paths = tuple(pool.map(lambda _: store.publish_admission(scenario.admission), range(8)))
+        paths = tuple(pool.map(lambda _: store.publish(scenario.admission), range(8)))
     assert set(paths) == {path}
 
     with pytest.raises(CertificationContractError) as caught:
-        store.load_admission("f" * 64)
+        store.load(CertificationAdmissionManifest, "f" * 64)
     assert _finding_codes(caught.value) == {"certificate-object-missing"}
     with pytest.raises(CertificationContractError) as caught:
-        store.load_admission("latest")
+        store.load(CertificationAdmissionManifest, "latest")
     assert _finding_codes(caught.value) == {"certificate-object-digest-invalid"}
 
     path.write_text("{}\n", encoding="utf-8")
     with pytest.raises(CertificationContractError) as caught:
-        store.load_admission(scenario.admission.admissionDigest)
+        store.load(CertificationAdmissionManifest, scenario.admission.admissionDigest)
     assert _finding_codes(caught.value) == {"certificate-object-invalid"}
 
     bounded = ContentAddressedCertificateStore(
@@ -631,9 +634,9 @@ def test_content_store_is_exact_atomic_bounded_and_has_no_historical_lookup(
             reclamationOwner="closeout-operation-owner",
         ),
     )
-    bounded.publish_admission(scenario.admission)
+    bounded.publish(scenario.admission)
     with pytest.raises(CertificationContractError) as caught:
-        bounded.publish_result_manifest(red)
+        bounded.publish(red)
     assert _finding_codes(caught.value) == {"certificate-store-capacity-exceeded"}
 
 
@@ -939,25 +942,27 @@ def test_content_store_all_exact_kinds_and_address_refusals(tmp_path: Path) -> N
         reclamationOwner="closeout-operation-owner",
     )
     store = ContentAddressedCertificateStore(tmp_path / "all-kinds", policy)
-    admission_path = store.publish_admission(scenario.admission)
-    store.publish_result_manifest(red)
-    store.publish_certificate(chain[0])
-    store.publish_finalization(finalization)
-    assert store.load_result_manifest(red.manifestDigest) == red
-    assert store.load_certificate(chain[0].certificateDigest) == chain[0]
-    assert store.load_finalization(finalization.authorityDigest) == finalization
+    admission_path = store.publish(scenario.admission)
+    store.publish(red)
+    store.publish(chain[0])
+    store.publish(finalization)
+    assert store.load(GateResultManifest, red.manifestDigest) == red
+    assert store.load(GateCertificate, chain[0].certificateDigest) == chain[0]
+    assert (
+        store.load(FinalizationCertificateAuthority, finalization.authorityDigest) == finalization
+    )
 
     wrong_address = store.exact_path("admission", "f" * 64)
     wrong_address.parent.mkdir(parents=True)
     wrong_address.write_bytes(admission_path.read_bytes())
     with pytest.raises(CertificationContractError) as caught:
-        store.load_admission("f" * 64)
+        store.load(CertificationAdmissionManifest, "f" * 64)
     assert _finding_codes(caught.value) == {"certificate-object-address-mismatch"}
 
     unsafe_address = store.exact_path("admission", "e" * 64)
     unsafe_address.mkdir(parents=True)
     with pytest.raises(CertificationContractError) as caught:
-        store.load_admission("e" * 64)
+        store.load(CertificationAdmissionManifest, "e" * 64)
     assert _finding_codes(caught.value) == {"certificate-object-unsafe"}
 
 
@@ -974,14 +979,14 @@ def test_content_store_refuses_publication_and_capacity_corruption(
         reclamationOwner="closeout-operation-owner",
     )
     seed = ContentAddressedCertificateStore(tmp_path / "seed", policy)
-    admission_size = seed.publish_admission(scenario.admission).stat().st_size
+    admission_size = seed.publish(scenario.admission).stat().st_size
 
     collision = ContentAddressedCertificateStore(tmp_path / "collision", policy)
     collision_path = collision.exact_path("admission", scenario.admission.admissionDigest)
     collision_path.parent.mkdir(parents=True)
     collision_path.write_text("{}\n", encoding="utf-8")
     with pytest.raises(CertificationContractError) as caught:
-        collision.publish_admission(scenario.admission)
+        collision.publish(scenario.admission)
     assert _finding_codes(caught.value) == {"content-address-collision"}
 
     readback = ContentAddressedCertificateStore(tmp_path / "readback", policy)
@@ -993,7 +998,7 @@ def test_content_store_refuses_publication_and_capacity_corruption(
     with monkeypatch.context() as patch:
         patch.setattr(store_module, "atomic_write_bytes", write_corrupt_bytes)
         with pytest.raises(CertificationContractError) as caught:
-            readback.publish_admission(scenario.admission)
+            readback.publish(scenario.admission)
     assert _finding_codes(caught.value) == {"certificate-object-readback-mismatch"}
 
     unsafe_capacity_root = tmp_path / "unsafe-capacity"
@@ -1001,16 +1006,16 @@ def test_content_store_refuses_publication_and_capacity_corruption(
     unsafe_object.mkdir(parents=True)
     unsafe_capacity = ContentAddressedCertificateStore(unsafe_capacity_root, policy)
     with pytest.raises(CertificationContractError) as caught:
-        unsafe_capacity.publish_admission(scenario.admission)
+        unsafe_capacity.publish(scenario.admission)
     assert _finding_codes(caught.value) == {"certificate-store-object-invalid"}
 
     byte_bounded = ContentAddressedCertificateStore(
         tmp_path / "byte-bounded",
         policy.model_copy(update={"scopeId": "byte-bounded", "maxBytes": admission_size + 1}),
     )
-    byte_bounded.publish_admission(scenario.admission)
+    byte_bounded.publish(scenario.admission)
     with pytest.raises(CertificationContractError) as caught:
-        byte_bounded.publish_result_manifest(red)
+        byte_bounded.publish(red)
     assert _finding_codes(caught.value) == {"certificate-store-capacity-exceeded"}
 
     empty_bounded = ContentAddressedCertificateStore(
@@ -1018,5 +1023,5 @@ def test_content_store_refuses_publication_and_capacity_corruption(
         policy.model_copy(update={"scopeId": "empty-bounded", "maxBytes": 1}),
     )
     with pytest.raises(CertificationContractError) as caught:
-        empty_bounded.publish_admission(scenario.admission)
+        empty_bounded.publish(scenario.admission)
     assert _finding_codes(caught.value) == {"certificate-store-capacity-exceeded"}

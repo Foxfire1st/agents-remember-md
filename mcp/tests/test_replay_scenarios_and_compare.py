@@ -12,7 +12,6 @@ from typing import Any, cast
 
 import pytest
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import GateId, RailIdentity
 from agents_remember.certification.replay.compare import (
     ReplayComparisonInput,
     ReplayComparisonReport,
@@ -42,6 +41,7 @@ from agents_remember.certification.replay.scenarios import (
 )
 from agents_remember.certification.replay.spans import analyze_span_categories
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 _DIGEST = "a" * 64
 _IDENTIFIER = "x" * 40

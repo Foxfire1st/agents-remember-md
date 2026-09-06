@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import NoReturn
 
 from agents_remember.errors import FutureCodeCandidateError, MemoryCandidatePairError
+from agents_remember.models.task_document import CanonicalTaskObservation
 from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.tasks.document_refs import TaskDocumentRefError, TaskDocumentTopology
 from agents_remember.tasks.leaf_doc import resolve_terminal_leaf_doc
@@ -28,7 +29,6 @@ from agents_remember.worktrees.worktree_contract import WorktreeContract
 
 from .errors import ScopeFailure, ScopeUnprovenError
 from .models import (
-    CanonicalTaskObservation,
     GitPathChange,
     GitTreeDelta,
     ScopeCandidateIdentity,

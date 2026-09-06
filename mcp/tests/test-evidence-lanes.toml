@@ -71,6 +71,7 @@ unit-regression = [
   "mcp/tests/test_dispatch_brief.py",
   "mcp/tests/test_docker_runtime_parsers.py",
   "mcp/tests/test_evidence_dependencies.py",
+  "mcp/tests/test_environment_reconstruction.py",
   "mcp/tests/test_execution_graph_indexed_admission.py",
   "mcp/tests/test_execution_graph_render.py",
   "mcp/tests/test_execution_graph_view.py",
@@ -166,6 +167,7 @@ unit-regression = [
   "mcp/tests/test_repository_profile_authority.py",
   "mcp/tests/test_repository_profile_branch_coverage.py",
   "mcp/tests/test_repository_quality_branch_coverage.py",
+  "mcp/tests/test_repository_source_applicability.py",
   "mcp/tests/test_retry_selection.py",
   "mcp/tests/test_semantic_topology_coverage_edges.py",
   "mcp/tests/test_semantic_topology_field_matrix.py",
@@ -207,6 +209,9 @@ unit-regression = [
   "mcp/tests/test_terminal_paste.py",
   "mcp/tests/test_tokens.py",
   "mcp/tests/test_unclaimed_entity_sources.py",
+  "mcp/tests/test_code_certification_execution.py",
+  "mcp/tests/test_dagger_certification_suffix.py",
+  "mcp/tests/test_closeout_certification_recovery.py",
 ]
 
 public-contract = [
@@ -520,6 +525,12 @@ integration = [
   "mcp/tests/test_worktree_support_tests_3.py",
   "mcp/tests/test_worktree_sync.py",
   "mcp/tests/test_worker_child_processes.py",
+  "mcp/tests/test_frozen_certification_store.py",
+  "mcp/tests/test_operation_certification_selection.py",
+  "mcp/tests/test_closeout_certification_admission_recovery.py",
+  "mcp/tests/test_closeout_memory_certification_reuse.py",
+  "mcp/tests/test_closeout_certification_entrypoint.py",
+  "mcp/tests/test_integration_certification_selection.py",
 ]
 
 architecture-fitness = [

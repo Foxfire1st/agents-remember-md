@@ -180,7 +180,7 @@ def test_public_control_refuses_fresh_manifest_mismatch_before_journal_mutation(
 def test_integrate_control_revalidates_after_integration_authority_reload(
     tmp_path: Path,
 ) -> None:
-    contract = _integration_source_ready_contract(_contract(tmp_path))
+    contract = _integration_source_ready_contract(_contract(tmp_path, selected_profile=True))
     _closeout_input, _closeout_store, finalized = _publish_mutated_code_generation(contract)
     start_or_observe_operation(
         IntegrateOperationInput(

@@ -56,6 +56,7 @@ from agents_remember.serving.terminal_liveness import (
 from agents_remember.serving.terminal_paste import TerminalPaster
 from agents_remember.tasks import read_task_doc
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import (
+    operation_key,
     operation_state_fingerprint,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
@@ -67,7 +68,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     LifecycleOperationStore,
 )
-from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import operation_key
 from agents_remember.worktrees.task_leaf_binding import (
     LeafTaskBinding,
     TaskLeafBindingError,

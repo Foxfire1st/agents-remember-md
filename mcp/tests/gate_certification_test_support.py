@@ -20,6 +20,7 @@ import tempfile
 from pathlib import Path
 
 from agents_remember.certification.certification_lane import compile_certification_lane
+from agents_remember.certification.digests import content_digest
 from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles.authority import (
     load_repository_profile,
@@ -32,6 +33,9 @@ from agents_remember.certification.repository_profiles.planning import (
     compile_repository_profile_plan,
     resolve_repository_profile_selection,
 )
+from agents_remember.certification.repository_profiles.source_selection.git import (
+    observe_profile_source_selection,
+)
 from agents_remember.memory_quality.gate_five_rails import gate_five_memory_rails
 from agents_remember.models.test_evidence import _certifying_evidence_from_verified_dagger
 from agents_remember.worktrees.modules.quality import certification_records, clean_executor
@@ -41,6 +45,7 @@ from agents_remember.worktrees.modules.quality.clean_executor import (
 from agents_remember.worktrees.modules.quality.published_manifest import (
     load_published_quality_manifest,
 )
+from repository_profile_test_support import fixture_environment_census
 
 _REPOSITORY_ID = "agents-remember"
 _PROFILE_REFERENCE = Path("mcp/certification-profile-v1.json")
@@ -71,7 +76,7 @@ def _checkout_with_profile(root: Path) -> Path:
     return root
 
 
-def _lane_for(root: Path, mode: ProfileMode = "targeted"):
+def _lane_for(root: Path, mode: ProfileMode = "targeted", *, diff_base: str | None = None):
     admitted = load_repository_profile(_REPOSITORY_ID, root, _PROFILE_REFERENCE.as_posix())
     candidate_tree = _git(root, "write-tree")
     candidate = CandidateIdentity(kind="git-tree", value=candidate_tree)
@@ -79,7 +84,15 @@ def _lane_for(root: Path, mode: ProfileMode = "targeted"):
         admitted.canonical, purpose="closeout", mode=mode
     )
     repository_plan = compile_repository_profile_plan(
-        admitted.canonical, selection_id=selection.selectionId, candidate_identity=candidate
+        admitted.canonical,
+        selection_id=selection.selectionId,
+        candidate_identity=candidate,
+        source_selection=observe_profile_source_selection(
+            admitted,
+            selection,
+            candidate,
+            diff_base or _git(root, "rev-parse", "HEAD"),
+        ),
     )
     lane = compile_certification_lane(
         admitted.canonical,
@@ -97,8 +110,10 @@ def _artifact_paths() -> dict[str, str]:
     return runpy.run_path(str(source))["ARTIFACT_FILE_PATHS"]
 
 
-def _fixture_record(relative: str, exported: Path | None) -> dict[str, object]:
-    payload = f"fixture report {relative}\n".encode()
+def _fixture_record(
+    relative: str, exported: Path | None, *, contents: bytes | None = None
+) -> dict[str, object]:
+    payload = contents if contents is not None else f"fixture report {relative}\n".encode()
     if exported is not None:
         path = exported / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,15 +121,89 @@ def _fixture_record(relative: str, exported: Path | None) -> dict[str, object]:
     return {"sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)}
 
 
-def _gate_catalog(lane, exported: Path | None = None) -> list[dict[str, object]]:
+def _gate_catalog(
+    lane,
+    exported: Path | None = None,
+    *,
+    supplemental_artifact_paths: dict[str, str] | None = None,
+) -> list[dict[str, object]]:
     """Fixture run payload: every planned applicable rail passes and binds the
     per-rail evidence/artifact records the R11 manifest contract requires."""
     catalog: list[dict[str, object]] = []
+    source_decisions = {
+        node.inputId: json.loads(node.canonicalJson)
+        for gate in lane.repositoryPlan.gates
+        for node in gate.semanticInputs
+        if node.inputKind == "source-applicability"
+    }
+    for decision in source_decisions.values():
+        _fixture_record(
+            decision["declaration"]["evidencePath"],
+            exported,
+            contents=(
+                json.dumps(decision, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                + "\n"
+            ).encode(),
+        )
+    environment_definitions = [
+        json.loads(node.canonicalJson)
+        for node in lane.repositoryPlan.gates[0].semanticInputs
+        if node.inputKind == "environment-reconstruction"
+    ]
+    artifact_paths = {
+        **_artifact_paths(),
+        **(supplemental_artifact_paths or {}),
+        **{item["artifactId"]: item["manifestPath"] for item in environment_definitions},
+    }
+    environment_payloads = {}
+    for item in environment_definitions:
+        producer = next(
+            rail
+            for rail in lane.certificationPlan.gates[0].rails
+            if rail.identity.model_dump(mode="json") == item["producerRail"]
+        )
+        request = {
+            "definition": item,
+            "candidateIdentity": lane.repositoryPlan.candidateIdentity.model_dump(mode="json"),
+            "runtimeDigest": content_digest(producer.runtimeInputs),
+        }
+        environment_payloads[item["artifactId"]] = (
+            json.dumps(fixture_environment_census(request)) + "\n"
+        ).encode()
     for gate_plan in lane.certificationPlan.gates:
         if gate_plan.gate == 5:
             continue
         rails = []
         for rail in gate_plan.rails:
+            if rail.applicability.status == "not-applicable":
+                decision = source_decisions[rail.identity.key]
+                proof = (
+                    json.dumps(decision, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    + "\n"
+                ).encode()
+                reference = decision["declaration"]["evidencePath"]
+                rails.append(
+                    {
+                        "identity": rail.identity.model_dump(mode="json"),
+                        "key": rail.identity.key,
+                        "gate": gate_plan.gate,
+                        "posture": rail.posture,
+                        "status": "not-applicable",
+                        "started": False,
+                        "zeroStart": True,
+                        "exitCode": None,
+                        "artifacts": [],
+                        "evidence": [
+                            {
+                                "evidenceId": item.evidenceId,
+                                "reference": reference,
+                                **_fixture_record(reference, exported, contents=proof),
+                            }
+                            for item in rail.evidenceContract
+                        ],
+                    }
+                )
+                continue
             evidence_path = f"rail-evidence/{rail.identity.key}.log"
             evidence = [
                 {
@@ -127,8 +216,12 @@ def _gate_catalog(lane, exported: Path | None = None) -> list[dict[str, object]]
             artifacts = [
                 {
                     "artifactId": item.artifactId,
-                    **_fixture_record(_artifact_paths()[item.artifactId], exported),
-                    "evidenceRef": _artifact_paths()[item.artifactId],
+                    **_fixture_record(
+                        artifact_paths[item.artifactId],
+                        exported,
+                        contents=environment_payloads.get(item.artifactId),
+                    ),
+                    "evidenceRef": artifact_paths[item.artifactId],
                 }
                 for item in rail.outputArtifacts
             ]
@@ -182,6 +275,7 @@ def _green_outcome_factory(worktree_group: Path, lane, candidate_tree: str):
                 purpose="closeout",
                 mode=request.mode,
                 candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
+                source_selection=lane.repositoryPlan.sourceSelection,
             )
             clean_executor._publish_reports(  # type: ignore[attr-defined]
                 exported,

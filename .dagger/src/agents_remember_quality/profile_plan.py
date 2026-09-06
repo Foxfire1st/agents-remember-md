@@ -9,54 +9,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
-def _digest(value: object) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _object(value: object, path: str) -> dict[str, Any]:
-    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
-        raise ValueError(f"{path} must be a JSON object")
-    return value
-
-
-def _array(value: object, path: str) -> list[Any]:
-    if not isinstance(value, list):
-        raise ValueError(f"{path} must be a JSON array")
-    return value
-
-
-def _string(value: object, path: str) -> str:
-    if not isinstance(value, str) or not value or value != value.strip():
-        raise ValueError(f"{path} must be a nonblank unpadded string")
-    return value
-
-
-def _integer(value: object, path: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"{path} must be an integer")
-    return value
-
-
-def _safe_relative(value: object, path: str, *, file: bool = False) -> str:
-    resolved = _string(value, path)
-    if resolved == "." and not file:
-        return resolved
-    parts = resolved.split("/")
-    if (
-        resolved.startswith(("/", "\\"))
-        or "\\" in resolved
-        or (len(parts[0]) >= 2 and parts[0][1] == ":")
-        or any(part in {"", ".", ".."} for part in parts)
-    ):
-        raise ValueError(f"{path} must be a confined repository-relative POSIX path")
-    return resolved
+from agents_remember_quality.applicability.runtime import validate_source_decisions
+from agents_remember_quality.contract_json import (
+    _array,
+    _digest,
+    _integer,
+    _object,
+    _safe_relative,
+    _string,
+)
+from agents_remember_quality.resume_contract import FrozenResume, read_resume
 
 
 @dataclass(frozen=True)
@@ -71,6 +33,9 @@ class FrozenRail:
     runtime: dict[str, Any]
     evidence_contract: tuple[dict[str, Any], ...]
     output_artifacts: tuple[dict[str, Any], ...]
+    applicability: dict[str, Any]
+    source_selection: dict[str, Any] | None
+    environments: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -103,12 +68,14 @@ class FrozenProfilePlan:
     candidate_value: str
     selection_id: str
     mode: str
+    diff_base: str
     gate_plans: tuple[FrozenGatePlan, ...]
     selectors: tuple[FrozenSelector, ...]
     executor: dict[str, Any]
     decoder: dict[str, Any]
     published_artifacts: tuple[dict[str, Any], ...]
     runtime_authority_digest: str | None
+    resume: FrozenResume | None = None
 
     @property
     def rails(self) -> tuple[FrozenRail, ...]:
@@ -139,7 +106,7 @@ def load_execution_manifest(raw: str) -> FrozenProfilePlan:
     gate_plans = _read_plan_gates(identity, nodes)
     executor, decoder, published = _read_shared_contracts(manifest, nodes)
     selectors = _read_selectors(nodes)
-    return FrozenProfilePlan(
+    frozen = FrozenProfilePlan(
         profile_digest=identity.profile_digest,
         plan_digest=_string(identity.plan.get("planDigest"), "manifest.profilePlan.planDigest"),
         candidate_kind=identity.candidate_kind,
@@ -149,13 +116,17 @@ def load_execution_manifest(raw: str) -> FrozenProfilePlan:
             "manifest.profilePlan.selectionId",
         ),
         mode=identity.mode,
+        diff_base=_string(manifest.get("diffBase"), "manifest.diffBase"),
         gate_plans=tuple(gate_plans),
         selectors=selectors,
         executor=executor,
         decoder=decoder,
         published_artifacts=published,
         runtime_authority_digest=_read_runtime_authority(manifest),
+        resume=read_resume(manifest),
     )
+    validate_source_decisions(frozen, identity.plan.get("sourceSelection"))
+    return frozen
 
 
 def _read_plan_identity(manifest: dict[str, Any]) -> _PlanIdentity:
@@ -192,6 +163,9 @@ def _read_plan_gates(
     for gate_id, raw_gate in enumerate(gates, start=1):
         gate = _object(raw_gate, f"manifest.profilePlan.gates.{gate_id}")
         _verify_gate_digest(gate, gate_id)
+        candidate = _object(gate.get("candidateIdentity"), f"Gate {gate_id} candidateIdentity")
+        if candidate != identity.plan["candidateIdentity"]:
+            raise ValueError(f"Gate {gate_id} candidate differs from the admitted plan")
         if gate.get("profileDigest") != identity.profile_digest:
             raise ValueError(f"Gate {gate_id} names another admitted profile")
         gate_plans.append(_freeze_gate_plan(gate, gate_id, _read_gate_nodes(gate, gate_id, nodes)))
@@ -357,7 +331,10 @@ def _read_gate_rails(
     ordered_keys = _gate_wave_keys(gate, gate_id)
     if set(ordered_keys) != set(rail_by_key) or len(ordered_keys) != len(rail_by_key):
         raise ValueError("gate waves do not cover the exact declared rail population")
-    return [_freeze_rail(key, rail_by_key[key], gate_id, nodes) for key in ordered_keys]
+    return [
+        _freeze_rail(key, rail_by_key[key], gate_id, nodes, gate["candidateIdentity"])
+        for key in ordered_keys
+    ]
 
 
 def _gate_rail_catalog(gate: dict[str, Any], gate_id: int) -> dict[str, dict[str, Any]]:
@@ -389,6 +366,7 @@ def _freeze_rail(
     rail: dict[str, Any],
     gate_id: int,
     nodes: dict[tuple[str, str], dict[str, Any]],
+    candidate: dict[str, Any],
 ) -> FrozenRail:
     execution_node = nodes.get(("rail-execution", key))
     runtime_node = nodes.get(("rail-runtime", key))
@@ -418,7 +396,36 @@ def _freeze_rail(
         runtime=runtime,
         evidence_contract=_read_evidence_contract(rail, key),
         output_artifacts=_read_output_artifacts(rail, key),
+        applicability=_object(rail.get("applicability"), f"rail.{key}.applicability"),
+        source_selection=(
+            _object(nodes[("source-applicability", key)]["content"], f"rail.{key}.sourceSelection")
+            if ("source-applicability", key) in nodes
+            else None
+        ),
+        environments=tuple(
+            _environment_request(node["content"], candidate, runtime)
+            for (kind, _), node in nodes.items()
+            if kind == "environment-reconstruction"
+            and node["content"]["producerRail"] == rail["identity"]
+        ),
     )
+
+
+def _environment_request(definition, candidate, runtime):
+    """Confine environment addresses before they can become container paths."""
+    environment_id = _safe_relative(
+        definition.get("environmentId"), "environment.environmentId", file=True
+    )
+    if "/" in environment_id:
+        raise ValueError("environment.environmentId must be one filename component")
+    for field in ("manifestPath", "reconstructionProofPath"):
+        _safe_relative(definition.get(field), f"environment.{field}", file=True)
+    _safe_relative(definition.get("workingDirectory"), "environment.workingDirectory")
+    return {
+        "definition": definition,
+        "candidateIdentity": candidate,
+        "runtimeDigest": _digest(runtime),
+    }
 
 
 def _read_evidence_contract(rail: dict[str, Any], key: str) -> tuple[dict[str, Any], ...]:
@@ -525,7 +532,7 @@ def module_runtime_digest(root: Path | None = None) -> str:
     source_root = (root or Path(__file__).resolve().parent).resolve()
     sources = {
         path.relative_to(source_root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in sorted(source_root.glob("*.py"))
+        for path in sorted(source_root.rglob("*.py"))
     }
     if not sources:
         raise ValueError("repository Dagger adapter contains no runtime sources")

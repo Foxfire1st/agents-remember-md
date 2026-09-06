@@ -17,13 +17,11 @@ from agents_remember.certification.certificate_models import (
 )
 from agents_remember.certification.digests import content_digest
 from agents_remember.certification.lifecycle_models import (
-    CorrectiveInputChange,
     ExactCandidateObservation,
     LifecycleAdmissionManifest,
     LifecycleAdmissionSemanticEnvelope,
     PriorRedDispositionManifest,
     PriorRedDispositionSemanticEnvelope,
-    RedCatalogDisposition,
 )
 from agents_remember.certification.models import (
     CanonicalRailRegistry,
@@ -36,6 +34,10 @@ from agents_remember.certification.repository_profiles.models import (
     RepositoryProfilePlan,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.corrective import (
+    CorrectiveInputChange,
+    RedCatalogDisposition,
+)
 
 
 @dataclass(frozen=True)

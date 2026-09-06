@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
+from agents_remember.models.lifecycles.operation import LifecycleOperationKind
 from agents_remember.worktrees.worktree_contract import (
     WorktreeContract,
     contract_publication_text,
@@ -36,3 +38,8 @@ def closeout_contract_sha256(contract: WorktreeContract) -> str:
 
     published = contract_publication_text(contract.contract_path, contract)
     return hashlib.sha256(published.encode("utf-8")).hexdigest()
+
+
+def operation_key(contract_path: Path, kind: LifecycleOperationKind, fingerprint: str) -> str:
+    identity = f"{contract_path.resolve().as_posix()}\0{kind}\0{fingerprint}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()

@@ -44,11 +44,16 @@ from agents_remember.worktrees.worktree_contract import (
 )
 from closeout_input_test_support import (
     closeout_operation_input,
+    ensure_fixture_waiting_door,
     start_closeout_operation,
 )
 from integration_branch_authority_test_support import (
     _authority_fixture,
     _closed_external_leaf_worktrees,
+)
+from selected_lifecycle_test_support import (
+    declare_selected_candidate,
+    selected_closeout_operation_input,
 )
 from test_closeout_input_boundary import _bytes_under, _git_facts
 from test_lifecycle_operations import _contract
@@ -174,6 +179,7 @@ def test_noop_finalization_retry_observes_the_same_generation(
     )
     accepted = store.read()
     assert accepted is not None
+    assert (accepted.certification is None) == (case == "series")
     before = store.path.read_bytes()
     launcher = mock.Mock()
 
@@ -195,6 +201,34 @@ def test_noop_finalization_retry_observes_the_same_generation(
     assert store.path.read_bytes() == before
     launcher.assert_not_called()
     assert runtime.store.path == store.path
+
+
+@pytest.mark.parametrize("side", ["code", "memory"])
+def test_series_admission_refuses_dirty_workbench_without_claim(
+    tmp_path: Path,
+    side: str,
+) -> None:
+    contract, config_path, _ = _generation_case(tmp_path, "series")
+    workbench = contract.code_repo_path if side == "code" else contract.memory_repo_path
+    branch = contract.code_work_branch if side == "code" else contract.memory_work_branch
+    assert workbench is not None
+    _git(workbench, "switch", branch)
+    contract, _ = ensure_fixture_waiting_door(contract)
+    operation_input = closeout_operation_input(contract, config_path=config_path)
+    (workbench / "unlanded-change.txt").write_text("must land through a leaf\n")
+    before_contract = contract.contract_path.read_bytes()
+    journal = operation_record_path(contract.worktree_group, "closeout")
+    before_journal = journal.read_bytes() if journal.exists() else None
+    before_git = _git_facts(workbench)
+    launcher = mock.Mock()
+
+    with pytest.raises(RuntimeError, match="series/master closeout cannot create"):
+        start_closeout_operation(operation_input, launcher=launcher)
+
+    launcher.assert_not_called()
+    assert contract.contract_path.read_bytes() == before_contract
+    assert (journal.read_bytes() if journal.exists() else None) == before_journal
+    assert _git_facts(workbench) == before_git
 
 
 @pytest.mark.parametrize("case", ["external-mapped"])
@@ -402,7 +436,7 @@ def test_candidate_advancement_cannot_replace_completed_unintegrated_generation(
 def test_completed_mutated_generation_retains_intent_and_requires_explicit_disposition(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     operation_input, store, finalized = _publish_mutated_code_generation(contract)
 
     observed = start_closeout_operation(operation_input, launcher=lambda *_: None)
@@ -441,7 +475,7 @@ def test_completed_mutated_generation_retains_intent_and_requires_explicit_dispo
 def _publish_mutated_code_generation(contract):
     candidate = contract.code_worktree / "retained-generation.txt"
     candidate.write_text("retained\n", encoding="utf-8")
-    operation_input = closeout_operation_input(contract, code="close retained generation")
+    operation_input = selected_closeout_operation_input(contract, code="close retained generation")
     start_closeout_operation(operation_input, launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -505,7 +539,7 @@ def _git(repository: Path, *args: str) -> str:
 
 def _generation_case(root: Path, case: str):
     if case == "ordinary-internal":
-        contract = _contract(root)
+        contract = declare_selected_candidate(_contract(root, selected_profile=True))
         return (
             contract,
             contract.code_repo_path.parent / "settings.json",
@@ -551,6 +585,7 @@ def _generation_case(root: Path, case: str):
             commit_approval_note="",
         )
         write_contract(contract.contract_path, contract)
+        contract = declare_selected_candidate(contract, config_path=fixture.config_path)
         return (
             contract,
             fixture.config_path,

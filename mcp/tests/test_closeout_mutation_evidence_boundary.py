@@ -16,6 +16,7 @@ from agents_remember.application.worktree_tools import (
     worktree_operation_control_tool,
     worktree_status_tool,
 )
+from agents_remember.errors import CertificationContractError
 from agents_remember.kernel.git_command import run_git
 from agents_remember.kernel.memory_ledger import (
     ledger_to_text,
@@ -61,6 +62,9 @@ from agents_remember.worktrees.modules.args import WorktreeArgs
 from agents_remember.worktrees.modules.models import WorktreeCommandResult
 from agents_remember.worktrees.queue.closeout_recovery import resume_external_commits
 from agents_remember.worktrees.worktree_contract import load_contract
+from closeout_fixture_test_support import (
+    running_code_operation as _running_code_operation,
+)
 from closeout_fixture_test_support import selected_fixture
 from closeout_input_test_support import (
     MutationEvidenceRecorder,
@@ -68,7 +72,8 @@ from closeout_input_test_support import (
     closeout_worktree_args,
     start_closeout_operation,
 )
-from test_closeout_queue import MASTER_A
+from test_closeout_certification_entrypoint import _review_and_declare
+from test_closeout_queue import MASTER_A, QueueFixture
 from test_worktree_support import git
 
 
@@ -85,12 +90,22 @@ def test_direct_closeout_apply_without_journal_authority_refuses_before_route_or
 
     with (
         mock.patch.object(closeout_module, "_closeout_contract") as contract_route,
-        pytest.raises(RuntimeError, match="journaled worktree_closeout_apply operation") as raised,
+        mock.patch.object(closeout_module, "_closeout_commit_phase") as commit_action,
+        mock.patch.object(closeout_module, "require_closeout_mutation_authority") as claim,
+        pytest.raises(CertificationContractError) as raised,
     ):
         closeout_module.closeout_result(args, contract)
 
-    assert str(raised.value) == JOURNALED_CLOSEOUT_REQUIRED
+    assert raised.value.findings == (
+        {
+            "code": "selected-closeout-operation-required",
+            "path": str(contract.contract_path),
+            "gateStarts": 0,
+        },
+    )
     contract_route.assert_not_called()
+    commit_action.assert_not_called()
+    claim.assert_not_called()
 
 
 def test_generic_lifecycle_start_cannot_bypass_raw_closeout_admission(tmp_path: Path) -> None:
@@ -374,6 +389,10 @@ def test_reconciliation_distinguishes_unchanged_ambiguous_and_proven_output(
 
     ambiguous = _intent_record(tmp_path / f"{leg}-ambiguous", leg=leg, prepare_output=True)
     ambiguous_repo = Path(ambiguous.mutationEvidence[leg].repository)
+    if leg == "code":
+        # Selected admission already stages code. A later unknown index change, rather
+        # than restaging those same bytes, supplies the genuinely ambiguous observation.
+        (ambiguous_repo / "unproven-output.py").write_text("VALUE = 'unproven'\n")
     git(ambiguous_repo, "add", "-A")
     ambiguous_result = reconcile_closeout_mutations(ambiguous)
     assert ambiguous_result[leg].state == "mutation-intent"
@@ -391,13 +410,15 @@ def test_reconciliation_distinguishes_unchanged_ambiguous_and_proven_output(
 
 
 def test_reconciliation_preserves_bound_output_after_exact_restore(tmp_path: Path) -> None:
-    fixture = selected_fixture(tmp_path, memory_mode="external")
+    fixture = QueueFixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
-    assert contract.memory_worktree is not None
-    assert contract.ledger_path is not None
+    assert contract.memory_worktree is not None and contract.ledger_path is not None
     repository = contract.memory_worktree
     git(repository, "add", "-A")
     git(repository, "commit", "-m", "prepare memory content before ledger")
+    _review_and_declare(fixture)
+    contract = fixture.contracts[MASTER_A]
+    assert contract.memory_worktree is not None and contract.ledger_path is not None
     operation_input = closeout_operation_input(
         contract,
         config_path=fixture.config_path,
@@ -406,7 +427,6 @@ def test_reconciliation_preserves_bound_output_after_exact_restore(tmp_path: Pat
     start_closeout_operation(
         operation_input,
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -454,13 +474,16 @@ def test_public_recover_finishes_ordinary_external_ledger_precommit_intent(
     tmp_path: Path,
     stage_intended: bool,
 ) -> None:
-    fixture = selected_fixture(tmp_path, memory_mode="external")
+    fixture = QueueFixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
     assert contract.memory_worktree is not None and contract.ledger_path is not None
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
     git(contract.code_worktree, "add", "-A")
     git(contract.code_worktree, "commit", "-m", "prepare accepted code")
     code_commit = git(contract.code_worktree, "rev-parse", "HEAD")
+    _review_and_declare(fixture)
+    contract = fixture.contracts[MASTER_A]
+    assert contract.memory_worktree is not None and contract.ledger_path is not None
     operation_input = closeout_operation_input(
         contract,
         config_path=fixture.config_path,
@@ -472,7 +495,6 @@ def test_public_recover_finishes_ordinary_external_ledger_precommit_intent(
     start_closeout_operation(
         operation_input,
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -621,10 +643,13 @@ def test_journal_before_ledger_write_retains_only_same_generation_recover(
 
 
 def _journal_before_ledger_write_cut(tmp_path: Path):
-    fixture = selected_fixture(tmp_path, memory_mode="external")
+    fixture = QueueFixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
     assert contract.memory_worktree is not None and contract.ledger_path is not None
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _review_and_declare(fixture)
+    contract = fixture.contracts[MASTER_A]
+    assert contract.memory_worktree is not None and contract.ledger_path is not None
     operation_input = closeout_operation_input(
         contract,
         config_path=fixture.config_path,
@@ -633,7 +658,6 @@ def _journal_before_ledger_write_cut(tmp_path: Path):
     start_closeout_operation(
         operation_input,
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -823,13 +847,16 @@ def test_ordinary_ledger_third_bytes_block_fresh_and_stale_public_recover(
 
 
 def _ordinary_ledger_conflict_fixture(tmp_path: Path, stage_intended: bool):
-    fixture = selected_fixture(tmp_path, memory_mode="external")
+    fixture = QueueFixture(tmp_path, memory_mode="external")
     contract = fixture.contracts[MASTER_A]
     assert contract.memory_worktree is not None and contract.ledger_path is not None
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
     git(contract.code_worktree, "add", "-A")
     git(contract.code_worktree, "commit", "-m", "prepare accepted code")
     code_commit = git(contract.code_worktree, "rev-parse", "HEAD")
+    _review_and_declare(fixture)
+    contract = fixture.contracts[MASTER_A]
+    assert contract.memory_worktree is not None and contract.ledger_path is not None
     operation_input = closeout_operation_input(
         contract,
         config_path=fixture.config_path,
@@ -841,7 +868,6 @@ def _ordinary_ledger_conflict_fixture(tmp_path: Path, stage_intended: bool):
     start_closeout_operation(
         operation_input,
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -1098,24 +1124,8 @@ def test_reconciliation_keeps_intent_when_authorized_repository_is_unreadable(
     assert reconciled == record.mutationEvidence
 
 
-def _running_code_operation(root: Path):
-    fixture = selected_fixture(root, memory_mode="internal")
-    contract = fixture.contracts[MASTER_A]
-    (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
-    operation_input = closeout_operation_input(contract, config_path=fixture.config_path)
-    start_closeout_operation(
-        operation_input,
-        launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
-    )
-    store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
-    runtime = lifecycle_operation_worker.OperationRuntime(store)
-    runtime.start()
-    return contract, operation_input, store, runtime
-
-
 def _intent_record(root: Path, *, leg: CloseoutMutationLeg, prepare_output: bool):
-    fixture = selected_fixture(
+    fixture = QueueFixture(
         root,
         memory_mode="internal" if leg == "code" else "external",
     )
@@ -1127,6 +1137,11 @@ def _intent_record(root: Path, *, leg: CloseoutMutationLeg, prepare_output: bool
     if leg == "ledger":
         git(repository, "add", "-A")
         git(repository, "commit", "-m", "prepare memory content before ledger")
+    _review_and_declare(fixture)
+    contract = fixture.contracts[MASTER_A]
+    if fixture.memory_mode == "external":
+        assert contract.memory_worktree is not None
+        assert contract.ledger_path is not None
     operation_input = closeout_operation_input(
         contract,
         config_path=fixture.config_path,
@@ -1136,7 +1151,6 @@ def _intent_record(root: Path, *, leg: CloseoutMutationLeg, prepare_output: bool
     start_closeout_operation(
         operation_input,
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)

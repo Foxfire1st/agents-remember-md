@@ -15,18 +15,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
-from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles.adapters import (
     DaggerModuleExecutorAdapter,
     JsonExitStatusDecoder,
     RepositoryExecutionRequest,
 )
-from agents_remember.certification.repository_profiles.authority import (
-    load_repository_profile,
-)
 from agents_remember.certification.repository_profiles.execution import (
     AdmittedRepositoryProfileExecution,
-    admit_repository_profile_execution,
 )
 from agents_remember.certification.repository_profiles.models import (
     JsonExitStatusDecoderDefinition,
@@ -64,6 +59,11 @@ from agents_remember.worktrees.modules.quality.dagger_authority import (
     default_registry_root,
     owner_identity,
     release_dagger_authority,
+)
+from agents_remember.worktrees.modules.quality.execution.models import CodeCertificationExecution
+from agents_remember.worktrees.modules.quality.execution.sandbox import (
+    _admit_prepared_profile,
+    _write_sandbox_manifest,
 )
 from agents_remember.worktrees.modules.quality.published_manifest import (
     QUALITY_MANIFEST_SCHEMA_VERSION,
@@ -103,6 +103,9 @@ class CleanQualityRequest:
     diff_base: str
     memory_cap_bytes: int | None = None
     attestation: Mapping[str, str] | None = None
+    execution: CodeCertificationExecution | None = None
+    protected_generations: Callable[[], frozenset[str]] | None = None
+    authorize_start: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +168,10 @@ def run_clean_quality(
     for path in (request.code_worktree, request.worktree_group):
         if reason := windows_interop_reason(path):
             raise RuntimeError(f"clean quality refuses {path}: {reason}")
+    if not request.diff_base or request.diff_base != request.diff_base.strip():
+        raise ValueError("diff_base must name the explicit acceptance comparison commit")
+    if request.execution is not None:
+        request.execution.validate()
     admitted = authority
     registry: AuthorityRegistry | None = None
     if admitted is None:
@@ -173,32 +180,33 @@ def run_clean_quality(
             registry=registry,
             owner_factory=lambda snapshot: _quality_owner(request, snapshot),
         )
-    prepared = _prepare_sandbox(request)
-    source = prepared.root / "source"
-    profile_execution = _admit_prepared_profile(request, prepared)
-    _write_sandbox_manifest(request, prepared, profile_execution, admitted)
-    env, command = _executor_command(
-        request,
-        prepared,
-        profile_execution,
-        executor_resolver=executor_resolver,
-        authority=admitted,
-    )
-    execute = runner or (
-        lambda command, cwd, command_env: _stream_dagger(
-            command,
-            cwd,
-            command_env,
-            progress_path=request.worktree_group / "reports" / "dagger-progress.log",
-        )
-    )
-    atomic_write_text(request.worktree_group / "reports" / "dagger-progress.log", "")
-    _write_current(
-        request.worktree_group,
-        "executor",
-        f"start admitted repository adapter {profile_execution.executor.adapterId}",
-    )
     try:
+        prepared = _prepare_sandbox(request)
+        source = prepared.root / "source"
+        profile_execution = _admit_prepared_profile(request, prepared)
+        _write_sandbox_manifest(request, prepared, profile_execution, admitted)
+        env, command = _executor_command(
+            request,
+            prepared,
+            profile_execution,
+            executor_resolver=executor_resolver,
+            authority=admitted,
+        )
+        execute = runner or (
+            lambda command, cwd, command_env: _stream_dagger(
+                command,
+                cwd,
+                command_env,
+                progress_path=request.worktree_group / "reports" / "dagger-progress.log",
+            )
+        )
+        atomic_write_text(request.worktree_group / "reports" / "dagger-progress.log", "")
+        _write_current(
+            request.worktree_group,
+            "executor",
+            f"start admitted repository adapter {profile_execution.executor.adapterId}",
+        )
+        _authorize_executor_start(request)
         try:
             exported = execute(
                 command,
@@ -226,6 +234,7 @@ def run_clean_quality(
             _ReportBindings(
                 attestation=request.attestation,
                 runtime_authority_digest=admitted.snapshot_digest,
+                protected_generations=request.protected_generations,
             ),
         )
     finally:
@@ -233,21 +242,12 @@ def run_clean_quality(
             release_dagger_authority(admitted, registry=registry)
 
 
-def _admit_prepared_profile(
-    request: CleanQualityRequest,
-    prepared: _PreparedSandbox,
-) -> AdmittedRepositoryProfileExecution:
-    admitted = load_repository_profile(
-        request.repository_id,
-        prepared.root / "source",
-        request.profile_reference,
-    )
-    return admit_repository_profile_execution(
-        admitted,
-        purpose="closeout",
-        mode=request.mode,
-        candidate_identity=CandidateIdentity(kind="git-tree", value=prepared.candidate_tree),
-    )
+def _authorize_executor_start(request: CleanQualityRequest) -> None:
+    """Reobserve current operation authority only after all preparation is complete."""
+    if request.execution is not None and request.authorize_start is None:
+        raise ValueError("selected execution requires current operation launch authority")
+    if request.authorize_start is not None:
+        request.authorize_start()
 
 
 def _executor_command(
@@ -276,9 +276,11 @@ def _executor_command(
             repository_bundle=prepared.root / "candidate.bundle",
             execution_manifest=prepared.root / "manifest.json",
             mode=execution.selection.mode,
-            diff_base=request.diff_base,
             export_root=prepared.root / "export",
             memory_cap_bytes=request.memory_cap_bytes,
+            retained_reports=(prepared.root / "retained-reports")
+            if request.execution is not None and request.execution.first_gate > 1
+            else None,
         ),
     )
     return env, list(command)
@@ -381,42 +383,6 @@ def _prepare_sandbox(request: CleanQualityRequest) -> _PreparedSandbox:
     )
 
 
-def _write_sandbox_manifest(
-    request: CleanQualityRequest,
-    prepared: _PreparedSandbox,
-    execution: AdmittedRepositoryProfileExecution,
-    authority: AdmittedDaggerAuthority,
-) -> None:
-    source = prepared.root / "source"
-    manifest = {
-        "schemaVersion": "repository-certification-admission/v1",
-        "head": prepared.head,
-        "stagedOverlaySha256": prepared.staged_overlay_sha256,
-        "source": request.code_worktree.as_posix(),
-        "bundleSha256": prepared.bundle_sha256,
-        "candidateTree": prepared.candidate_tree,
-        "profile": {
-            "configuredReference": request.profile_reference.as_posix()
-            if request.profile_reference is not None
-            else None,
-            "sourcePath": execution.admitted.source_path.relative_to(source).as_posix(),
-            "sourceSha256": execution.admitted.source_sha256,
-            "profileDigest": execution.admitted.canonical.profileDigest,
-        },
-        "profilePlan": execution.plan.model_dump(mode="json"),
-        "executorAdapter": execution.executor.model_dump(mode="json"),
-        "resultDecoder": execution.decoder.model_dump(mode="json"),
-        "runtimeAuthority": authority.snapshot.as_manifest(),
-        "publishedArtifacts": [
-            artifact.model_dump(mode="json") for artifact in execution.published_artifacts
-        ],
-    }
-    atomic_write_text(
-        prepared.root / "manifest.json",
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-    )
-
-
 def _published_result_sha256(manifest: PublishedQualityManifest) -> str:
     return manifest.require_file(manifest.result_decoder.artifactPath).sha256
 
@@ -445,12 +411,27 @@ class ReportBindings:
         *,
         attestation: Mapping[str, str] | None,
         runtime_authority_digest: str | None,
+        protected_generations: Callable[[], frozenset[str]] | None = None,
     ) -> None:
         self.attestation = attestation
         self.runtime_authority_digest = runtime_authority_digest
+        self.protected_generations = protected_generations
 
 
 _ReportBindings = ReportBindings
+
+
+def _selected_report_protections(bindings: _ReportBindings | None) -> frozenset[str]:
+    """Read and validate the current selection before publication can prune evidence."""
+    if bindings is None or bindings.protected_generations is None:
+        return frozenset()
+    selected = bindings.protected_generations()
+    if not isinstance(selected, frozenset) or any(
+        not isinstance(item, str) or re.fullmatch(r"[0-9a-f]{64}", item) is None
+        for item in selected
+    ):
+        raise ValueError("selected report protections must be a frozen set of generation digests")
+    return selected
 
 
 def _publish_reports(
@@ -517,6 +498,7 @@ def _publish_reports(
     protected = protected_certificate_generations(
         destination, store=certificate_store(destination.parent)
     ) | (frozenset() if previous_generation is None else frozenset({previous_generation}))
+    protected |= _selected_report_protections(bindings)
     _preflight_report_destination(destination, generation_root, **preflight_kwargs)
     _ensure_generation(source, generation_root, files)
     manifest: dict[str, object] = {

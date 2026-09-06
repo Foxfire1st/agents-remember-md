@@ -59,7 +59,7 @@ def _byte_tree(root: Path) -> dict[str, bytes]:
 def test_control_dry_run_projects_dead_sibling_without_publishing_exit(
     tmp_path: Path,
 ) -> None:
-    contract = _integration_source_ready_contract(_contract(tmp_path))
+    contract = _integration_source_ready_contract(_contract(tmp_path, selected_profile=True))
     _operation_input, closeout_store, finalized = _publish_mutated_code_generation(contract)
     start_or_observe_operation(
         IntegrateOperationInput(

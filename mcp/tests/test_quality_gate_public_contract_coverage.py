@@ -45,7 +45,6 @@ from agents_remember.certification.models import (
     CandidateIdentity,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     GateResultAdmission,
     GateResultManifest,
     RailAdapterDefinition,
@@ -55,7 +54,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailPosture,
     RailRegistry,
     RailResult,
@@ -79,6 +77,7 @@ from agents_remember.certification.repository_profiles.models import (
     repository_gate_plan_digest,
 )
 from agents_remember.errors import CloseoutReadinessContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 from pydantic import ValidationError
 
 _CANDIDATE = CandidateIdentity(kind="git-tree", value="c" * 40)
@@ -237,6 +236,7 @@ def _readiness_repository_plan(plan: CertificationPlan) -> RepositoryProfilePlan
         "purpose": "closeout",
         "mode": "targeted",
         "gates": [gate.model_dump(mode="json") for gate in gates],
+        "sourceSelection": None,
     }
     return RepositoryProfilePlan(**payload, planDigest=content_digest(payload))
 

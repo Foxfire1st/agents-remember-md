@@ -1,521 +1,745 @@
 {
-  "schemaVersion": "repository-certification-profile/v1",
-  "semanticRevision": "1.0.0",
-  "repositoryId": "agents-remember",
+  "environments": [
+    {
+      "artifactId": "dashboard-environment-census",
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "consumingGates": [
+        2,
+        3,
+        4
+      ],
+      "directoryScopes": [
+        "dashboard/node_modules",
+        "dashboard/styled-system"
+      ],
+      "environmentId": "dashboard-dependencies",
+      "inspectionExecutable": "/opt/ar-venv/bin/python",
+      "manifestPath": "environment/dashboard.json",
+      "maxBytes": 2147483648,
+      "maxEntries": 100000,
+      "maxFileBytes": 268435456,
+      "maxManifestBytes": 33554432,
+      "producerRail": {
+        "railId": "dashboard-prerequisites",
+        "version": "1.0.0"
+      },
+      "reconstructionProofPath": "environment-reconstruction/dashboard.json",
+      "schemaVersion": "repository-environment-reconstruction/v1",
+      "timeoutSeconds": 1800,
+      "workingDirectory": "dashboard"
+    }
+  ],
+  "executorAdapters": [
+    {
+      "adapterId": "certifying-dagger",
+      "adapterKind": "dagger-module",
+      "consumingGates": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "executable": "dagger",
+      "functionName": "quality",
+      "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+      "memoryCapArgument": "memory-cap-bytes",
+      "planArgument": "execution-manifest",
+      "reportsField": "reports",
+      "repositoryBundleArgument": "repository-bundle",
+      "retainedReportsArgument": "retained-reports",
+      "runtimeDigest": "c3a5108ddf6c1fc519cf6f52bf570bc956c4ac31a045a543e2e05a2ef4383b63",
+      "sourceArgument": "source",
+      "version": "0.21.8"
+    }
+  ],
+  "generatedInputs": [
+    {
+      "checkRail": {
+        "railId": "generated-harness",
+        "version": "1.0.0"
+      },
+      "generatedScopes": [
+        ".agents/GEMINI.md",
+        ".agents/mcp/agents-remember-settings.json",
+        ".agents/render-starter.ps1",
+        ".agents/render-starter.py",
+        ".agents/render-starter.sh",
+        ".claude/hooks/agents-remember-session-start.md",
+        ".claude/hooks/agents-remember-session-start.py",
+        ".claude/mcp/agents-remember-settings.json",
+        ".claude/render-starter.ps1",
+        ".claude/render-starter.py",
+        ".claude/render-starter.sh",
+        ".codex/hooks/agents-remember-session-start.md",
+        ".codex/hooks/agents-remember-session-start.py",
+        ".codex/mcp/agents-remember-settings.json",
+        ".codex/render-starter.ps1",
+        ".codex/render-starter.py",
+        ".codex/render-starter.sh",
+        ".cursor/hooks/agents-remember-session-start.md",
+        ".cursor/hooks/agents-remember-session-start.py",
+        ".cursor/mcp/agents-remember-settings.json",
+        ".cursor/render-starter.ps1",
+        ".cursor/render-starter.py",
+        ".cursor/render-starter.sh",
+        ".cursor/rules/agents-remember.mdc",
+        ".github-vscode/copilot-instructions.md",
+        ".github-vscode/hooks/agents-remember-session-start.md",
+        ".github-vscode/hooks/agents-remember-session-start.py",
+        ".github-vscode/render-starter.ps1",
+        ".github-vscode/render-starter.py",
+        ".github-vscode/render-starter.sh",
+        ".hermes/HERMES.md",
+        ".hermes/mcp/agents-remember-settings.json",
+        ".hermes/render-starter.ps1",
+        ".hermes/render-starter.py",
+        ".hermes/render-starter.sh",
+        ".openclaw/mcp/agents-remember-settings.json",
+        ".openclaw/render-starter.ps1",
+        ".openclaw/render-starter.py",
+        ".openclaw/render-starter.sh",
+        ".openclaw/workspace/AGENTS.md",
+        ".pi/mcp/agents-remember-settings.json",
+        ".pi/render-starter.ps1",
+        ".pi/render-starter.py",
+        ".pi/render-starter.sh",
+        ".vscode/mcp/agents-remember-settings.json"
+      ],
+      "inputId": "generated-harness",
+      "schemaVersion": "generated-candidate-input/v1",
+      "sourceScopes": [
+        "scripts/harness",
+        "scripts/sync-harness.py"
+      ]
+    },
+    {
+      "checkRail": {
+        "railId": "generated-projection-types",
+        "version": "1.0.0"
+      },
+      "generatedScopes": [
+        "dashboard/src/types/projection.schema.json",
+        "dashboard/src/types/projection.ts"
+      ],
+      "inputId": "generated-projection-types",
+      "schemaVersion": "generated-candidate-input/v1",
+      "sourceScopes": [
+        "mcp/src/agents_remember/models",
+        "mcp/src/agents_remember/observer",
+        "mcp/src/agents_remember/serving",
+        "mcp/test_support/agents_remember_test_support/code_quality/projection_types.py",
+        "scripts/sync-projection-types.py"
+      ]
+    },
+    {
+      "checkRail": {
+        "railId": "generated-runtime",
+        "version": "1.0.0"
+      },
+      "generatedScopes": [
+        "mcp/src/agents_remember/package_data/benchmarks",
+        "mcp/src/agents_remember/package_data/runtime/agents-md-files",
+        "mcp/src/agents_remember/package_data/runtime/providers",
+        "mcp/src/agents_remember/package_data/runtime/system"
+      ],
+      "inputId": "generated-runtime",
+      "schemaVersion": "generated-candidate-input/v1",
+      "sourceScopes": [
+        "agents-md-files",
+        "benchmarks",
+        "providers",
+        "scripts/sync-runtime.py",
+        "system"
+      ]
+    },
+    {
+      "checkRail": {
+        "railId": "generated-skills",
+        "version": "1.0.0"
+      },
+      "generatedScopes": [
+        ".agents/skills",
+        ".claude/skills",
+        ".codex/skills",
+        ".cursor/skills",
+        ".github-vscode/skills",
+        ".hermes/skills",
+        ".openclaw/workspace/skills",
+        ".pi/skills",
+        "mcp/src/agents_remember/package_data/runtime/skills"
+      ],
+      "inputId": "generated-skills",
+      "schemaVersion": "generated-candidate-input/v1",
+      "sourceScopes": [
+        "scripts/sync-skills.py",
+        "skills"
+      ]
+    }
+  ],
+  "profileDigest": "da307cd8d609068479ca24c9c0d4c4cadfb6f04f4e215ee5f0170916a7131117",
   "profileId": "agents-remember-certification",
-  "profileDigest": "8a3385ad68a89ebdc1e6ffc64296ad7a2eb7039cd5ba20384790150a60ec498b",
-  "selections": [
+  "publishedArtifacts": [
     {
-      "selectionId": "closeout-full",
-      "purpose": "closeout",
-      "mode": "full",
-      "executorAdapterId": "certifying-dagger",
-      "resultDecoderId": "quality-terminal-result",
-      "gates": [
-        {
-          "gate": 1,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "causal-preflight",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-build",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-codegen",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-lint",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-prerequisites",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-typecheck",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dependency-prerequisites",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "evidence-lifecycle",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "file-size",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-harness",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-projection-types",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-runtime",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-skills",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "layering",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "pyright",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "quality-config-scope",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "radon-cc",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "radon-mi",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "ruff",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "ruff-format",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "runtime-capability",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "test-selection-ownership",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-full:gate-1:v1",
-          "population": "full pre-test quality population",
-          "reason": null
-        },
-        {
-          "gate": 2,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "dashboard-suite",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-suite",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-full:gate-2:v1",
-          "population": "full ordinary suite population",
-          "reason": null
-        },
-        {
-          "gate": 3,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "dashboard-diff-coverage",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-crap",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-diff-coverage",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-full:gate-3:v1",
-          "population": "full post-test quality population",
-          "reason": null
-        },
-        {
-          "gate": 4,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "ambient-role-chat-e2e",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "codex-read-only-probe",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-browser-e2e",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "provider-runtime-integration",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "teardown-process-cleanliness",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-full:gate-4:v1",
-          "population": "full clean-room integration population",
-          "reason": null
-        }
-      ]
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "ambient-role-chat-e2e/run-1.json",
+      "publisherGates": [
+        4
+      ],
+      "required": false
     },
     {
-      "selectionId": "closeout-targeted",
-      "purpose": "closeout",
-      "mode": "targeted",
-      "executorAdapterId": "certifying-dagger",
-      "resultDecoderId": "quality-terminal-result",
-      "gates": [
-        {
-          "gate": 1,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "causal-preflight",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-build",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-codegen",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-lint",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-prerequisites",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-typecheck",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dependency-prerequisites",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "evidence-lifecycle",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "file-size",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-harness",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-projection-types",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-runtime",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-skills",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "layering",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "pyright",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "quality-config-scope",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "radon-cc",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "radon-mi",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "ruff",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "ruff-format",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "runtime-capability",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "test-selection-ownership",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-targeted:gate-1:v1",
-          "population": "targeted pre-test quality population",
-          "reason": null
-        },
-        {
-          "gate": 2,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "dashboard-suite",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-suite",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-targeted:gate-2:v1",
-          "population": "targeted ordinary suite population",
-          "reason": null
-        },
-        {
-          "gate": 3,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "dashboard-diff-coverage",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-crap",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-diff-coverage",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-targeted:gate-3:v1",
-          "population": "targeted post-test quality population",
-          "reason": null
-        },
-        {
-          "gate": 4,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "ambient-role-chat-e2e",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "codex-read-only-probe",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-browser-e2e",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "provider-runtime-integration",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "teardown-process-cleanliness",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "closeout-targeted:gate-4:v1",
-          "population": "targeted clean-room integration population",
-          "reason": null
-        }
-      ]
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "ambient-role-chat-e2e/run-2.json",
+      "publisherGates": [
+        4
+      ],
+      "required": false
     },
     {
-      "selectionId": "local-targeted",
-      "purpose": "local-precommit",
-      "mode": "targeted",
-      "executorAdapterId": "certifying-dagger",
-      "resultDecoderId": "quality-terminal-result",
-      "gates": [
-        {
-          "gate": 1,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "causal-preflight",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-build",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-codegen",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-lint",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-prerequisites",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dashboard-typecheck",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "dependency-prerequisites",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "evidence-lifecycle",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "file-size",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-harness",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-projection-types",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-runtime",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "generated-skills",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "layering",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "pyright",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "quality-config-scope",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "radon-cc",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "radon-mi",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "ruff",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "ruff-format",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "runtime-capability",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "test-selection-ownership",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "local-targeted:gate-1:v1",
-          "population": "targeted pre-test quality population",
-          "reason": null
-        },
-        {
-          "gate": 2,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "dashboard-suite",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-suite",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "local-targeted:gate-2:v1",
-          "population": "targeted ordinary suite population",
-          "reason": null
-        },
-        {
-          "gate": 3,
-          "status": "applicable",
-          "railIds": [
-            {
-              "railId": "dashboard-diff-coverage",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-crap",
-              "version": "1.0.0"
-            },
-            {
-              "railId": "python-diff-coverage",
-              "version": "1.0.0"
-            }
-          ],
-          "selectionIdentity": "local-targeted:gate-3:v1",
-          "population": "targeted post-test quality population",
-          "reason": null
-        },
-        {
-          "gate": 4,
-          "status": "not-applicable",
-          "railIds": [],
-          "selectionIdentity": "local-targeted:gate-4:v1",
-          "population": null,
-          "reason": "Local pre-commit does not enter the clean-room integration environment"
-        }
-      ]
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "ambient-role-chat-e2e/summary.json",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "causal-failures.json",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "text/markdown",
+      "path": "causal-failures.md",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "clean-quality-results.json",
+      "publisherGates": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "required": true
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "codex-probe.json",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 536870912,
+      "mediaType": "application/octet-stream",
+      "path": "coverage.data",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "coverage.json",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "dashboard-coverage.json",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "dashboard-e2e-result.json",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "dashboard-suite-result.json",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "provider-integration-result.json",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/x-ndjson",
+      "path": "pytest-events.jsonl",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "pytest-phases.json",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "python-runtime.json",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "python-venv-runtime.json",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "quality-progress.json",
+      "publisherGates": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/ambient-role-chat-e2e@1.0.0.log",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/causal-preflight@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/codex-read-only-probe@1.0.0.log",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-browser-e2e@1.0.0.log",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-build@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-codegen@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-diff-coverage@1.0.0.log",
+      "publisherGates": [
+        3
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-lint@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-prerequisites@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-suite@1.0.0.log",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dashboard-typecheck@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/dependency-prerequisites@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/evidence-lifecycle@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/file-size@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/generated-harness@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/generated-projection-types@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/generated-runtime@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/generated-skills@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/layering@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/provider-runtime-integration@1.0.0.log",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/pyright@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/python-crap@1.0.0.log",
+      "publisherGates": [
+        3
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/python-diff-coverage@1.0.0.log",
+      "publisherGates": [
+        3
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/python-suite@1.0.0.log",
+      "publisherGates": [
+        2
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/quality-config-scope@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/radon-cc@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/radon-mi@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/ruff-format@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/ruff@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/runtime-capability@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/teardown-process-cleanliness@1.0.0.log",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4194304,
+      "mediaType": "application/octet-stream",
+      "path": "rail-evidence/test-selection-ownership@1.0.0.log",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 134217728,
+      "mediaType": "application/json",
+      "path": "teardown-proof.json",
+      "publisherGates": [
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 33554432,
+      "mediaType": "application/json",
+      "path": "environment/dashboard.json",
+      "publisherGates": [
+        1
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 4096,
+      "mediaType": "application/json",
+      "path": "environment-reconstruction/dashboard.json",
+      "publisherGates": [
+        2,
+        3,
+        4
+      ],
+      "required": false
+    },
+    {
+      "maxBytes": 1000000,
+      "mediaType": "application/json",
+      "path": "source-selection/ambient-role.json",
+      "publisherGates": [
+        4
+      ],
+      "required": true
     }
   ],
   "rails": [
     {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
+      "evidenceContract": [
+        {
+          "evidenceId": "ambient-role-chat-e2e-evidence",
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
+        }
+      ],
+      "execution": {
+        "adapterId": "ambient-role-chat-e2e-adapter",
+        "adapterKind": "container-command",
+        "cleanRoom": true,
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "scripts/e2e_harness/run.py",
+          "--mode",
+          "{selection-mode}",
+          "--diff-base",
+          "{diff-base}",
+          "--reports",
+          "{reports}",
+          "--source-selection",
+          "{source-selection:ambient-role-dependencies}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "executionEvidence": "profile://agents-remember/rails/ambient-role-chat-e2e",
+        "inputSelectors": [],
+        "resourcePolicyId": "clean-room-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
+        "successExitCodes": [
+          0
+        ],
+        "teardownPolicy": "always",
+        "timeoutSeconds": 3600,
+        "workingDirectory": "."
+      },
+      "gate": 4,
       "identity": {
         "railId": "ambient-role-chat-e2e",
         "version": "1.0.0"
       },
-      "gate": 4,
-      "railClass": "integration-test",
-      "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
-      "posture": "enforcing",
       "orderKey": "ambient-role-chat-e2e",
+      "outputArtifacts": [
+        {
+          "artifactId": "ambient-role-summary",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        }
+      ],
+      "ownerClass": "repository-quality",
+      "posture": "enforcing",
       "prerequisites": [
         {
           "railId": "dashboard-diff-coverage",
@@ -530,101 +754,70 @@
           "version": "1.0.0"
         }
       ],
+      "railClass": "integration-test",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
-      "evidenceContract": [
-        {
-          "evidenceId": "ambient-role-chat-e2e-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
-        }
-      ],
-      "outputArtifacts": [
-        {
-          "artifactId": "ambient-role-summary",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
-        }
-      ],
-      "execution": {
-        "adapterKind": "container-command",
-        "adapterId": "ambient-role-chat-e2e-adapter",
-        "workingDirectory": ".",
-        "command": [
-          "/opt/ar-venv/bin/python",
-          "scripts/e2e_harness/run.py",
-          "--mode",
-          "{selection-mode}",
-          "--diff-base",
-          "{diff-base}",
-          "--reports",
-          "{reports}"
+      "sourceApplicability": {
+        "dependencyPrefixes": [
+          ".codex/config.toml",
+          ".dagger/src/agents_remember_quality/",
+          ".dagger/src/agents_remember_quality/main.py",
+          "mcp/certification-profile-v1.json",
+          "mcp/src/agents_remember/application/structural/",
+          "mcp/src/agents_remember/certification/models.py",
+          "mcp/src/agents_remember/certification/repository_profiles/source_selection/",
+          "mcp/src/agents_remember/controlplane/",
+          "mcp/src/agents_remember/kernel/_agentic_settings_",
+          "mcp/src/agents_remember/kernel/agentic_settings.py",
+          "mcp/src/agents_remember/kernel/primitives/checkout_coordination.py",
+          "mcp/src/agents_remember/kernel/primitives/observer_paths.py",
+          "mcp/src/agents_remember/kernel/primitives/runtime_config.py",
+          "mcp/src/agents_remember/mcp/public_surface.py",
+          "mcp/src/agents_remember/mcp/registration/",
+          "mcp/src/agents_remember/mcp/tools/structural_agent.py",
+          "mcp/src/agents_remember/models/conversations/control_wire.py",
+          "mcp/src/agents_remember/models/structural/",
+          "mcp/src/agents_remember/models/task_document_ref.py",
+          "mcp/src/agents_remember/models/terminal_catalog.py",
+          "mcp/src/agents_remember/models/tools/tool_registry.py",
+          "mcp/src/agents_remember/serving/",
+          "mcp/src/agents_remember/tasks/",
+          "mcp/src/agents_remember/worktrees/modules/git.py",
+          "mcp/src/agents_remember/worktrees/source_lineage.py",
+          "mcp/src/agents_remember/worktrees/worktree_contract.py",
+          "mcp/test_support/agents_remember_test_support/testing/dagger_admission.py",
+          "scripts/e2e_harness/",
+          "scripts/harness/",
+          "skills/l-01-agent-lifecycles/"
         ],
-        "environmentContract": [
-          "AR_QUALITY_INVOCATION",
-          "CI",
-          "HOME",
-          "PYTHONPATH",
-          "TMPDIR"
-        ],
-        "scopeProviderId": null,
-        "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 3600,
-        "resourcePolicyId": "clean-room-bounded",
-        "successExitCodes": [
-          0,
-          78
-        ],
-        "skippedExitCodes": [
-          78
-        ],
-        "cleanRoom": true,
-        "teardownPolicy": "always",
-        "executionEvidence": "profile://agents-remember/rails/ambient-role-chat-e2e"
+        "evidencePath": "source-selection/ambient-role.json",
+        "notApplicableReason": "no changed path intersects the declared ambient-role dependency surface",
+        "schemaVersion": "source-path-applicability/v1",
+        "selectorId": "ambient-role-dependencies",
+        "version": "1.0.0"
       }
     },
     {
-      "identity": {
-        "railId": "causal-preflight",
-        "version": "1.0.0"
-      },
-      "gate": 1,
-      "railClass": "pre-test-quality",
-      "ownerClass": "repository-quality",
+      "conditionalPrerequisites": [],
       "correctiveOwner": "repository-quality",
-      "posture": "enforcing",
-      "orderKey": "causal-preflight",
-      "prerequisites": [],
-      "requiredArtifacts": [],
-      "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
-        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
-      },
       "evidenceContract": [
         {
           "evidenceId": "causal-preflight-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "causal-preflight-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -641,73 +834,62 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/causal-preflight",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/causal-preflight"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
+      },
+      "gate": 1,
       "identity": {
-        "railId": "codex-read-only-probe",
+        "railId": "causal-preflight",
         "version": "1.0.0"
       },
-      "gate": 4,
-      "railClass": "integration-test",
-      "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
-      "posture": "enforcing",
-      "orderKey": "codex-read-only-probe",
-      "prerequisites": [
+      "orderKey": "causal-preflight",
+      "outputArtifacts": [
         {
-          "railId": "dashboard-diff-coverage",
-          "version": "1.0.0"
-        },
-        {
-          "railId": "python-crap",
-          "version": "1.0.0"
-        },
-        {
-          "railId": "python-diff-coverage",
-          "version": "1.0.0"
+          "artifactId": "causal-failure-report",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "python-causal-failures/v3"
         }
       ],
+      "ownerClass": "repository-quality",
+      "posture": "enforcing",
+      "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "codex-read-only-probe-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
-        }
-      ],
-      "outputArtifacts": [
-        {
-          "artifactId": "codex-probe-result",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "codex-read-only-probe-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": true,
         "command": [
           "env",
           "AR_CODEX_PROBE_MODE=real",
@@ -726,31 +908,35 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/codex-read-only-probe",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "clean-room-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": true,
         "teardownPolicy": "always",
-        "executionEvidence": "profile://agents-remember/rails/codex-read-only-probe"
-      }
-    },
-    {
-      "identity": {
-        "railId": "dashboard-browser-e2e",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 4,
-      "railClass": "integration-test",
+      "identity": {
+        "railId": "codex-read-only-probe",
+        "version": "1.0.0"
+      },
+      "orderKey": "codex-read-only-probe",
+      "outputArtifacts": [
+        {
+          "artifactId": "codex-probe-result",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        }
+      ],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dashboard-browser-e2e",
       "prerequisites": [
         {
           "railId": "dashboard-diff-coverage",
@@ -765,34 +951,32 @@
           "version": "1.0.0"
         }
       ],
+      "railClass": "integration-test",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
-        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
         "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-browser-e2e-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
-        }
-      ],
-      "outputArtifacts": [
-        {
-          "artifactId": "dashboard-e2e-result",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-browser-e2e-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": true,
         "command": [
           "env",
           "PLAYWRIGHT_JSON_OUTPUT_FILE={reports}/dashboard-e2e-result.json",
@@ -810,58 +994,75 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dashboard-browser-e2e",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 3600,
         "resourcePolicyId": "clean-room-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": true,
         "teardownPolicy": "always",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-browser-e2e"
-      }
-    },
-    {
+        "timeoutSeconds": 3600,
+        "workingDirectory": "dashboard"
+      },
+      "gate": 4,
       "identity": {
-        "railId": "dashboard-build",
+        "railId": "dashboard-browser-e2e",
         "version": "1.0.0"
       },
-      "gate": 1,
-      "railClass": "pre-test-quality",
+      "orderKey": "dashboard-browser-e2e",
+      "outputArtifacts": [
+        {
+          "artifactId": "dashboard-e2e-result",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        }
+      ],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dashboard-build",
       "prerequisites": [
         {
-          "railId": "dashboard-prerequisites",
+          "railId": "dashboard-diff-coverage",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-crap",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-diff-coverage",
           "version": "1.0.0"
         }
       ],
+      "railClass": "integration-test",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-build-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-build-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "npm",
           "run",
@@ -874,58 +1075,60 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dashboard-build",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-build"
-      }
-    },
-    {
-      "identity": {
-        "railId": "dashboard-codegen",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "dashboard"
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "dashboard-build",
+        "version": "1.0.0"
+      },
+      "orderKey": "dashboard-build",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dashboard-codegen",
       "prerequisites": [
         {
           "railId": "dashboard-prerequisites",
           "version": "1.0.0"
         }
       ],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-codegen-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-codegen-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "npm",
           "run",
@@ -938,60 +1141,60 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dashboard-codegen",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-codegen"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "dashboard"
+      },
+      "gate": 1,
       "identity": {
-        "railId": "dashboard-diff-coverage",
+        "railId": "dashboard-codegen",
         "version": "1.0.0"
       },
-      "gate": 3,
-      "railClass": "post-test-quality",
+      "orderKey": "dashboard-codegen",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dashboard-diff-coverage",
       "prerequisites": [
         {
-          "railId": "dashboard-suite",
+          "railId": "dashboard-prerequisites",
           "version": "1.0.0"
         }
       ],
-      "requiredArtifacts": [
-        "dashboard-coverage-data"
-      ],
+      "railClass": "pre-test-quality",
+      "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-diff-coverage-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-diff-coverage-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "npm",
           "run",
@@ -1004,58 +1207,62 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dashboard-diff-coverage",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-diff-coverage"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "dashboard"
+      },
+      "gate": 3,
       "identity": {
-        "railId": "dashboard-lint",
+        "railId": "dashboard-diff-coverage",
         "version": "1.0.0"
       },
-      "gate": 1,
-      "railClass": "pre-test-quality",
+      "orderKey": "dashboard-diff-coverage",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dashboard-lint",
       "prerequisites": [
         {
-          "railId": "dashboard-prerequisites",
+          "railId": "dashboard-suite",
           "version": "1.0.0"
         }
       ],
-      "requiredArtifacts": [],
+      "railClass": "post-test-quality",
+      "requiredArtifacts": [
+        "dashboard-coverage-data"
+      ],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-lint-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-lint-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "npm",
           "run",
@@ -1068,53 +1275,60 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dashboard-lint",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-lint"
-      }
-    },
-    {
-      "identity": {
-        "railId": "dashboard-prerequisites",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "dashboard"
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "dashboard-lint",
+        "version": "1.0.0"
+      },
+      "orderKey": "dashboard-lint",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dashboard-prerequisites",
-      "prerequisites": [],
+      "prerequisites": [
+        {
+          "railId": "dashboard-prerequisites",
+          "version": "1.0.0"
+        }
+      ],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-prerequisites-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-prerequisites-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "npm",
           "ci"
@@ -1126,71 +1340,62 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dashboard-prerequisites",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-prerequisites"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "dashboard"
+      },
+      "gate": 1,
       "identity": {
-        "railId": "dashboard-suite",
+        "railId": "dashboard-prerequisites",
         "version": "1.0.0"
       },
-      "gate": 2,
-      "railClass": "ordinary-test-suite",
-      "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
-      "posture": "enforcing",
-      "orderKey": "dashboard-suite",
-      "prerequisites": [
+      "orderKey": "dashboard-prerequisites",
+      "outputArtifacts": [
         {
-          "railId": "dashboard-prerequisites",
-          "version": "1.0.0"
+          "artifactId": "dashboard-environment-census",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "certification-environment-census/v1"
         }
       ],
+      "ownerClass": "repository-quality",
+      "posture": "enforcing",
+      "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-suite-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
-        }
-      ],
-      "outputArtifacts": [
-        {
-          "artifactId": "dashboard-coverage-data",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
-        },
-        {
-          "artifactId": "dashboard-suite-result",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-suite-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "npm",
           "run",
@@ -1203,61 +1408,76 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/dashboard-suite",
         "inputSelectors": [
           "dashboard-tests",
           "targeted-or-full-mode"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-suite"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "dashboard"
+      },
+      "gate": 2,
       "identity": {
-        "railId": "dashboard-typecheck",
+        "railId": "dashboard-suite",
         "version": "1.0.0"
       },
-      "gate": 1,
-      "railClass": "pre-test-quality",
+      "orderKey": "dashboard-suite",
+      "outputArtifacts": [
+        {
+          "artifactId": "dashboard-coverage-data",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        },
+        {
+          "artifactId": "dashboard-suite-result",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        }
+      ],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dashboard-typecheck",
       "prerequisites": [
         {
           "railId": "dashboard-prerequisites",
           "version": "1.0.0"
         }
       ],
+      "railClass": "ordinary-test-suite",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "node-playwright-v1.60.0-noble",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dashboard-typecheck-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dashboard-typecheck-adapter",
-        "workingDirectory": "dashboard",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "npm",
           "run",
@@ -1270,53 +1490,60 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dashboard-typecheck",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dashboard-typecheck"
-      }
-    },
-    {
-      "identity": {
-        "railId": "dependency-prerequisites",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "dashboard"
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "dashboard-typecheck",
+        "version": "1.0.0"
+      },
+      "orderKey": "dashboard-typecheck",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "dependency-prerequisites",
-      "prerequisites": [],
+      "prerequisites": [
+        {
+          "railId": "dashboard-prerequisites",
+          "version": "1.0.0"
+        }
+      ],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
-        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
         "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "bb4f5b2d0e6a8d779fa4ecc055795cb2a30e29ecbf90731c8ebd3e9bb56fad10",
+        "runtimeIdentity": "node-playwright-v1.60.0-noble",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "dependency-prerequisites-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "dependency-prerequisites-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/agents-remember-python/current/bin/uv",
           "pip",
@@ -1331,53 +1558,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/dependency-prerequisites",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/dependency-prerequisites"
-      }
-    },
-    {
-      "identity": {
-        "railId": "evidence-lifecycle",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "dependency-prerequisites",
+        "version": "1.0.0"
+      },
+      "orderKey": "dependency-prerequisites",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "evidence-lifecycle",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "evidence-lifecycle-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "evidence-lifecycle-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -1392,53 +1621,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/evidence-lifecycle",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/evidence-lifecycle"
-      }
-    },
-    {
-      "identity": {
-        "railId": "file-size",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "evidence-lifecycle",
+        "version": "1.0.0"
+      },
+      "orderKey": "evidence-lifecycle",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "file-size",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "file-size-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "file-size-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -1454,55 +1685,57 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/file-size",
         "inputSelectors": [
           "size-paths"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/file-size"
-      }
-    },
-    {
-      "identity": {
-        "railId": "generated-harness",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "file-size",
+        "version": "1.0.0"
+      },
+      "orderKey": "file-size",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "generated-harness",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "generated-harness-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "generated-harness-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "scripts/sync-harness.py",
@@ -1515,53 +1748,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/generated-harness",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/generated-harness"
-      }
-    },
-    {
-      "identity": {
-        "railId": "generated-projection-types",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "generated-harness",
+        "version": "1.0.0"
+      },
+      "orderKey": "generated-harness",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "generated-projection-types",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "generated-projection-types-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "generated-projection-types-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "scripts/sync-projection-types.py",
@@ -1574,53 +1809,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/generated-projection-types",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/generated-projection-types"
-      }
-    },
-    {
-      "identity": {
-        "railId": "generated-runtime",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "generated-projection-types",
+        "version": "1.0.0"
+      },
+      "orderKey": "generated-projection-types",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "generated-runtime",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "generated-runtime-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "generated-runtime-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "scripts/sync-runtime.py",
@@ -1633,53 +1870,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/generated-runtime",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/generated-runtime"
-      }
-    },
-    {
-      "identity": {
-        "railId": "generated-skills",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "generated-runtime",
+        "version": "1.0.0"
+      },
+      "orderKey": "generated-runtime",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "generated-skills",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "generated-skills-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "generated-skills-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "scripts/sync-skills.py",
@@ -1692,53 +1931,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/generated-skills",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/generated-skills"
-      }
-    },
-    {
-      "identity": {
-        "railId": "layering",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "generated-skills",
+        "version": "1.0.0"
+      },
+      "orderKey": "generated-skills",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "layering",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "layering-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "layering-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -1753,73 +1994,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/layering",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/layering"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
+      },
+      "gate": 1,
       "identity": {
-        "railId": "provider-runtime-integration",
+        "railId": "layering",
         "version": "1.0.0"
       },
-      "gate": 4,
-      "railClass": "integration-test",
+      "orderKey": "layering",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "provider-runtime-integration",
-      "prerequisites": [
-        {
-          "railId": "dashboard-diff-coverage",
-          "version": "1.0.0"
-        },
-        {
-          "railId": "python-crap",
-          "version": "1.0.0"
-        },
-        {
-          "railId": "python-diff-coverage",
-          "version": "1.0.0"
-        }
-      ],
+      "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "provider-runtime-integration-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
-        }
-      ],
-      "outputArtifacts": [
-        {
-          "artifactId": "provider-integration-result",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "provider-runtime-integration-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": true,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -1838,53 +2061,75 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/provider-runtime-integration",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 3600,
         "resourcePolicyId": "clean-room-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": true,
         "teardownPolicy": "always",
-        "executionEvidence": "profile://agents-remember/rails/provider-runtime-integration"
-      }
-    },
-    {
+        "timeoutSeconds": 3600,
+        "workingDirectory": "."
+      },
+      "gate": 4,
       "identity": {
-        "railId": "pyright",
+        "railId": "provider-runtime-integration",
         "version": "1.0.0"
       },
-      "gate": 1,
-      "railClass": "pre-test-quality",
+      "orderKey": "provider-runtime-integration",
+      "outputArtifacts": [
+        {
+          "artifactId": "provider-integration-result",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        }
+      ],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "pyright",
-      "prerequisites": [],
+      "prerequisites": [
+        {
+          "railId": "dashboard-diff-coverage",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-crap",
+          "version": "1.0.0"
+        },
+        {
+          "railId": "python-diff-coverage",
+          "version": "1.0.0"
+        }
+      ],
+      "railClass": "integration-test",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "pyright-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "pyright-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -1902,55 +2147,57 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/pyright",
         "inputSelectors": [
           "type-closure"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/pyright"
-      }
-    },
-    {
-      "identity": {
-        "railId": "quality-config-scope",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "pyright",
+        "version": "1.0.0"
+      },
+      "orderKey": "pyright",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "quality-config-scope",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "quality-config-scope-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "quality-config-scope-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -1972,63 +2219,58 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/quality-config-scope",
         "inputSelectors": [
           "configuration",
           "tracked-input-census"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/quality-config-scope"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
+      },
+      "gate": 1,
       "identity": {
-        "railId": "python-crap",
+        "railId": "quality-config-scope",
         "version": "1.0.0"
       },
-      "gate": 3,
-      "railClass": "post-test-quality",
+      "orderKey": "quality-config-scope",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "python-crap",
-      "prerequisites": [
-        {
-          "railId": "python-suite",
-          "version": "1.0.0"
-        }
-      ],
-      "requiredArtifacts": [
-        "python-coverage-json"
-      ],
+      "prerequisites": [],
+      "railClass": "pre-test-quality",
+      "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "python-crap-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "python-crap-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2054,63 +2296,65 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/python-crap",
         "inputSelectors": [
           "coverage-paths",
           "tracked-input-census"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/python-crap"
-      }
-    },
-    {
-      "identity": {
-        "railId": "python-diff-coverage",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 3,
-      "railClass": "post-test-quality",
+      "identity": {
+        "railId": "python-crap",
+        "version": "1.0.0"
+      },
+      "orderKey": "python-crap",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "python-diff-coverage",
       "prerequisites": [
         {
           "railId": "python-suite",
           "version": "1.0.0"
         }
       ],
+      "railClass": "post-test-quality",
       "requiredArtifacts": [
         "python-coverage-json"
       ],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "python-diff-coverage-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "python-diff-coverage-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2136,75 +2380,65 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/python-diff-coverage",
         "inputSelectors": [
           "changed-files",
           "coverage-paths"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/python-diff-coverage"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
+      },
+      "gate": 3,
       "identity": {
-        "railId": "python-suite",
+        "railId": "python-diff-coverage",
         "version": "1.0.0"
       },
-      "gate": 2,
-      "railClass": "ordinary-test-suite",
+      "orderKey": "python-diff-coverage",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "python-suite",
-      "prerequisites": [],
-      "requiredArtifacts": [],
+      "prerequisites": [
+        {
+          "railId": "python-suite",
+          "version": "1.0.0"
+        }
+      ],
+      "railClass": "post-test-quality",
+      "requiredArtifacts": [
+        "python-coverage-json"
+      ],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "python-suite-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
-        }
-      ],
-      "outputArtifacts": [
-        {
-          "artifactId": "python-coverage-data",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
-        },
-        {
-          "artifactId": "python-coverage-json",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
-        },
-        {
-          "artifactId": "python-suite-result",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "python-suite-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2230,57 +2464,78 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/python-suite",
         "inputSelectors": [
           "evidence-lane",
           "targeted-or-full-mode",
           "tracked-input-census"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/python-suite"
-      }
-    },
-    {
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
+      },
+      "gate": 2,
       "identity": {
-        "railId": "radon-cc",
+        "railId": "python-suite",
         "version": "1.0.0"
       },
-      "gate": 1,
-      "railClass": "pre-test-quality",
+      "orderKey": "python-suite",
+      "outputArtifacts": [
+        {
+          "artifactId": "python-coverage-data",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        },
+        {
+          "artifactId": "python-coverage-json",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        },
+        {
+          "artifactId": "python-suite-result",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        }
+      ],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
-      "posture": "report-only",
-      "orderKey": "radon-cc",
+      "posture": "enforcing",
       "prerequisites": [],
+      "railClass": "ordinary-test-suite",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "radon-cc-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "radon-cc-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2300,55 +2555,57 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/radon-cc",
         "inputSelectors": [
           "coverage-paths"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/radon-cc"
-      }
-    },
-    {
-      "identity": {
-        "railId": "radon-mi",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "radon-cc",
+        "version": "1.0.0"
+      },
+      "orderKey": "radon-cc",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "report-only",
-      "orderKey": "radon-mi",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "radon-mi-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "radon-mi-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2366,55 +2623,57 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/radon-mi",
         "inputSelectors": [
           "coverage-paths"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/radon-mi"
-      }
-    },
-    {
-      "identity": {
-        "railId": "ruff",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "radon-mi",
+        "version": "1.0.0"
+      },
+      "orderKey": "radon-mi",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
-      "posture": "enforcing",
-      "orderKey": "ruff",
+      "posture": "report-only",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "ruff-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "ruff-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2429,55 +2688,57 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/ruff",
         "inputSelectors": [
           "lint-paths"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/ruff"
-      }
-    },
-    {
-      "identity": {
-        "railId": "ruff-format",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "ruff",
+        "version": "1.0.0"
+      },
+      "orderKey": "ruff",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "ruff-format",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "ruff-format-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "ruff-format-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2493,55 +2754,57 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/ruff-format",
         "inputSelectors": [
           "lint-paths"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/ruff-format"
-      }
-    },
-    {
-      "identity": {
-        "railId": "runtime-capability",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "ruff-format",
+        "version": "1.0.0"
+      },
+      "orderKey": "ruff-format",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "runtime-capability",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "runtime-capability-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "runtime-capability-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "scripts/check-python-runtime.py",
@@ -2558,53 +2821,55 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": null,
+        "executionEvidence": "profile://agents-remember/rails/runtime-capability",
         "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/runtime-capability"
-      }
-    },
-    {
-      "identity": {
-        "railId": "test-selection-ownership",
-        "version": "1.0.0"
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
       },
       "gate": 1,
-      "railClass": "pre-test-quality",
+      "identity": {
+        "railId": "runtime-capability",
+        "version": "1.0.0"
+      },
+      "orderKey": "runtime-capability",
+      "outputArtifacts": [],
       "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
       "posture": "enforcing",
-      "orderKey": "test-selection-ownership",
       "prerequisites": [],
+      "railClass": "pre-test-quality",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
+      "sourceApplicability": null
+    },
+    {
+      "conditionalPrerequisites": [],
+      "correctiveOwner": "repository-quality",
       "evidenceContract": [
         {
           "evidenceId": "test-selection-ownership-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
         }
       ],
-      "outputArtifacts": [],
       "execution": {
-        "adapterKind": "container-command",
         "adapterId": "test-selection-ownership-adapter",
-        "workingDirectory": ".",
+        "adapterKind": "container-command",
+        "cleanRoom": false,
         "command": [
           "/opt/ar-venv/bin/python",
           "-m",
@@ -2626,35 +2891,112 @@
           "PYTHONPATH",
           "TMPDIR"
         ],
-        "scopeProviderId": "agents-remember-test-selection",
+        "executionEvidence": "profile://agents-remember/rails/test-selection-ownership",
         "inputSelectors": [
           "changed-files",
           "evidence-lane",
           "tracked-input-census"
         ],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 1800,
         "resourcePolicyId": "quality-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": "agents-remember-test-selection",
+        "skippedExitCodes": [],
         "successExitCodes": [
           0
         ],
-        "skippedExitCodes": [],
-        "cleanRoom": false,
         "teardownPolicy": "not-required",
-        "executionEvidence": "profile://agents-remember/rails/test-selection-ownership"
-      }
+        "timeoutSeconds": 1800,
+        "workingDirectory": "."
+      },
+      "gate": 1,
+      "identity": {
+        "railId": "test-selection-ownership",
+        "version": "1.0.0"
+      },
+      "orderKey": "test-selection-ownership",
+      "outputArtifacts": [],
+      "ownerClass": "repository-quality",
+      "posture": "enforcing",
+      "prerequisites": [],
+      "railClass": "pre-test-quality",
+      "requiredArtifacts": [],
+      "runtimeInputs": {
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
+        "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
+        "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
+      },
+      "sourceApplicability": null
     },
     {
+      "conditionalPrerequisites": [
+        {
+          "railId": "ambient-role-chat-e2e",
+          "version": "1.0.0"
+        }
+      ],
+      "correctiveOwner": "repository-quality",
+      "evidenceContract": [
+        {
+          "evidenceId": "teardown-process-cleanliness-evidence",
+          "maxBytes": 10485760,
+          "mediaType": "application/octet-stream"
+        }
+      ],
+      "execution": {
+        "adapterId": "teardown-process-cleanliness-adapter",
+        "adapterKind": "container-command",
+        "cleanRoom": true,
+        "command": [
+          "/opt/ar-venv/bin/python",
+          "-m",
+          "agents_remember_test_support.code_quality.profile_rails",
+          "verify-teardown",
+          "--summary",
+          "{reports}/ambient-role-chat-e2e/summary.json",
+          "--proof",
+          "{reports}/teardown-proof.json",
+          "--source-selection",
+          "{source-selection:ambient-role-dependencies}"
+        ],
+        "environmentContract": [
+          "AR_QUALITY_INVOCATION",
+          "CI",
+          "HOME",
+          "PYTHONPATH",
+          "TMPDIR"
+        ],
+        "executionEvidence": "profile://agents-remember/rails/teardown-process-cleanliness",
+        "inputSelectors": [],
+        "resourcePolicyId": "clean-room-bounded",
+        "resultDecoderId": "quality-terminal-result",
+        "scopeProviderId": null,
+        "skippedExitCodes": [],
+        "successExitCodes": [
+          0
+        ],
+        "teardownPolicy": "always",
+        "timeoutSeconds": 600,
+        "workingDirectory": "."
+      },
+      "gate": 4,
       "identity": {
         "railId": "teardown-process-cleanliness",
         "version": "1.0.0"
       },
-      "gate": 4,
-      "railClass": "integration-test",
-      "ownerClass": "repository-quality",
-      "correctiveOwner": "repository-quality",
-      "posture": "enforcing",
       "orderKey": "teardown-process-cleanliness",
+      "outputArtifacts": [
+        {
+          "artifactId": "teardown-proof",
+          "mediaType": "application/json",
+          "requiredOnPass": true,
+          "schemaVersion": "agents-remember-quality-artifact/v1"
+        }
+      ],
+      "ownerClass": "repository-quality",
+      "posture": "enforcing",
       "prerequisites": [
         {
           "railId": "ambient-role-chat-e2e",
@@ -2673,91 +3015,607 @@
           "version": "1.0.0"
         }
       ],
+      "railClass": "integration-test",
       "requiredArtifacts": [],
       "runtimeInputs": {
-        "runtimeIdentity": "cpython-3.13.15",
-        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd",
+        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
         "imageDigest": "83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
         "lockDigest": "8fe391c548e57d3465252d93b492d8791ff70c7f0b99fccdd2687f474d9d1ec9",
-        "environmentDigest": "4beb3092dc5c205c8dcf2f24ff791422ea0da15c0bf018a964b7dce257848c6c",
-        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0"
+        "runtimeIdentity": "cpython-3.13.15",
+        "secretPolicyDigest": "c150a99e60ec3007c393cc0de5178db71974ac5e2b4ae7b27601a4e65e55d4d0",
+        "toolchainDigest": "75398c782cca065ad0ca5135ca55afdfe2a55359293aef7734099a09d210efdd"
       },
-      "evidenceContract": [
+      "sourceApplicability": null
+    }
+  ],
+  "repositoryId": "agents-remember",
+  "resultDecoders": [
+    {
+      "artifactPath": "clean-quality-results.json",
+      "artifactReferences": [
         {
-          "evidenceId": "teardown-process-cleanliness-evidence",
-          "mediaType": "application/octet-stream",
-          "maxBytes": 10485760
+          "cardinality": "single",
+          "fieldPath": {
+            "segments": [
+              "causalFailureReport"
+            ]
+          },
+          "nullParentPolicy": "invalid",
+          "nullPolicy": "ignore-reference"
+        },
+        {
+          "cardinality": "single",
+          "fieldPath": {
+            "segments": [
+              "causalFailureSummary"
+            ]
+          },
+          "nullParentPolicy": "invalid",
+          "nullPolicy": "ignore-reference"
+        },
+        {
+          "cardinality": "single",
+          "fieldPath": {
+            "segments": [
+              "ambientRoleChatEvidence",
+              "summary"
+            ]
+          },
+          "nullParentPolicy": "ignore-reference",
+          "nullPolicy": "ignore-reference"
+        },
+        {
+          "cardinality": "list",
+          "fieldPath": {
+            "segments": [
+              "ambientRoleChatEvidence",
+              "runs"
+            ]
+          },
+          "nullParentPolicy": "ignore-reference",
+          "nullPolicy": "invalid"
         }
       ],
-      "outputArtifacts": [
+      "consumingGates": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "decoderId": "quality-terminal-result",
+      "decoderKind": "json-exit-status",
+      "exitCodeField": "exitCode",
+      "failedValue": "failed",
+      "passedValue": "passed",
+      "referenceActivations": [
         {
-          "artifactId": "teardown-proof",
-          "schemaVersion": "agents-remember-quality-artifact/v1",
-          "mediaType": "application/json",
-          "requiredOnPass": true
+          "containsValue": "causal-preflight",
+          "listFieldPath": {
+            "segments": [
+              "completedSteps"
+            ]
+          },
+          "nullPolicy": "ignore-activation",
+          "referenceFieldPaths": [
+            {
+              "segments": [
+                "causalFailureReport"
+              ]
+            },
+            {
+              "segments": [
+                "causalFailureSummary"
+              ]
+            }
+          ]
         }
       ],
-      "execution": {
-        "adapterKind": "container-command",
-        "adapterId": "teardown-process-cleanliness-adapter",
-        "workingDirectory": ".",
-        "command": [
-          "/opt/ar-venv/bin/python",
-          "-m",
-          "agents_remember_test_support.code_quality.profile_rails",
-          "verify-teardown",
-          "--summary",
-          "{reports}/ambient-role-chat-e2e/summary.json",
-          "--proof",
-          "{reports}/teardown-proof.json"
-        ],
-        "environmentContract": [
-          "AR_QUALITY_INVOCATION",
-          "CI",
-          "HOME",
-          "PYTHONPATH",
-          "TMPDIR"
-        ],
-        "scopeProviderId": null,
-        "inputSelectors": [],
-        "resultDecoderId": "quality-terminal-result",
-        "timeoutSeconds": 600,
-        "resourcePolicyId": "clean-room-bounded",
-        "successExitCodes": [
-          0
-        ],
-        "skippedExitCodes": [],
-        "cleanRoom": true,
-        "teardownPolicy": "always",
-        "executionEvidence": "profile://agents-remember/rails/teardown-process-cleanliness"
-      }
+      "statusField": "status"
+    }
+  ],
+  "schemaVersion": "repository-certification-profile/v1",
+  "selections": [
+    {
+      "executorAdapterId": "certifying-dagger",
+      "gates": [
+        {
+          "gate": 1,
+          "population": "full pre-test quality population",
+          "railIds": [
+            {
+              "railId": "causal-preflight",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-build",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-codegen",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-lint",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-typecheck",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dependency-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "evidence-lifecycle",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "file-size",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-harness",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-projection-types",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-runtime",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-skills",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "layering",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "pyright",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "quality-config-scope",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-cc",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-mi",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff-format",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "runtime-capability",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "test-selection-ownership",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-full:gate-1:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 2,
+          "population": "full ordinary suite population",
+          "railIds": [
+            {
+              "railId": "dashboard-suite",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-suite",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-full:gate-2:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 3,
+          "population": "full post-test quality population",
+          "railIds": [
+            {
+              "railId": "dashboard-diff-coverage",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-crap",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-diff-coverage",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-full:gate-3:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 4,
+          "population": "full clean-room integration population",
+          "railIds": [
+            {
+              "railId": "ambient-role-chat-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "codex-read-only-probe",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-browser-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "provider-runtime-integration",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "teardown-process-cleanliness",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-full:gate-4:v1",
+          "status": "applicable"
+        }
+      ],
+      "mode": "full",
+      "purpose": "closeout",
+      "resultDecoderId": "quality-terminal-result",
+      "selectionId": "closeout-full"
+    },
+    {
+      "executorAdapterId": "certifying-dagger",
+      "gates": [
+        {
+          "gate": 1,
+          "population": "targeted pre-test quality population",
+          "railIds": [
+            {
+              "railId": "causal-preflight",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-build",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-codegen",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-lint",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-typecheck",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dependency-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "evidence-lifecycle",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "file-size",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-harness",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-projection-types",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-runtime",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-skills",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "layering",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "pyright",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "quality-config-scope",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-cc",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-mi",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff-format",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "runtime-capability",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "test-selection-ownership",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-targeted:gate-1:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 2,
+          "population": "targeted ordinary suite population",
+          "railIds": [
+            {
+              "railId": "dashboard-suite",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-suite",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-targeted:gate-2:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 3,
+          "population": "targeted post-test quality population",
+          "railIds": [
+            {
+              "railId": "dashboard-diff-coverage",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-crap",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-diff-coverage",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-targeted:gate-3:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 4,
+          "population": "targeted clean-room integration population",
+          "railIds": [
+            {
+              "railId": "ambient-role-chat-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "codex-read-only-probe",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-browser-e2e",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "provider-runtime-integration",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "teardown-process-cleanliness",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-targeted:gate-4:v1",
+          "status": "applicable"
+        }
+      ],
+      "mode": "targeted",
+      "purpose": "closeout",
+      "resultDecoderId": "quality-terminal-result",
+      "selectionId": "closeout-targeted"
+    },
+    {
+      "executorAdapterId": "certifying-dagger",
+      "gates": [
+        {
+          "gate": 1,
+          "population": "targeted pre-test quality population",
+          "railIds": [
+            {
+              "railId": "causal-preflight",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-build",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-codegen",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-lint",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-typecheck",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dependency-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "evidence-lifecycle",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "file-size",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-harness",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-projection-types",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-runtime",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-skills",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "layering",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "pyright",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "quality-config-scope",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-cc",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-mi",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff-format",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "runtime-capability",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "test-selection-ownership",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "local-targeted:gate-1:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 2,
+          "population": "targeted ordinary suite population",
+          "railIds": [
+            {
+              "railId": "dashboard-suite",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-suite",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "local-targeted:gate-2:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 3,
+          "population": "targeted post-test quality population",
+          "railIds": [
+            {
+              "railId": "dashboard-diff-coverage",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-crap",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "python-diff-coverage",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "local-targeted:gate-3:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 4,
+          "population": null,
+          "railIds": [],
+          "reason": "Local pre-commit does not enter the clean-room integration environment",
+          "selectionIdentity": "local-targeted:gate-4:v1",
+          "status": "not-applicable"
+        }
+      ],
+      "mode": "targeted",
+      "purpose": "local-precommit",
+      "resultDecoderId": "quality-terminal-result",
+      "selectionId": "local-targeted"
     }
   ],
   "selectors": [
     {
-      "selectorId": "agents-remember-test-selection",
-      "schemaVersion": "repository-selector-result/v2",
-      "version": "2.0.0",
-      "configurationDigest": "c140e8eb3623b81676de126c5d3cf07698c18a3a1519cc464622c7ec2ec8eaaf",
-      "inputUniverse": [
-        "configuration and generated projections",
-        "fixtures support and plugins",
-        "profile-declared external inputs",
-        "production and test sources",
-        "runtime and harness files"
-      ],
-      "externalInputs": [],
-      "outputArtifacts": [
-        "changed-files",
-        "coverage-paths",
-        "coverage-roots",
-        "dashboard-tests",
-        "lint-paths",
-        "selected-tests",
-        "size-paths",
-        "type-closure"
-      ],
-      "workingDirectory": ".",
       "command": [
         "/opt/ar-venv/bin/python",
         "-m",
@@ -2781,581 +3639,31 @@
         "--output",
         "{selector-output}"
       ],
-      "resultPath": ".quality-profile/agents-remember-test-selection.json"
-    }
-  ],
-  "executorAdapters": [
-    {
-      "adapterId": "certifying-dagger",
-      "adapterKind": "dagger-module",
-      "version": "0.21.8",
-      "executable": "dagger",
-      "functionName": "quality",
-      "sourceArgument": "source",
-      "repositoryBundleArgument": "repository-bundle",
-      "diffBaseArgument": "diff-base",
-      "memoryCapArgument": "memory-cap-bytes",
-      "planArgument": "execution-manifest",
-      "reportsField": "reports",
-      "imageReference": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:83192064c7510f7ee73dd63dc5f22a5e01a92c81a2e6a9c715d9e3fe55471fd9",
-      "runtimeDigest": "f45228d2bf00df9e4d0894e0cf3b8f4c977f00e5b46931245ba4343f68b205d4",
-      "consumingGates": [
-        1,
-        2,
-        3,
-        4
-      ]
-    }
-  ],
-  "resultDecoders": [
-    {
-      "decoderId": "quality-terminal-result",
-      "decoderKind": "json-exit-status",
-      "artifactPath": "clean-quality-results.json",
-      "statusField": "status",
-      "exitCodeField": "exitCode",
-      "passedValue": "passed",
-      "failedValue": "failed",
-      "artifactReferences": [
-        {
-          "fieldPath": {
-            "segments": [
-              "causalFailureReport"
-            ]
-          },
-          "cardinality": "single",
-          "nullPolicy": "ignore-reference",
-          "nullParentPolicy": "invalid"
-        },
-        {
-          "fieldPath": {
-            "segments": [
-              "causalFailureSummary"
-            ]
-          },
-          "cardinality": "single",
-          "nullPolicy": "ignore-reference",
-          "nullParentPolicy": "invalid"
-        },
-        {
-          "fieldPath": {
-            "segments": [
-              "ambientRoleChatEvidence",
-              "summary"
-            ]
-          },
-          "cardinality": "single",
-          "nullPolicy": "ignore-reference",
-          "nullParentPolicy": "ignore-reference"
-        },
-        {
-          "fieldPath": {
-            "segments": [
-              "ambientRoleChatEvidence",
-              "runs"
-            ]
-          },
-          "cardinality": "list",
-          "nullPolicy": "invalid",
-          "nullParentPolicy": "ignore-reference"
-        }
+      "configurationDigest": "5a6c02980b9428702808d770c2961d55b73c51990509f84b584a0daaa1c39309",
+      "externalInputs": [],
+      "inputUniverse": [
+        "configuration and generated projections",
+        "fixtures support and plugins",
+        "profile-declared external inputs",
+        "production and test sources",
+        "runtime and harness files"
       ],
-      "referenceActivations": [
-        {
-          "listFieldPath": {
-            "segments": [
-              "completedSteps"
-            ]
-          },
-          "containsValue": "causal-preflight",
-          "nullPolicy": "ignore-activation",
-          "referenceFieldPaths": [
-            {
-              "segments": [
-                "causalFailureReport"
-              ]
-            },
-            {
-              "segments": [
-                "causalFailureSummary"
-              ]
-            }
-          ]
-        }
+      "outputArtifacts": [
+        "changed-files",
+        "coverage-paths",
+        "coverage-roots",
+        "dashboard-tests",
+        "lint-paths",
+        "selected-tests",
+        "size-paths",
+        "type-closure"
       ],
-      "consumingGates": [
-        1,
-        2,
-        3,
-        4
-      ]
+      "resultPath": ".quality-profile/agents-remember-test-selection.json",
+      "schemaVersion": "repository-selector-result/v2",
+      "selectorId": "agents-remember-test-selection",
+      "version": "2.0.0",
+      "workingDirectory": "."
     }
   ],
-  "publishedArtifacts": [
-    {
-      "path": "ambient-role-chat-e2e/run-1.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "ambient-role-chat-e2e/run-2.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "ambient-role-chat-e2e/summary.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "causal-failures.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "causal-failures.md",
-      "mediaType": "text/markdown",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "clean-quality-results.json",
-      "mediaType": "application/json",
-      "required": true,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        1,
-        2,
-        3,
-        4
-      ]
-    },
-    {
-      "path": "codex-probe.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "coverage.data",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 536870912,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "coverage.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "dashboard-coverage.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "dashboard-e2e-result.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "dashboard-suite-result.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "provider-integration-result.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "pytest-events.jsonl",
-      "mediaType": "application/x-ndjson",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "pytest-phases.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "python-runtime.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "python-venv-runtime.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "quality-progress.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        1,
-        2,
-        3,
-        4
-      ]
-    },
-    {
-      "path": "rail-evidence/ambient-role-chat-e2e@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "rail-evidence/causal-preflight@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/codex-read-only-probe@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-browser-e2e@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-build@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-codegen@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-diff-coverage@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        3
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-lint@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-prerequisites@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-suite@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "rail-evidence/dashboard-typecheck@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/dependency-prerequisites@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/evidence-lifecycle@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/file-size@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/generated-harness@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/generated-projection-types@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/generated-runtime@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/generated-skills@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/layering@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/provider-runtime-integration@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "rail-evidence/pyright@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/python-crap@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        3
-      ]
-    },
-    {
-      "path": "rail-evidence/python-diff-coverage@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        3
-      ]
-    },
-    {
-      "path": "rail-evidence/python-suite@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        2
-      ]
-    },
-    {
-      "path": "rail-evidence/quality-config-scope@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/radon-cc@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/radon-mi@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/ruff-format@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/ruff@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/runtime-capability@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "rail-evidence/teardown-process-cleanliness@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        4
-      ]
-    },
-    {
-      "path": "rail-evidence/test-selection-ownership@1.0.0.log",
-      "mediaType": "application/octet-stream",
-      "required": false,
-      "maxBytes": 4194304,
-      "publisherGates": [
-        1
-      ]
-    },
-    {
-      "path": "teardown-proof.json",
-      "mediaType": "application/json",
-      "required": false,
-      "maxBytes": 134217728,
-      "publisherGates": [
-        4
-      ]
-    }
-  ]
+  "semanticRevision": "1.0.0"
 }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Never
 
 from pydantic import BaseModel
@@ -31,10 +32,24 @@ from agents_remember.certification.repository_profiles.models import (
     RepositorySemanticInputNode,
     repository_gate_plan_digest,
 )
+from agents_remember.certification.repository_profiles.source_selection.compilation import (
+    compile_source_applicability,
+    requires_source_selection,
+)
+from agents_remember.certification.repository_profiles.source_selection.models import (
+    CandidateSourceSelection,
+    RailSourceSelection,
+)
 from agents_remember.certification.repository_profiles.validation import (
     validate_repository_profile,
 )
 from agents_remember.errors import CertificationProfileError
+
+
+@dataclass(frozen=True)
+class _CandidateInputs:
+    identity: CandidateIdentity
+    source: CandidateSourceSelection | None
 
 
 def resolve_repository_profile_selection(
@@ -73,6 +88,7 @@ def compile_repository_profile_plan(
     *,
     selection_id: str,
     candidate_identity: CandidateIdentity,
+    source_selection: CandidateSourceSelection | None = None,
 ) -> RepositoryProfilePlan:
     """Compile exact Gates 1-4 without claiming the framework-owned Gate 5."""
 
@@ -95,18 +111,52 @@ def compile_repository_profile_plan(
             ),
         )
     rail_catalog = {rail.identity.key: rail for rail in canonical.profile.rails}
+    if requires_source_selection(canonical.profile, selection) and source_selection is None:
+        _raise_profile_error(
+            "repository source selection is missing",
+            (
+                RegistryValidationFinding(
+                    code="source-selection-missing",
+                    path="sourceSelection",
+                    detail="selected repository rails require exact candidate/base source selection",
+                ),
+            ),
+        )
+    if source_selection is not None:
+        try:
+            CandidateSourceSelection.model_validate(source_selection.model_dump(mode="json"))
+            if (
+                candidate_identity.kind != "git-tree"
+                or source_selection.candidateTree != candidate_identity.value
+            ):
+                raise ValueError("source selection names another exact candidate tree")
+        except ValueError as error:
+            _raise_profile_error(
+                "repository source selection is invalid",
+                (
+                    RegistryValidationFinding(
+                        code="source-selection-invalid",
+                        path="sourceSelection",
+                        detail=str(error),
+                    ),
+                ),
+            )
+    inputs = _CandidateInputs(candidate_identity, source_selection)
     gate_plans = tuple(
         _compile_gate_plan(
             canonical,
             selection,
             gate,
             rail_catalog,
-            candidate_identity,
+            inputs,
         )
         for gate in selection.gates
     )
     payload = {
         "schemaVersion": "repository-profile-plan/v1",
+        "sourceSelection": source_selection.model_dump(mode="json")
+        if source_selection is not None
+        else None,
         "profileDigest": canonical.profileDigest,
         "candidateIdentity": candidate_identity.model_dump(mode="json"),
         "selectionId": selection.selectionId,
@@ -130,6 +180,7 @@ def admit_repository_profile_plan(
         canonical,
         selection_id=selection_id,
         candidate_identity=candidate_identity,
+        source_selection=plan.sourceSelection,
     )
     if plan != expected:
         _raise_profile_error(
@@ -150,10 +201,21 @@ def _compile_gate_plan(
     selection: RepositoryProfileSelection,
     gate: RepositoryGateSelection,
     rail_catalog: dict[str, RepositoryRailDefinition],
-    candidate_identity: CandidateIdentity,
+    inputs: _CandidateInputs,
 ) -> RepositoryGatePlan:
     selected_definitions = tuple(rail_catalog[identity.key] for identity in gate.railIds)
-    rails = tuple(_compile_rail(rail, selection, gate) for rail in selected_definitions)
+    decisions = {
+        rail.identity.key: compile_source_applicability(
+            rail.sourceApplicability,
+            inputs.source,
+            mode=selection.mode,
+            profile_id=selection.selectionId,
+            population=gate.population or "",
+        )
+        for rail in selected_definitions
+        if rail.sourceApplicability is not None and inputs.source is not None
+    }
+    rails = tuple(_compile_rail(rail, selection, gate, decisions) for rail in selected_definitions)
     rails = tuple(
         sorted(
             rails,
@@ -177,10 +239,22 @@ def _compile_gate_plan(
         if gate.status == "applicable"
         else ()
     )
+    semantic_inputs = tuple(
+        sorted(
+            (
+                *semantic_inputs,
+                *(
+                    _semantic_node("source-applicability", key, (gate.gate,), decision)
+                    for key, decision in decisions.items()
+                ),
+            ),
+            key=lambda item: (item.inputKind, item.inputId, item.contentDigest),
+        )
+    )
     payload = {
         "schemaVersion": "repository-gate-plan/v1",
         "profileDigest": canonical.profileDigest,
-        "candidateIdentity": candidate_identity.model_dump(mode="json"),
+        "candidateIdentity": inputs.identity.model_dump(mode="json"),
         "selectionId": selection.selectionId,
         "purpose": selection.purpose,
         "mode": selection.mode,
@@ -199,6 +273,7 @@ def _compile_rail(
     rail: RepositoryRailDefinition,
     selection: RepositoryProfileSelection,
     gate: RepositoryGateSelection,
+    decisions: Mapping[str, RailSourceSelection],
 ) -> CompiledRail:
     execution = rail.execution
     return CompiledRail(
@@ -211,7 +286,12 @@ def _compile_rail(
         correctiveOwner=rail.correctiveOwner,
         posture=rail.posture,
         orderKey=rail.orderKey,
-        prerequisites=rail.prerequisites,
+        prerequisites=tuple(
+            item
+            for item in rail.prerequisites
+            if item not in rail.conditionalPrerequisites
+            or decisions[item.key].applicability.status == "applicable"
+        ),
         requiredArtifacts=rail.requiredArtifacts,
         adapter=RailAdapterDefinition(
             adapterKind=execution.adapterKind,
@@ -220,7 +300,9 @@ def _compile_rail(
             executionEvidence=execution.executionEvidence,
         ),
         runtimeInputs=rail.runtimeInputs,
-        applicability=RailApplicability(
+        applicability=decisions[rail.identity.key].applicability
+        if rail.identity.key in decisions
+        else RailApplicability(
             profileId=selection.selectionId,
             status="applicable",
             selectionIdentity=gate.selectionIdentity,
@@ -240,6 +322,19 @@ def _compile_semantic_inputs(
 ) -> tuple[RepositorySemanticInputNode, ...]:
     profile = canonical.profile
     nodes: list[RepositorySemanticInputNode] = []
+    selected_keys = {rail.identity.key for rail in rails}
+    nodes.extend(
+        _semantic_node(
+            "environment-reconstruction", item.environmentId, (1, *item.consumingGates), item
+        )
+        for item in profile.environments
+        if gate.gate == 1 or gate.gate in item.consumingGates
+    )
+    nodes.extend(
+        _semantic_node("generated-candidate-input", item.inputId, (1,), item)
+        for item in profile.generatedInputs
+        if item.checkRail.key in selected_keys
+    )
     for rail in rails:
         nodes.extend(
             (

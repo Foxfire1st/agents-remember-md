@@ -31,7 +31,6 @@ from agents_remember.certification.models import (
     ArtifactDeclaration,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     GateResultAdmission,
     GateResultManifest,
     RailAdapterDefinition,
@@ -41,7 +40,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailPosture,
     RailRegistry,
     RailRuntimeInputs,
@@ -59,6 +57,7 @@ from agents_remember.certification.telemetry.models import (
     TelemetryEvent,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 from agents_remember.worktrees.modules.quality import dagger_authority as authority
 from agents_remember.worktrees.modules.quality.diagnostic_executor import (
     DiagnosticAdmissionRefused,

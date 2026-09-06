@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from agents_remember.models.test_evidence import EvidenceConsumer
@@ -78,13 +79,20 @@ def _run_reviewed_pre_commit_hook(code_worktree: Path, candidate_tree: str | Non
     return True
 
 
-def gate_staged_code(
+@dataclass(frozen=True)
+class PreparedStagedCode:
+    """The actual strict preparation outcome, before any admission is frozen."""
+
+    candidate_tree: str
+    pre_commit_hook_ran: bool
+
+
+def prepare_staged_code(
     target: QualityGateTarget,
     *,
-    diff_base: str,
     candidate_tree: str | None = None,
-) -> dict[str, object]:
-    """Stage and certify exactly what closeout will commit.
+) -> PreparedStagedCode:
+    """Settle the actual strict hook before freezing certification admission.
 
     Both refusals precede the mixed reset: the checkout must be disposable and its index
     conflict-free before closeout is allowed to replace the task index. Every retry resets
@@ -122,6 +130,22 @@ def gate_staged_code(
             ),
         )
     pre_commit_hook_ran = _run_reviewed_pre_commit_hook(code_worktree, candidate_tree)
+    return PreparedStagedCode(
+        candidate_tree=require_git(code_worktree, ["write-tree"]),
+        pre_commit_hook_ran=pre_commit_hook_ran,
+    )
+
+
+def gate_staged_code(
+    target: QualityGateTarget,
+    *,
+    diff_base: str,
+    candidate_tree: str | None = None,
+) -> dict[str, object]:
+    """Prepare and certify a fresh candidate through the ordinary gate entry point."""
+    prepared = prepare_staged_code(target, candidate_tree=candidate_tree)
+    code_worktree = target.code_worktree
+    worktree_group = target.worktree_group
     result = run_strict_code_quality_gate(
         target,
         diff_base=diff_base,
@@ -137,5 +161,5 @@ def gate_staged_code(
         raise RuntimeError("closeout quality evidence does not match the reviewed candidate")
     return {
         **result,
-        "preCommitHook": "passed" if pre_commit_hook_ran else "not-configured",
+        "preCommitHook": "passed" if prepared.pre_commit_hook_ran else "not-configured",
     }

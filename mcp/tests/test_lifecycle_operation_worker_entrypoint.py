@@ -15,11 +15,12 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store i
 )
 from agents_remember_test_support.testing.global_state import preserve_owned_mutable_state
 from closeout_input_test_support import start_closeout_operation
-from test_lifecycle_operations import _contract, _input
+from selected_lifecycle_test_support import selected_closeout_operation_input
+from test_lifecycle_operations import _contract
 
 
 def test_worker_parser_main_and_script_entry_use_task_addressing(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     worker_lease = "a" * 64
     parsed = lifecycle_operation_worker.build_parser().parse_args(
         [
@@ -68,7 +69,9 @@ def test_worker_parser_main_and_script_entry_use_task_addressing(tmp_path: Path)
     bind_services.assert_called_once_with(services)
     run.assert_called_once_with(contract.contract_path, "closeout", worker_lease)
 
-    start_closeout_operation(_input(contract), launcher=lambda *_: None)
+    start_closeout_operation(
+        selected_closeout_operation_input(contract, code="close L23"), launcher=lambda *_: None
+    )
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     store.update(
         lambda record: record.model_copy(update={"status": "cancelled", "phase": "cancelled"})

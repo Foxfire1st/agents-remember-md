@@ -18,17 +18,14 @@ from typing import Literal, Never, Self
 from pydantic import Field, model_validator
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    CertificationContractFinding,
-    FrozenContractModel,
-    SemanticText,
-)
+from agents_remember.certification.models import CertificationContractFinding
 from agents_remember.certification.telemetry.models import (
     TelemetryEvent,
     TelemetryExecutionKind,
 )
 from agents_remember.errors import CertificationContractError
 from agents_remember.kernel.atomic_write import atomic_write_bytes
+from agents_remember.models.certification.base import FrozenContractModel, SemanticText
 
 _EXECUTION_DIRS: tuple[TelemetryExecutionKind, ...] = (
     "closeout-generation",

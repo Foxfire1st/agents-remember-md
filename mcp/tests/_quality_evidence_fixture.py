@@ -13,9 +13,16 @@ from agents_remember.certification.repository_profiles import (
     admit_repository_profile_execution,
     load_repository_profile,
 )
+from agents_remember.certification.repository_profiles.planning import (
+    resolve_repository_profile_selection,
+)
+from agents_remember.certification.repository_profiles.source_selection.git import (
+    observe_profile_source_selection,
+)
 from agents_remember.worktrees.modules.git import require_git
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
 from agents_remember.worktrees.modules.quality import gate as code_quality_gate
+from repository_profile_test_support import write_source_selection_artifacts
 
 
 def _write_passing_artifacts(
@@ -42,12 +49,13 @@ def _write_passing_artifacts(
             destination.write_text("fixture publication\n", encoding="utf-8")
         else:
             destination.write_bytes(b"fixture publication\n")
+    write_source_selection_artifacts(export, profile_execution.plan)
 
 
 def publish_passing_quality_gate(
     target: code_quality_gate.QualityGateTarget,
     *,
-    diff_base: str = "",
+    diff_base: str = "HEAD",
     plan: code_quality_gate.QualityGatePlan | None = None,
     invocation: str = "closeout-staged",
     attestation: Mapping[str, str] | None = None,
@@ -61,11 +69,20 @@ def publish_passing_quality_gate(
         target.code_worktree,
         target.profile_reference,
     )
+    mode = (plan or code_quality_gate.QualityGatePlan()).mode
+    candidate = CandidateIdentity(kind="git-tree", value=candidate_tree)
+    selection = resolve_repository_profile_selection(
+        admitted.canonical, purpose="closeout", mode=mode
+    )
+    source_selection = observe_profile_source_selection(
+        admitted, selection, candidate_identity=candidate, diff_base=diff_base
+    )
     profile_execution = admit_repository_profile_execution(
         admitted,
         purpose="closeout",
-        mode=(plan or code_quality_gate.QualityGatePlan()).mode,
-        candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
+        mode=mode,
+        candidate_identity=candidate,
+        source_selection=source_selection,
     )
     with tempfile.TemporaryDirectory() as temporary:
         export = Path(temporary)

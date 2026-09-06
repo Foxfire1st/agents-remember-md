@@ -6,8 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from agents_remember.application.completion_cleanup import auto_complete_seats
+from agents_remember.application.lifecycle.certification_refusal import (
+    certification_admission_refusal,
+)
 from agents_remember.application.task_docs.task_ref import TaskRef
+from agents_remember.application.worktree_status import project_contract_status
 from agents_remember.errors import (
+    CertificationContractError,
     CuratorCoherenceError,
     MemoryCandidatePairError,
     TaskIntentError,
@@ -19,6 +24,7 @@ from agents_remember.kernel.primitives.runtime_config import (
     RepositoryScope,
     reload_provider_authority,
 )
+from agents_remember.models.certification.corrective import RedCatalogDisposition
 from agents_remember.models.closeout.input import CloseoutCorrectedCall, EffectiveCloseoutInput
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.operation import (
@@ -59,7 +65,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_control
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
     LifecycleOperationLocationError,
-    require_matching_lifecycle_operation_location,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_read_decision import (
     lifecycle_journal_read_decision,
@@ -76,23 +81,14 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import
     start_or_observe_closeout_operation,
     start_or_observe_operation,
 )
-from agents_remember.worktrees.integration.lifecycle.lifecycle_public_evidence import (
-    public_failure_evidence,
-)
-from agents_remember.worktrees.integration.lifecycle.observation.projection import (
-    current_operation_projections,
-)
 from agents_remember.worktrees.sync_transaction_state import observe_sync_operation
 from agents_remember.worktrees.worktree_contract import (
-    ContractError,
     WorktreeContract,
-    load_contract,
 )
 
 from .lifecycle.configured_contract_admission import (
     ConfiguredContractAccepted,
     ConfiguredContractRefused,
-    TerminalConfiguredContractAccepted,
     admit_configured_contract,
     admit_configured_terminal_contract,
     execute_configured_contract_operation,
@@ -107,9 +103,7 @@ from .lifecycle.lifecycle_control_authority import (
 from .lifecycle.lifecycle_operation_location import (
     LifecycleOperationPublicAddress,
     configured_lifecycle_operation_location,
-    location_decision_payload,
     unreadable_operation_refusal,
-    unreadable_status_operations,
 )
 from .worktree_tool_requests import (
     DEFAULT_START_EXECUTION,
@@ -323,156 +317,7 @@ def worktree_status_tool(
         pass
     if sync_operation is not None:
         result["syncOperation"] = sync_operation.model_dump(mode="json", exclude_none=True)
-    return _project_contract_status(config, result, requested_path, caller)
-
-
-def _project_contract_status(
-    config: McpRuntimeConfig,
-    result: dict[str, Any],
-    path: Path,
-    caller: DeclaredCaller | None,
-) -> dict[str, Any]:
-    terminal = admit_configured_terminal_contract(config, path.as_posix())
-    if isinstance(terminal, TerminalConfiguredContractAccepted):
-        _project_terminal_contract_status(result, terminal)
-        _replace_operation_status(result, [])
-        return result
-    if isinstance(terminal, ConfiguredContractRefused) and terminal.status.startswith(
-        "terminal-archive-"
-    ):
-        result.update(project_configured_contract_refusal(terminal, operation="worktree_status"))
-        _replace_operation_status(result, [])
-        return result
-    try:
-        resolved_caller = resolve_lifecycle_caller(config, caller)
-    except LifecycleCallerError as exc:
-        return {
-            "ok": False,
-            "operation": "worktree_status",
-            "state": "refused",
-            "status": exc.status,
-            "detail": exc.detail,
-        }
-    read_failure = result.get("contractReadFailure")
-    if isinstance(read_failure, dict):
-        operations = unreadable_status_operations(config, result, path, read_failure)
-    else:
-        operations = _readable_status_operations(config, result, path, resolved_caller)
-    _replace_operation_status(result, operations)
-    return result
-
-
-def _readable_status_operations(
-    config: McpRuntimeConfig,
-    result: dict[str, Any],
-    path: Path,
-    resolved_caller: DeclaredCaller | None,
-) -> list[LifecycleOperationProjection]:
-    try:
-        contract = load_contract(path)
-        location = require_matching_lifecycle_operation_location(contract)
-        return current_operation_projections(
-            path,
-            allow_completed_disposition=completed_disposition_authorized(
-                contract,
-                resolved_caller,
-            ),
-            caller=resolved_caller,
-            contract=contract,
-            location=location,
-        )
-    except LifecycleOperationLocationError as exc:
-        result.update(location_decision_payload(exc))
-        return []
-    except (ContractError, OSError, UnicodeError, ValueError) as exc:
-        detail = "the canonical worktree contract is unreadable"
-        result.update(
-            {
-                "ok": False,
-                "state": "worktree-contract-unreadable",
-                "status": "worktree-contract-unreadable",
-                "summary": detail,
-                "detail": detail,
-            }
-        )
-        return unreadable_status_operations(
-            config,
-            result,
-            path,
-            public_failure_evidence(
-                stage="contract-read",
-                side="contract",
-                name=path.name,
-                error_type=type(exc).__name__,
-                observed={"state": "missing" if not path.exists() else "unreadable"},
-            ),
-        )
-
-
-def _replace_operation_status(
-    result: dict[str, Any], operations: list[LifecycleOperationProjection]
-) -> None:
-    result.pop("contractReadFailure", None)
-    result.pop("lifecycleOperation", None)
-    result["lifecycleOperations"] = [
-        operation.model_dump(mode="json", exclude_none=True) for operation in operations
-    ]
-
-
-def _project_terminal_contract_status(
-    result: dict[str, Any],
-    accepted: TerminalConfiguredContractAccepted,
-) -> None:
-    authority = accepted.authority
-    archive = authority.archive
-    completed = authority.state == "cleanup-completed"
-    status = "terminal-cleanup-completed" if completed else "terminal-archive-ready"
-    result.update(
-        {
-            "ok": True,
-            "state": status,
-            "status": status,
-            "summary": (
-                "Terminal cleanup is complete and the external enclosure archive remains proven."
-                if completed
-                else "Terminal archive proof is durable; resume the accepted cleanup operation."
-            ),
-            "terminalArchive": {
-                "state": "terminal-archive-proven",
-                "cleanupOperation": archive.cleanupOperation,
-                "cleanupArguments": archive.cleanupArguments.model_dump(mode="json"),
-                "cleanupRequestId": archive.cleanupRequestId,
-                "archivePath": accepted.locator.terminalArchivePath,
-                "archiveSha256": accepted.locator.terminalArchiveSha256,
-                "receiptPath": accepted.locator.terminalReceiptPath,
-                "contractState": authority.state,
-            },
-        }
-    )
-    if completed:
-        result.pop("nextAction", None)
-        return
-    result.update(
-        {
-            "nextAction": archive.cleanupOperation,
-            "nextTool": archive.cleanupOperation,
-            "nextArgs": _terminal_cleanup_next_args(
-                accepted.contract_path,
-                archive.cleanupArguments.model_dump(mode="json"),
-            ),
-        }
-    )
-
-
-def _terminal_cleanup_next_args(
-    contract_path: Path,
-    accepted_arguments: dict[str, object],
-) -> dict[str, object]:
-    return {
-        "contract_path": contract_path.as_posix(),
-        "dry_run": False,
-        **accepted_arguments,
-    }
+    return project_contract_status(config, result, requested_path, caller)
 
 
 def _task_ref_namespace(
@@ -530,6 +375,8 @@ def worktree_closeout_apply_tool(
     contract_path: str,
     messages: CloseoutCommitMessages,
     approval: CloseoutApproval,
+    *,
+    corrective_dispositions: tuple[RedCatalogDisposition, ...] = (),
 ) -> dict[str, Any]:
     if approval.dry_run:
         return _worktree_closeout(
@@ -539,7 +386,9 @@ def worktree_closeout_apply_tool(
             messages=messages,
             approval=approval,
         )
-    return _start_closeout_operation(config, contract_path, messages, approval)
+    return _start_closeout_operation(
+        config, contract_path, messages, approval, corrective_dispositions=corrective_dispositions
+    )
 
 
 def _start_closeout_operation(
@@ -547,6 +396,8 @@ def _start_closeout_operation(
     contract_path: str,
     messages: CloseoutCommitMessages,
     approval: CloseoutApproval,
+    *,
+    corrective_dispositions: tuple[RedCatalogDisposition, ...] = (),
 ) -> dict[str, Any]:
     configured = admit_configured_contract(
         config,
@@ -573,6 +424,7 @@ def _start_closeout_operation(
             ledger=messages.ledger,
         ),
         approval_note=approval.intent_note,
+        corrective_dispositions=corrective_dispositions,
         gate_policy=_gate_policy_snapshot(config),
         corrected_call=CloseoutCorrectedCall(
             tool="worktree_closeout_apply",
@@ -600,6 +452,7 @@ def _start_closeout_operation(
             ),
         )
     except (
+        CertificationContractError,
         CloseoutInputError,
         LifecycleControlError,
         LifecycleOperationReadError,
@@ -919,6 +772,8 @@ def _start_operation_refusal(
 ) -> dict[str, Any]:
     """Translate one start/admission failure without duplicating route classifiers."""
 
+    if isinstance(error, CertificationContractError):
+        return certification_admission_refusal(address.operation, error)
     if isinstance(error, CloseoutInputError):
         return _closeout_input_refusal(address.operation, error)
     if isinstance(error, TaskIntentError):

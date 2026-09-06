@@ -17,15 +17,17 @@ from agents_remember.certification.digests import content_digest
 from agents_remember.certification.models import (
     CandidateIdentity,
     CertificationPlan,
-    FrozenContractModel,
-    GateId,
     GateResultManifest,
     RailEvidenceReference,
-    RailIdentity,
     RailPosture,
-    SemanticText,
 )
 from agents_remember.certification.repository_profiles.models import RepositoryProfilePlan
+from agents_remember.models.certification.base import (
+    FrozenContractModel,
+    GateId,
+    RailIdentity,
+    SemanticText,
+)
 
 LifecycleReadinessState = Literal[
     "admission-pending",

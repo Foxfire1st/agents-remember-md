@@ -616,7 +616,6 @@ def test_executor_adapter_and_decoder_confinement_refuse_uncovered_edges(
         repository_bundle=tmp_path / "candidate.bundle",
         execution_manifest=tmp_path / "manifest.json",
         mode="targeted",
-        diff_base="base",
         export_root=tmp_path / "reports",
         memory_cap_bytes=-1,
     )

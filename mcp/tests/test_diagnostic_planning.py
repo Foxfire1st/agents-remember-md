@@ -22,13 +22,11 @@ from agents_remember.certification.models import (
     ArtifactDeclaration,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     RailAdapterDefinition,
     RailApplicability,
     RailClass,
     RailDefinition,
     RailEvidenceContract,
-    RailIdentity,
     RailPosture,
     RailRegistry,
     RailRuntimeInputs,
@@ -36,6 +34,7 @@ from agents_remember.certification.models import (
 )
 from agents_remember.certification.planning import compile_certification_plan
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 CERT_PROFILE = "portable-ci"
 DIAG_PROFILE = "diagnostic-ci"

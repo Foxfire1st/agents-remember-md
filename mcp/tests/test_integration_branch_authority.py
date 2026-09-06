@@ -651,13 +651,14 @@ class IntegrationBranchAuthorityTests(unittest.TestCase):
                     candidate_commit=False,
                     publish_closeout_evidence=False,
                 ),
-                code_source_branch="main",
                 closeout_status="completed",
                 approved_for_commit=True,
                 code_commit=_git(fixture.code_repo, "rev-parse", "leaf"),
             )
             write_contract(closed.contract_path, closed)
-            closed = _publish_completed_closeout_fixture(fixture, closed)
+            closed = _publish_completed_closeout_fixture(
+                fixture, closed, final_source_branch="main"
+            )
             operation_input = IntegrateOperationInput(
                 configPath=fixture.config_path.as_posix(),
                 contractPath=closed.contract_path.as_posix(),
@@ -711,9 +712,9 @@ class IntegrationBranchAuthorityTests(unittest.TestCase):
                 "refs/heads/integration-alias",
                 "refs/heads/ar/master",
             )
-            closed = replace(closed, code_source_branch="integration-alias")
-            write_contract(closed.contract_path, closed)
-            closed = _publish_completed_closeout_fixture(fixture, closed)
+            closed = _publish_completed_closeout_fixture(
+                fixture, closed, final_source_branch="integration-alias"
+            )
             operation_input = IntegrateOperationInput(
                 configPath=fixture.config_path.as_posix(),
                 contractPath=closed.contract_path.as_posix(),

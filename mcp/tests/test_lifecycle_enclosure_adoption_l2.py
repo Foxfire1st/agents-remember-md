@@ -24,6 +24,7 @@ from agents_remember.worktrees.integration.lifecycle import (
     lifecycle_enclosure_adoption as adoption_module,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import (
+    operation_key,
     operation_state_fingerprint,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
@@ -33,7 +34,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     LifecycleOperationStore,
 )
-from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import operation_key
 from agents_remember.worktrees.integration.terminal_enclosure_archive import _canonical_entries
 from agents_remember.worktrees.modules.git import head_commit, require_git
 from agents_remember.worktrees.worktree_contract import WorktreeContract

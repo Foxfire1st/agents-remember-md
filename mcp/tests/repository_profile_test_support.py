@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
+import runpy
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +17,6 @@ from agents_remember.certification.models import (
     CandidateIdentity,
     RailClass,
     RailEvidenceContract,
-    RailIdentity,
     RailRuntimeInputs,
 )
 from agents_remember.certification.repository_profiles import (
@@ -42,6 +44,7 @@ from agents_remember.certification.repository_profiles.models import (
     RepositoryCertificationProfile,
     RepositoryGateId,
     RepositoryGateSelection,
+    RepositoryProfilePlan,
     RepositoryProfileSelection,
     RepositoryRailDefinition,
     RepositoryRailExecution,
@@ -50,6 +53,11 @@ from agents_remember.certification.repository_profiles.models import (
 from agents_remember.certification.repository_profiles.planning import (
     compile_repository_profile_plan,
 )
+from agents_remember.certification.repository_profiles.source_selection.models import (
+    RailSourceSelection,
+)
+from agents_remember.models.certification.base import RailIdentity
+from source_selection_test_support import source_selection_fixture
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_REMEMBER_PROFILE_REFERENCE = Path("mcp/certification-profile-v1.json")
@@ -116,7 +124,36 @@ def agents_remember_profile_execution(
         purpose=purpose,
         mode=mode,
         candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
+        source_selection=source_selection_fixture(candidate_tree)
+        if purpose != "local-precommit"
+        else None,
     )
+
+
+def write_source_selection_artifacts(
+    root: Path, plan: RepositoryProfilePlan
+) -> tuple[RailSourceSelection, ...]:
+    """Publish the exact plan's decisions in an isolated executor/export fixture."""
+    decisions = tuple(
+        RailSourceSelection.model_validate_json(node.canonicalJson)
+        for gate in plan.gates
+        for node in gate.semanticInputs
+        if node.inputKind == "source-applicability"
+    )
+    for decision in decisions:
+        path = root / decision.declaration.evidencePath
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                decision.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return decisions
 
 
 def _file_digest(path: Path) -> str:
@@ -129,7 +166,7 @@ def dagger_runtime_digest() -> str:
     source_root = REPOSITORY_ROOT / ".dagger/src/agents_remember_quality"
     sources = {
         path.relative_to(source_root).as_posix(): _file_digest(path)
-        for path in sorted(source_root.glob("*.py"))
+        for path in sorted(source_root.rglob("*.py"))
     }
     return content_digest(sources)
 
@@ -366,10 +403,10 @@ def fixture_profile(fixture: FixtureRepository = NODE_FIXTURE) -> RepositoryCert
                 functionName=fixture.dagger_function,
                 sourceArgument="source",
                 repositoryBundleArgument="repository-bundle",
-                diffBaseArgument="diff-base",
                 memoryCapArgument="memory-cap-bytes",
                 planArgument="execution-manifest",
                 reportsField="reports",
+                retainedReportsArgument="retained-reports",
                 imageReference=fixture.image_reference,
                 runtimeDigest=dagger_runtime_digest(),
                 consumingGates=(1, 2, 3, 4),
@@ -462,6 +499,7 @@ def fixture_execution_manifest(
     )
     return {
         "schemaVersion": "repository-certification-admission/v1",
+        "diffBase": "base-commit",
         "candidateTree": candidate_tree,
         "profile": {"profileDigest": canonical.profileDigest},
         "profilePlan": plan.model_dump(mode="json"),
@@ -576,6 +614,20 @@ __all__ = [
 ]
 
 
+def fixture_environment_census(request):
+    """Canonical census over real tiny dependency trees for SDK contract doubles."""
+    owner = runpy.run_path(
+        str(REPOSITORY_ROOT / ".dagger/src/agents_remember_quality/environment/census.py")
+    )
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        for scope in request["definition"]["directoryScopes"]:
+            target = root / scope
+            target.mkdir(parents=True)
+            (target / "fixture-dependency").write_bytes(b"fixture dependency bytes\n")
+        return owner["build_census"](root, request)
+
+
 class FakeContainer:
     def __init__(self, exit_codes: list[int]) -> None:
         self.exit_codes = exit_codes
@@ -601,6 +653,27 @@ class FakeContainer:
         return self
 
     def with_exec(self, command: list[str], **_kwargs: object) -> FakeContainer:
+        census_script = "/workspace/.dagger/src/agents_remember_quality/environment/census.py"
+        if census_script in command:
+            index = command.index(census_script)
+            request = json.loads(self.files[command[index + 1]])
+            census = fixture_environment_census(request)
+            detached = copy.copy(self)
+            detached.files = dict(self.files)
+            detached.exit_codes = []
+            if len(command) == index + 5:
+                original = json.loads(self.files[command[index + 4]])
+                if original != census:
+                    detached.exit_codes = [66]
+                    return detached
+                census = {
+                    "schemaVersion": "certification-environment-reconstruction/v1",
+                    "status": "verified",
+                    "censusDigest": census["censusDigest"],
+                    "declarationDigest": census["declarationDigest"],
+                }
+            detached.files[command[index + 3]] = json.dumps(census) + "\n"
+            return detached
         if command[0] == "sha256sum":
             detached = FakeContainer([])
             detached.stdout_value = hashlib.sha256(self.files[command[1]].encode()).hexdigest()
@@ -671,6 +744,8 @@ class FakeContainer:
             )
         if "--proof" in command:
             paths.append(command[command.index("--proof") + 1])
+        if "agents_remember_test_support.code_quality.causal_preflight" in command:
+            paths.append(command[command.index("--report") + 1])
         for token in command:
             if token.startswith(
                 (
@@ -697,7 +772,7 @@ class FakeContainer:
         self.operations.append(("workdir", *args))
         return self
 
-    def with_new_file(self, path: str, *, contents: str) -> FakeContainer:
+    def with_new_file(self, path: str, contents: str) -> FakeContainer:
         self.files[path] = contents
         return self
 

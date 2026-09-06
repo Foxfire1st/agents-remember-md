@@ -43,12 +43,10 @@ from agents_remember.certification.lifecycle_admission import (
     PriorRedAdmissionContext,
 )
 from agents_remember.certification.lifecycle_models import (
-    CorrectiveInputChange,
     DurableFinalizationLeg,
     ExactCandidateObservation,
     FinalizationBoundaryObservation,
     FinalizationJournalState,
-    RedCatalogDisposition,
 )
 from agents_remember.certification.lifecycle_recovery import (
     FinalizationBoundaryInputs,
@@ -59,7 +57,6 @@ from agents_remember.certification.models import (
     CanonicalRailRegistry,
     CertificationPlan,
     CompiledRail,
-    GateId,
     GatePlan,
     GateResultAdmission,
     GateResultManifest,
@@ -70,7 +67,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailRegistry,
     RailRuntimeInputs,
     RailStatus,
@@ -87,8 +83,12 @@ from agents_remember.certification.repository_profiles.models import (
     RepositoryProfilePlan,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
+from agents_remember.models.certification.corrective import (
+    CorrectiveInputChange,
+    RedCatalogDisposition,
+)
 from agents_remember.models.lifecycles.operation import LifecycleOperationRecord
-from agents_remember.models.test_evidence import _certifying_evidence_from_verified_dagger
 from agents_remember.worktrees.integration import integration_quality as quality
 from agents_remember.worktrees.integration import integration_ref_transaction as ref_transaction
 from agents_remember.worktrees.integration import (
@@ -99,11 +99,10 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store i
     operation_record_path,
 )
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
-from agents_remember.worktrees.modules.quality import gate as code_quality_gate
 from agents_remember.worktrees.series_closeout import atomic_series_ledger_prefix
+from integration_certification_test_support import selected_code_fixture
 from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
-    REPOSITORY_ROOT,
     agents_remember_profile_execution,
     fixture_profile,
 )
@@ -993,14 +992,6 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                         attestation={"id": "one"}, runtime_authority_digest=None
                     ),
                 )
-            target = code_quality_gate.QualityGateTarget(
-                code_worktree=REPOSITORY_ROOT,
-                worktree_group=root,
-                repository_id="agents-remember",
-                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
-            )
-            plan = code_quality_gate.QualityGatePlan(mode="full")
-
             result_path.write_text(
                 json.dumps({"status": "failed", "exitCode": 1}) + "\n",
                 encoding="utf-8",
@@ -1014,14 +1005,13 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                     attestation={"id": "one"}, runtime_authority_digest=None
                 ),
             )
-            self.assertIsNone(
-                code_quality_gate.recover_strict_code_quality_gate(
-                    target,
-                    diff_base="a" * 40,
-                    plan=plan,
-                    attestation={"id": "one"},
+            manifest = clean_quality_executor.load_published_quality_manifest(reports)
+            with self.assertRaisesRegex(RuntimeError, "did not pass acceptance"):
+                clean_quality_executor.certifying_evidence_from_published_manifest(
+                    reports,
+                    manifest,
+                    candidate_tree="c" * 40,
                 )
-            )
 
             manifest_path = reports / clean_quality_executor.REPORT_SET_MANIFEST
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1077,65 +1067,24 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            export = root / "export"
-            reports = root / "reports"
-            export.mkdir()
-            (export / "clean-quality-results.json").write_text(
-                json.dumps({"status": "passed", "exitCode": 0}) + "\n",
-                encoding="utf-8",
-            )
-            candidate_tree = "c" * 40
-            clean_quality_executor._publish_reports(
-                export,
-                reports,
-                candidate_tree=candidate_tree,
-                profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
-                bindings=clean_quality_executor.ReportBindings(
-                    attestation={"id": "one"}, runtime_authority_digest=None
-                ),
-            )
-            target = code_quality_gate.QualityGateTarget(
-                code_worktree=REPOSITORY_ROOT,
-                worktree_group=root,
-                repository_id="agents-remember",
-                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
-            )
-            plan = code_quality_gate.QualityGatePlan(mode="full")
-            manifest = clean_quality_executor.load_published_quality_manifest(reports)
-            fresh = code_quality_gate._strict_quality_success_payload(
-                target,
-                diff_base="a" * 40,
-                plan=plan,
-                evidence=_certifying_evidence_from_verified_dagger(
-                    candidate_tree=candidate_tree,
-                    result_sha256="d" * 64,
-                ),
-                manifest=manifest,
-            )
-            with mock.patch.object(
-                code_quality_gate,
-                "require_git",
-                return_value=candidate_tree,
-            ):
-                recovered = code_quality_gate.recover_strict_code_quality_gate(
-                    target,
-                    diff_base="a" * 40,
-                    plan=plan,
-                    attestation={"id": "one"},
-                )
-            assert recovered is not None
+            selected = selected_code_fixture(root)
+            fresh = selected.render()
+            recovered = selected.render()
             self.assertEqual(recovered["reportPath"], fresh["reportPath"])
             self.assertEqual(Path(str(fresh["reportPath"])).name, "test-results.md")
             self.assertEqual(recovered["publishedResultPath"], fresh["publishedResultPath"])
             published = Path(str(recovered["publishedResultPath"]))
             self.assertEqual(published.name, "clean-quality-results.json")
-            self.assertEqual(json.loads(published.read_text(encoding="utf-8"))["exitCode"], 0)
+            self.assertEqual(json.loads(published.read_bytes())["exitCode"], 0)
 
+            export = root / "malformed-export"
+            export.mkdir()
             (export / "clean-quality-results.json").write_text("[]\n", encoding="utf-8")
+            candidate_tree = selected.prepared.candidateTree
             with self.assertRaisesRegex(RuntimeError, "must be a JSON object"):
                 clean_quality_executor._publish_reports(
                     export,
-                    reports,
+                    selected.target.worktree_group / "reports",
                     candidate_tree=candidate_tree,
                     profile_execution=agents_remember_profile_execution(
                         candidate_tree=candidate_tree
@@ -1145,25 +1094,24 @@ class L5QualityAndRecoveryEdgeTests(unittest.TestCase):
                     ),
                 )
 
-    def test_organizational_gate_returns_a_certificate_without_a_sink(self) -> None:
+    def test_organizational_gate_refuses_certification_without_a_journal_owner(self) -> None:
         contract = self.owner._certified_contract(final=True)
         plan = completion.preview_organizational_completion(contract)
         assert plan is not None
         with (
-            mock.patch.object(quality, "requires_strict_code_quality", return_value=True),
-            mock.patch.object(
-                quality,
-                "run_strict_code_quality_gate",
-                side_effect=fixture_mod._full_gate(contract),
-            ) as gate,
+            mock.patch.object(quality, "run_strict_code_quality_gate") as gate,
+            self.assertRaises(RuntimeError) as raised,
         ):
-            outcome = quality.run_integration_quality_gate(
+            quality.run_integration_quality_gate(
                 contract,
                 completion=plan,
                 profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
+                owner=None,
             )
-        gate.assert_called_once()
-        self.assertIsNotNone(outcome.certification)
+        gate.assert_not_called()
+        cause = raised.exception.__cause__
+        assert isinstance(cause, CertificationContractError)
+        self.assertEqual(cause.findings[0]["code"], "integration-certification-owner-missing")
 
     def test_public_ledger_and_series_prefix_preconditions_refuse_wrong_contracts(self) -> None:
         contract = self.owner._certified_contract(final=True)

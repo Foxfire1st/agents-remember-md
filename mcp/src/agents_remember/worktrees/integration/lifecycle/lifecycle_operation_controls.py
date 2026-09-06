@@ -54,11 +54,11 @@ from agents_remember.worktrees.integration.integration_operation_decision import
 )
 from agents_remember.worktrees.integration.integration_ref_state import classify_integration_refs
 from agents_remember.worktrees.integration.lifecycle.control.cancellation import cancel_operation
+from agents_remember.worktrees.integration.lifecycle.generation.resume import (
+    requeued_same_generation,
+)
 from agents_remember.worktrees.integration.lifecycle.lifecycle_completed_disposition import (
     require_completed_disposition,
-)
-from agents_remember.worktrees.integration.lifecycle.lifecycle_generation_resume import (
-    requeued_same_generation,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_candidate import (
     fingerprint_payload,

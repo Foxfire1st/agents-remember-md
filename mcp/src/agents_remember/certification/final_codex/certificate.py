@@ -39,12 +39,9 @@ from agents_remember.certification.final_codex.models import (
     FinalCodexRunManifest,
     FinalCodexRuntimeAuthorityBinding,
 )
-from agents_remember.certification.models import (
-    CandidateIdentity,
-    CertificationContractFinding,
-    FrozenContractModel,
-)
+from agents_remember.certification.models import CandidateIdentity, CertificationContractFinding
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import FrozenContractModel
 
 _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 _ID_PATTERN = r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"

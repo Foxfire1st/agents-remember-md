@@ -23,7 +23,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailRegistry,
     RailResult,
     RailRuntimeInputs,
@@ -32,6 +31,7 @@ from agents_remember.certification.models import (
     RegistryValidationFinding,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import RailIdentity
 from certification_registry_test_support import (
     _CANDIDATE,
     _DIGEST,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable, Mapping
+from itertools import combinations
 from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, Field, model_validator
@@ -13,16 +14,22 @@ from agents_remember.certification.models import (
     ArtifactDeclaration,
     CandidateIdentity,
     CompiledRail,
-    FrozenContractModel,
-    GateId,
     RailClass,
     RailEvidenceContract,
-    RailIdentity,
     RailPosture,
     RailRuntimeInputs,
     RegistryValidationFinding,
-    SemanticText,
     canonical_execution_waves,
+)
+from agents_remember.certification.repository_profiles.source_selection.models import (
+    CandidateSourceSelection,
+    SourcePathApplicability,
+)
+from agents_remember.models.certification.base import (
+    FrozenContractModel,
+    GateId,
+    RailIdentity,
+    SemanticText,
 )
 
 RepositoryGateId = Literal[1, 2, 3, 4]
@@ -36,6 +43,9 @@ SemanticInputKind = Literal[
     "executor-adapter",
     "result-decoder",
     "publication-policy",
+    "generated-candidate-input",
+    "environment-reconstruction",
+    "source-applicability",
 ]
 
 _ID_PATTERN = r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
@@ -136,6 +146,10 @@ class RepositoryRailDefinition(FrozenContractModel):
     orderKey: SemanticText = Field(max_length=256)
     prerequisites: tuple[RailIdentity, ...] = Field(default_factory=tuple, max_length=256)
     requiredArtifacts: tuple[str, ...] = Field(default_factory=tuple, max_length=256)
+    sourceApplicability: SourcePathApplicability | None = None
+    conditionalPrerequisites: tuple[RailIdentity, ...] = Field(
+        default_factory=tuple, max_length=256
+    )
     runtimeInputs: RailRuntimeInputs
     evidenceContract: tuple[RailEvidenceContract, ...] = Field(
         min_length=1,
@@ -169,10 +183,10 @@ class DaggerModuleExecutorDefinition(FrozenContractModel):
     functionName: str = Field(pattern=_ID_PATTERN, max_length=128)
     sourceArgument: str = Field(pattern=_ID_PATTERN, max_length=128)
     repositoryBundleArgument: str = Field(pattern=_ID_PATTERN, max_length=128)
-    diffBaseArgument: str = Field(pattern=_ID_PATTERN, max_length=128)
     memoryCapArgument: str = Field(pattern=_ID_PATTERN, max_length=128)
     planArgument: str = Field(pattern=_ID_PATTERN, max_length=128)
     reportsField: str = Field(pattern=_ID_PATTERN, max_length=128)
+    retainedReportsArgument: str | None = Field(default=None, pattern=_ID_PATTERN, max_length=128)
     imageReference: SemanticText = Field(
         pattern=r"^[^\s@]+@sha256:[0-9a-f]{64}$",
         max_length=2048,
@@ -238,6 +252,55 @@ class PublishedArtifactDefinition(FrozenContractModel):
     publisherGates: tuple[RepositoryGateId, ...] = Field(min_length=1, max_length=4)
 
 
+class GeneratedCandidateInput(FrozenContractModel):
+    """The declared source-to-projection boundary checked by one Gate 1 rail."""
+
+    schemaVersion: Literal["generated-candidate-input/v1"] = "generated-candidate-input/v1"
+    inputId: str = Field(pattern=_ID_PATTERN, max_length=128)
+    checkRail: RailIdentity
+    sourceScopes: tuple[RelativeRepositoryPath, ...] = Field(min_length=1, max_length=4096)
+    generatedScopes: tuple[RelativeRepositoryPath, ...] = Field(min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def _require_unique_scopes(self) -> Self:
+        for scopes in (self.sourceScopes, self.generatedScopes):
+            if len(set(scopes)) != len(scopes):
+                raise ValueError("generated-input scopes must be unique")
+        return self
+
+
+class EnvironmentReconstructionDefinition(FrozenContractModel):
+    """Rebuild declared dependency directories only when their original census agrees."""
+
+    schemaVersion: Literal["repository-environment-reconstruction/v1"] = (
+        "repository-environment-reconstruction/v1"
+    )
+    environmentId: str = Field(pattern=_ID_PATTERN, max_length=128)
+    producerRail: RailIdentity
+    consumingGates: tuple[RepositoryGateId, ...] = Field(min_length=1, max_length=4)
+    directoryScopes: tuple[RelativeRepositoryFilePath, ...] = Field(min_length=1, max_length=32)
+    artifactId: str = Field(pattern=_ID_PATTERN, max_length=128)
+    manifestPath: RelativeRepositoryFilePath
+    reconstructionProofPath: RelativeRepositoryFilePath
+    workingDirectory: RelativeRepositoryPath
+    command: tuple[SemanticText, ...] = Field(min_length=1, max_length=1024)
+    inspectionExecutable: SemanticText = Field(max_length=2048)
+    timeoutSeconds: int = Field(gt=0, le=86_400)
+    maxEntries: int = Field(gt=0, le=100_000)
+    maxBytes: int = Field(gt=0, le=4 * 1024**3)
+    maxFileBytes: int = Field(gt=0, le=1024**3)
+    maxManifestBytes: int = Field(gt=0, le=32 * 1024**2)
+
+    @model_validator(mode="after")
+    def _require_directory_closure(self) -> Self:
+        scopes = sorted(self.directoryScopes)
+        if len(set(scopes)) != len(scopes) or any(
+            right.startswith(left + "/") for left, right in combinations(scopes, 2)
+        ):
+            raise ValueError("environment directories must be unique and non-overlapping")
+        return self
+
+
 class RepositoryCertificationProfile(FrozenContractModel):
     schemaVersion: Literal["repository-certification-profile/v1"] = (
         "repository-certification-profile/v1"
@@ -248,6 +311,12 @@ class RepositoryCertificationProfile(FrozenContractModel):
     profileDigest: str = Field(pattern=_DIGEST_PATTERN)
     selections: tuple[RepositoryProfileSelection, ...] = Field(min_length=1, max_length=128)
     rails: tuple[RepositoryRailDefinition, ...] = Field(min_length=1, max_length=4096)
+    environments: tuple[EnvironmentReconstructionDefinition, ...] = Field(
+        default_factory=tuple, max_length=32
+    )
+    generatedInputs: tuple[GeneratedCandidateInput, ...] = Field(
+        default_factory=tuple, max_length=4096
+    )
     selectors: tuple[RepositorySelectorAuthority, ...] = Field(
         default_factory=tuple,
         max_length=128,
@@ -271,6 +340,30 @@ def _normalize_repository_profile(
 ) -> RepositoryCertificationProfile:
     return profile.model_copy(
         update={
+            "environments": _sorted_contract_items(
+                (
+                    item.model_copy(
+                        update={
+                            "directoryScopes": tuple(sorted(item.directoryScopes)),
+                            "consumingGates": tuple(sorted(item.consumingGates)),
+                        }
+                    )
+                    for item in profile.environments
+                ),
+                identity=lambda item: item.environmentId,
+            ),
+            "generatedInputs": _sorted_contract_items(
+                (
+                    item.model_copy(
+                        update={
+                            "sourceScopes": tuple(sorted(item.sourceScopes)),
+                            "generatedScopes": tuple(sorted(item.generatedScopes)),
+                        }
+                    )
+                    for item in profile.generatedInputs
+                ),
+                identity=lambda item: item.inputId,
+            ),
             "selections": _sorted_contract_items(
                 (_normalize_selection(item) for item in profile.selections),
                 identity=lambda item: item.selectionId,
@@ -336,6 +429,10 @@ def _normalize_repository_rail(rail: RepositoryRailDefinition) -> RepositoryRail
     )
     return rail.model_copy(
         update={
+            "conditionalPrerequisites": _sorted_contract_items(
+                rail.conditionalPrerequisites,
+                identity=lambda item: item.key,
+            ),
             "prerequisites": _sorted_contract_items(
                 rail.prerequisites,
                 identity=lambda item: item.key,
@@ -512,6 +609,7 @@ class RepositoryGatePlan(FrozenContractModel):
 
 
 class RepositoryProfilePlan(FrozenContractModel):
+    sourceSelection: CandidateSourceSelection | None = None
     schemaVersion: Literal["repository-profile-plan/v1"] = "repository-profile-plan/v1"
     profileDigest: str = Field(pattern=_DIGEST_PATTERN)
     candidateIdentity: CandidateIdentity

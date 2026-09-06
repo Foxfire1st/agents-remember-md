@@ -44,7 +44,6 @@ from agents_remember.certification.models import (
     CanonicalRailRegistry,
     CertificationContractFinding,
     CertificationPlan,
-    GateId,
     GatePlan,
     GateResultAdmission,
     GateResultManifest,
@@ -66,6 +65,7 @@ from agents_remember.errors import (
     CertificationContractError,
     DaggerRuntimeAuthorityError,
 )
+from agents_remember.models.certification.base import GateId
 from agents_remember.worktrees.modules.quality.dagger_authority import (
     AdmittedDaggerAuthority,
     AuthorityRegistry,

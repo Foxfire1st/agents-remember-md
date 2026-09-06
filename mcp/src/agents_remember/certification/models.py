@@ -6,11 +6,17 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import Annotated, Literal, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 from agents_remember.certification.digests import content_digest
+from agents_remember.models.certification.base import (
+    _ID_PATTERN,
+    FrozenContractModel,
+    GateId,
+    RailIdentity,
+    SemanticText,
+)
 
-GateId = Literal[1, 2, 3, 4, 5]
 ProfileKind = Literal["certifying", "diagnostic"]
 RailAuthority = Literal["repository-profile", "memory-domain"]
 RailClass = Literal[
@@ -23,30 +29,10 @@ RailClass = Literal[
 RailPosture = Literal["enforcing", "report-only"]
 RailStatus = Literal["pass", "fail", "blocked", "not-applicable"]
 
-_ID_PATTERN = r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
-_VERSION_PATTERN = (
-    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-    r"(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
-    r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?"
-    r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
-)
 _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 
 
-def _require_semantic_text(value: str) -> str:
-    if not value or value != value.strip():
-        raise ValueError("semantic text must be nonblank and unpadded")
-    return value
-
-
-SemanticText = Annotated[str, AfterValidator(_require_semantic_text)]
 ArtifactId = Annotated[str, Field(pattern=_ID_PATTERN, max_length=128)]
-
-
-class FrozenContractModel(BaseModel):
-    """Closed immutable base for registry, plan, and result records."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class CandidateIdentity(FrozenContractModel):
@@ -54,15 +40,6 @@ class CandidateIdentity(FrozenContractModel):
 
     kind: str = Field(pattern=_ID_PATTERN, max_length=128)
     value: SemanticText = Field(max_length=4096)
-
-
-class RailIdentity(FrozenContractModel):
-    railId: str = Field(pattern=_ID_PATTERN, max_length=128)
-    version: SemanticText = Field(pattern=_VERSION_PATTERN)
-
-    @property
-    def key(self) -> str:
-        return f"{self.railId}@{self.version}"
 
 
 class ArtifactDeclaration(FrozenContractModel):

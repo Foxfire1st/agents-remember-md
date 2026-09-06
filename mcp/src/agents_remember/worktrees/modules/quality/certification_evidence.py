@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Never
+from typing import Never, cast
 
 from agents_remember.certification.certificate_models import GateCertificate
 from agents_remember.certification.certificate_store import ContentAddressedCertificateStore
+from agents_remember.certification.frozen_run.models import FrozenCertificationRun
 from agents_remember.certification.models import GateResultManifest, RailResult
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.references import CertificateObjectReference
 from agents_remember.worktrees.modules.quality.published_manifest import (
     PublishedQualityManifest,
     parse_published_quality_manifest,
@@ -71,7 +73,7 @@ def validate_gate_records(value: object) -> tuple[dict[str, object], ...]:
         if gate in seen:
             _refuse("certificate-evidence-journal-invalid", "duplicate selected gate")
         seen.add(gate)
-        if row.get("kind") == "certificate":
+        if row.get("kind") in {"certificate", "terminal"}:
             if gate not in range(1, 6):
                 _refuse(
                     "certificate-evidence-journal-invalid", "certificate gate identity is invalid"
@@ -102,14 +104,22 @@ def verify_selected_publications(
     """Cross-bind selections to their exact stored objects before publishing or pruning."""
     selected: list[PublishedQualityManifest] = []
     for row in records:
-        if row.get("kind") != "certificate":
+        if row.get("kind") not in {"certificate", "terminal"}:
             continue
         publication = _record_publication(row)
-        certificate = store.load_certificate(str(row["certificate"]))
-        result = store.load_result_manifest(str(row["manifest"]))
+        if row.get("kind") == "terminal":
+            result = store.load(GateResultManifest, str(row["manifest"]))
+            frozen = _record_frozen_run(row, store)
+            verify_terminal_publication_authority(frozen, result, publication)
+            if row["gate"] != result.gate:
+                _refuse("certificate-evidence-binding-mismatch", "selected terminal gate differs")
+            selected.append(publication)
+            continue
+        certificate = store.load(GateCertificate, str(row["certificate"]))
+        result = store.load(GateResultManifest, str(row["manifest"]))
         if row["gate"] != certificate.semanticEnvelope.gate:
             _refuse("certificate-evidence-binding-mismatch", "selected gate identity differs")
-        _verify_publication_authority(certificate, result, publication)
+        verify_publication_authority(certificate, result, publication)
         selected.append(publication)
     return tuple(selected)
 
@@ -121,14 +131,14 @@ def publication_binding(
     publication: PublishedQualityManifest,
 ) -> dict[str, object]:
     """Retain the original selected generation for a semantically identical certificate."""
-    _verify_publication_authority(certificate, result, publication)
+    verify_publication_authority(certificate, result, publication)
     for row in read_gate_records(records_root):
         if row.get("certificate") != certificate.certificateDigest:
             continue
         if row.get("manifest") != result.manifestDigest:
             _refuse("certificate-evidence-binding-mismatch", "selected result identity differs")
         retained = _record_publication(row)
-        _verify_publication_authority(certificate, result, retained)
+        verify_publication_authority(certificate, result, retained)
         if row["gate"] != certificate.semanticEnvelope.gate or _execution_authority(
             retained
         ) != _execution_authority(publication):
@@ -139,7 +149,7 @@ def publication_binding(
     return published_manifest_payload(publication)
 
 
-def _verify_publication_authority(
+def verify_publication_authority(
     certificate: GateCertificate,
     result: GateResultManifest,
     publication: PublishedQualityManifest,
@@ -171,6 +181,88 @@ def _verify_publication_authority(
         _refuse(
             "certificate-evidence-binding-mismatch", "publication certificate authority differs"
         )
+
+
+def verify_terminal_publication_authority(
+    frozen: FrozenCertificationRun,
+    result: GateResultManifest,
+    publication: PublishedQualityManifest,
+) -> None:
+    """Bind a non-certifying terminal result to its supplied complete frozen run."""
+    gate_plan = next(
+        (gate for gate in frozen.certificationPlan.gates if gate.gate == result.gate), None
+    )
+    if (
+        gate_plan is None
+        or (
+            result.registryDigest,
+            result.certificationPlanDigest,
+            result.gatePlanDigest,
+            result.candidateIdentity,
+            result.profileId,
+            result.profileKind,
+        )
+        != (
+            frozen.registry.registryDigest,
+            frozen.certificationPlan.planDigest,
+            gate_plan.planDigest,
+            frozen.repositoryPlan.candidateIdentity,
+            frozen.repositoryPlan.selectionId,
+            frozen.certificationPlan.profileKind,
+        )
+        or (
+            publication.candidate_tree,
+            publication.profile_digest,
+            publication.profile_plan_digest,
+            publication.profile_selection_id,
+        )
+        != (
+            result.candidateIdentity.value,
+            frozen.repositoryPlan.profileDigest,
+            frozen.repositoryPlan.planDigest,
+            result.profileId,
+        )
+    ):
+        _refuse("certificate-evidence-binding-mismatch", "terminal publication authority differs")
+
+
+def _record_frozen_run(
+    row: Mapping[str, object], store: ContentAddressedCertificateStore
+) -> FrozenCertificationRun:
+    try:
+        reference = CertificateObjectReference.model_validate(row.get("frozenRun"))
+    except ValueError as error:
+        _refuse("certificate-evidence-binding-missing", str(error))
+    if reference.kind != "frozen-run":
+        _refuse(
+            "certificate-evidence-binding-mismatch", "terminal record selects another object kind"
+        )
+    # The closed store dispatch validates this kind as FrozenCertificationRun,
+    # including its schema, semantic digest and exact selected original bytes.
+    return cast(FrozenCertificationRun, store.load_reference(reference))
+
+
+def terminal_publication_binding(
+    records_root: Path,
+    frozen: FrozenCertificationRun,
+    result: GateResultManifest,
+    publication: PublishedQualityManifest,
+) -> dict[str, object]:
+    """Retain a complete red/interrupted catalog and its exact physical generation."""
+    verify_terminal_publication_authority(frozen, result, publication)
+    for row in read_gate_records(records_root):
+        if row.get("kind") != "terminal" or row.get("manifest") != result.manifestDigest:
+            continue
+        retained = _record_publication(row)
+        verify_terminal_publication_authority(frozen, result, retained)
+        if row["gate"] != result.gate or _execution_authority(retained) != _execution_authority(
+            publication
+        ):
+            _refuse("certificate-evidence-binding-mismatch", "selected terminal execution differs")
+        publication = retained
+        break
+    verify_result_evidence(records_root.parent, publication, result.railResults)
+    return published_manifest_payload(publication)
 
 
 def _execution_authority(publication: PublishedQualityManifest) -> tuple[object, ...]:
@@ -218,7 +310,8 @@ def _verify_reference(
 
 
 def _record_publication(row: Mapping[str, object]) -> PublishedQualityManifest:
-    for field in ("certificate", "manifest"):
+    fields = ("certificate", "manifest") if row.get("kind") == "certificate" else ("manifest",)
+    for field in fields:
         value = row.get(field)
         if (
             not isinstance(value, str)

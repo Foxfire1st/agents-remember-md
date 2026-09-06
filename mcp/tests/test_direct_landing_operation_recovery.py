@@ -50,7 +50,7 @@ from agents_remember.worktrees.integration.direct_landing.direct_landing_operati
     direct_landing_record,
     direct_landing_store,
 )
-from agents_remember.worktrees.integration.lifecycle.lifecycle_generation_resume import (
+from agents_remember.worktrees.integration.lifecycle.generation.resume import (
     requeued_same_generation,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_candidate import (

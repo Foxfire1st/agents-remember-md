@@ -7,13 +7,11 @@ from typing import Annotated, Literal, Self
 from pydantic import AfterValidator, Field, model_validator
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    ArtifactId,
-    CandidateIdentity,
+from agents_remember.certification.models import ArtifactId, CandidateIdentity, RailStatus
+from agents_remember.models.certification.base import (
     FrozenContractModel,
     GateId,
     RailIdentity,
-    RailStatus,
     SemanticText,
 )
 

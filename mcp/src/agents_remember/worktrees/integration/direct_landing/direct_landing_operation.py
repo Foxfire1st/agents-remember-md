@@ -28,6 +28,9 @@ from agents_remember.worktrees.integration.direct_landing.direct_landing_recover
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_candidate import (
     LifecycleOperationCandidate,
 )
+from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import (
+    operation_key,
+)
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
     located_lifecycle_operation_report_path,
     located_lifecycle_operation_store,
@@ -35,7 +38,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     LifecycleOperationStore,
 )
-from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import operation_key
 from agents_remember.worktrees.integration.mutation_evidence import (
     initial_closeout_mutation_evidence,
     reconcile_closeout_mutations,

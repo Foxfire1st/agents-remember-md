@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from agents_remember.models.certification.corrective import RedCatalogDisposition
 from agents_remember.models.closeout.input import (
     CloseoutCorrectedCall,
     CloseoutMessageInput,
@@ -29,6 +30,7 @@ from agents_remember.worktrees.closeout_input import (
     resolve_closeout_plan,
     resolved_plan_from_effective_input,
 )
+from agents_remember.worktrees.integration.closeout.door import classify_door_publication
 from agents_remember.worktrees.integration.closeout.recovery_projection import (
     closeout_generation_retained,
 )
@@ -59,6 +61,7 @@ class CloseoutOperationAdmission:
     approval_note: str
     gate_policy: list[GatePolicyRuleSnapshot]
     corrected_call: CloseoutCorrectedCall
+    corrective_dispositions: tuple[RedCatalogDisposition, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -179,9 +182,7 @@ def _validate_existing_closeout_request(
     door_publication = current.doorPublication
     door_state_is_accepted = bool(
         door_publication is not None
-        and door_publication.state == "proven"
-        and closeout_contract_sha256(contract) == door_publication.expectedPublishedContractSha256
-        and contract.closeout_door == door_publication.generation
+        and classify_door_publication(door_publication, contract).state == "published"
     )
     if retained or door_state_is_accepted:
         intent = _current_operation_task_intent(current, validated.candidate.task_intent)
@@ -232,6 +233,7 @@ def _operation_input(
         effectiveInput=effective,
         approvalNote=admission.approval_note,
         gatePolicy=admission.gate_policy,
+        correctiveDispositions=admission.corrective_dispositions,
     )
 
 

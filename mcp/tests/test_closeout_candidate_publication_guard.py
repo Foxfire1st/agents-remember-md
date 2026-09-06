@@ -28,37 +28,26 @@ def test_closeout_candidate_publication_rechecks_the_contract(tmp_path: Path) ->
             candidate_tree="tree",
             operation_progress=MutationEvidenceRecorder(),
         )
+    assert args.closeout_input is not None
+    facts = closeout._CloseoutPublicationFacts(
+        args=args,
+        effective_input=args.closeout_input,
+        worklist={"all": [], "working": [], "committed": []},
+        quality=mock.Mock(spec=closeout._CloseoutQualityFacts),
+        route_review={},
+        approval_note="approved",
+    )
     with (
-        mock.patch.object(closeout, "report_operation_progress"),
-        mock.patch.object(
-            closeout,
-            "_closeout_contract",
-            return_value=(contract.contract_path, contract),
-        ),
-        mock.patch.object(closeout, "_recover_closeout_finalization", return_value=None),
-        mock.patch.object(closeout, "_validate_closeout_source_state"),
-        mock.patch.object(closeout, "refuse_series_workbench_commit"),
-        mock.patch.object(closeout, "require_current_route_review", return_value=object()),
-        mock.patch.object(closeout, "_refuse_unsatisfied_closeout_gate"),
-        mock.patch.object(
-            closeout,
-            "closeout_changed_paths",
-            return_value={"all": [], "working": [], "committed": []},
-        ),
-        mock.patch.object(closeout, "code_change_present", return_value=False),
-        mock.patch.object(
-            closeout,
-            "_closeout_attestations",
-            return_value=closeout._CloseoutAttestations(),
-        ),
-        mock.patch.object(closeout, "_closeout_quality_preflight", return_value=({}, {}, False)),
-        mock.patch.object(closeout, "_revalidate_reviewed_candidate"),
         mock.patch.object(closeout, "load_contract", return_value=changed),
         mock.patch.object(
             closeout,
             "publish_closeout_under_authority",
             side_effect=lambda _contract, publication: publication(),
         ),
+        mock.patch.object(closeout, "_closeout_commit_phase") as commit,
+        mock.patch.object(closeout, "write_contract") as write,
         pytest.raises(RuntimeError, match="changed before candidate commit"),
     ):
-        closeout.closeout_result(args, contract)
+        closeout._publish_closeout_candidate(contract, facts)
+    commit.assert_not_called()
+    write.assert_not_called()

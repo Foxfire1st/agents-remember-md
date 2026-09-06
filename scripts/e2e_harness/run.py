@@ -18,10 +18,9 @@ from agents_remember.worktrees.modules.git import worktree_candidate_tree
 from agents_remember_test_support.testing.dagger_admission import require_dagger_admission
 from reporting import CheckpointDefinition, CheckpointRecorder, write_json
 from scenario import run_scenario
-from selection import changed_paths, selected_paths
+from selection import admitted_selection
 
 RUN_COUNT = 2
-NOT_SELECTED_EXIT_CODE = 78
 C10 = CheckpointDefinition(
     "L5-C10",
     requirement="L5-R5",
@@ -47,9 +46,16 @@ def main() -> int:
     repository = args.repository_root.resolve()
     reports = args.reports.resolve() / "ambient-role-chat-e2e"
     reports.mkdir(parents=True, exist_ok=True)
-    changed = changed_paths(repository, args.diff_base) if args.mode == "targeted" else ()
-    selected = selected_paths(changed) if args.mode == "targeted" else ("<full-gate>",)
     candidate = _candidate_identity(repository)
+    decision = admitted_selection(
+        args.source_selection,
+        repository,
+        candidate["tree"],
+        mode=args.mode,
+        diff_base=args.diff_base,
+    )
+    changed = decision.sourceSelection.changedPaths
+    selected = decision.selectedPaths
     command = _invocation_command(args)
     context = _RunContext(
         reports=reports,
@@ -60,10 +66,6 @@ def main() -> int:
         command=command,
         invocation=uuid.uuid4().hex,
     )
-    if args.mode == "targeted" and not selected:
-        _write_skipped_summary(context, changed)
-        return NOT_SELECTED_EXIT_CODE
-
     run_reports = _run_replications(context)
     passed = all(report["status"] == "passed" for report in run_reports)
     _write_run_summary(
@@ -88,29 +90,8 @@ def _admit_execution() -> None:
 def _invocation_command(args: argparse.Namespace) -> str:
     return (
         f"{sys.executable} scripts/e2e_harness/run.py --mode {args.mode} "
-        f"--diff-base {args.diff_base} --reports {args.reports}"
-    )
-
-
-def _write_skipped_summary(
-    context: _RunContext,
-    changed: tuple[str, ...],
-) -> None:
-    args = context.args
-    write_json(
-        context.reports / "summary.json",
-        {
-            "schema": "ar-ambient-role-chat-e2e-summary/v1",
-            "status": "skipped",
-            "reason": "no changed path intersects the declared ambient-role dependency surface",
-            "mode": args.mode,
-            "diffBase": args.diff_base,
-            "changedPaths": changed,
-            "selectedPaths": context.selected,
-            "candidate": context.candidate,
-            "command": context.command,
-            "fixtureInvocation": context.invocation,
-        },
+        f"--diff-base {args.diff_base} --reports {args.reports} "
+        f"--source-selection {args.source_selection}"
     )
 
 
@@ -217,6 +198,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--mode", choices=("targeted", "full"), required=True)
     parser.add_argument("--diff-base", required=True)
     parser.add_argument("--reports", type=Path, required=True)
+    parser.add_argument("--source-selection", type=Path, required=True)
     parser.add_argument("--repository-root", type=Path, default=Path.cwd())
     return parser.parse_args()
 

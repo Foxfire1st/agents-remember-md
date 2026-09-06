@@ -26,12 +26,14 @@ from agents_remember.certification.lifecycle_models import FinalizationLeg
 from agents_remember.certification.models import (
     CandidateIdentity,
     CertificationContractFinding,
-    FrozenContractModel,
-    GateId,
     RailEvidenceReference,
-    RailIdentity,
     RailPosture,
     RailStatus,
+)
+from agents_remember.models.certification.base import (
+    FrozenContractModel,
+    GateId,
+    RailIdentity,
     SemanticText,
 )
 from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind

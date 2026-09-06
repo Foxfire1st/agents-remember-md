@@ -15,13 +15,7 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    CandidateIdentity,
-    FrozenContractModel,
-    GateId,
-    RailIdentity,
-    SemanticText,
-)
+from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.telemetry.models import (
     AdmissionRefusedPayload,
     CandidateAdmittedPayload,
@@ -46,6 +40,12 @@ from agents_remember.certification.telemetry.models import (
     TelemetrySpan,
     TerminalResultClass,
     aggregate_span_totals,
+)
+from agents_remember.models.certification.base import (
+    FrozenContractModel,
+    GateId,
+    RailIdentity,
+    SemanticText,
 )
 from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
 

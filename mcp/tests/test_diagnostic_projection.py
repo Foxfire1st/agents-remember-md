@@ -39,7 +39,6 @@ from agents_remember.certification.models import (
     ArtifactDeclaration,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     GateResultAdmission,
     GateResultManifest,
     RailAdapterDefinition,
@@ -49,7 +48,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailRegistry,
     RailRuntimeInputs,
     RailTerminalObservation,
@@ -60,6 +58,7 @@ from agents_remember.certification.results import (
     build_rail_result,
     compile_gate_result_manifest,
 )
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 CERT_PROFILE = "portable-ci"
 DIAG_PROFILE = "diagnostic-ci"

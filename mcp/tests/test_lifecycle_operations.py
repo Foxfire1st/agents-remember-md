@@ -11,6 +11,7 @@ from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
+from agents_remember.application import worktree_status as status_application
 from agents_remember.application import worktree_tools
 from agents_remember.application.lifecycle import lifecycle_operation_worker
 from agents_remember.application.task_docs.task_ref import TaskRef
@@ -28,11 +29,14 @@ from agents_remember.models.lifecycles.operation import (
 )
 from agents_remember.tasks import TaskDocument, write_task_doc
 from agents_remember.worktrees.integration.lifecycle import lifecycle_operations
+from agents_remember.worktrees.integration.lifecycle.generation.creation import (
+    snapshot_integration_authority,
+)
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_control_errors import (
     LifecycleControlError,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import (
-    closeout_contract_sha256,
+    operation_key,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_lease import (
     contract_lifecycle_lease,
@@ -50,7 +54,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store i
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import (
     operation_fingerprint,
-    operation_key,
     start_or_observe_operation,
 )
 from agents_remember.worktrees.integration.lifecycle.observation.projection import (
@@ -68,6 +71,7 @@ from agents_remember.worktrees.worktree_contract import (
     write_contract,
 )
 from closeout_input_test_support import (
+    _fixture_leaf_document,
     closeout_operation_input,
     start_closeout_operation,
     with_commit_proven,
@@ -80,6 +84,16 @@ from integration_branch_authority_test_support import (
 from lifecycle_control_test_support import (
     cancel_current_generation,
     control_current_generation,
+)
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    install_fixture_profile,
+)
+from selected_lifecycle_test_support import (
+    completed_selected_closeout_for_integration,
+    finish_closeout_for_integration,
+    ready_selected_integration,
+    selected_contract,
 )
 
 TEST_WORKER_LEASE = "a" * 64
@@ -99,7 +113,7 @@ def _reserve_test_worker(store: LifecycleOperationStore) -> str:
     return TEST_WORKER_LEASE
 
 
-def _contract(tmp_path: Path):
+def _contract(tmp_path: Path, *, selected_profile: bool = False):
     coordination = tmp_path / "ar-coordination"
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
@@ -111,6 +125,8 @@ def _contract(tmp_path: Path):
     )
     subprocess.run(["git", "config", "user.name", "Lifecycle Tests"], cwd=repo, check=True)
     (repo / "seed.txt").write_text("seed\n", encoding="utf-8")
+    if selected_profile:
+        install_fixture_profile(repo, "repo")
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
     subprocess.run(
         ["git", "commit", "-m", "seed"],
@@ -178,11 +194,25 @@ def _contract(tmp_path: Path):
                 "version": 1,
                 "coordinationRoot": coordination.as_posix(),
                 "workspaceRoot": tmp_path.as_posix(),
-                "repositories": {"repo": {}},
+                "repositories": {
+                    "repo": (
+                        {"certificationProfile": AGENTS_REMEMBER_PROFILE_REFERENCE.as_posix()}
+                        if selected_profile
+                        else {}
+                    )
+                },
             }
         ),
         encoding="utf-8",
     )
+    if selected_profile:
+        write_task_doc(
+            contract.task_root,
+            _fixture_leaf_document(
+                contract, leaf_id=contract.leaf_id, leaf_slug=contract.leaf_id.lower()
+            ),
+        )
+        _write_lifecycle_task_context(contract, integration_branch="main")
     return contract
 
 
@@ -200,10 +230,20 @@ def _publish_integration_branch_authority(contract) -> str:
         text=True,
     ).stdout.strip()
     subprocess.run(["git", "branch", "super", commit], cwd=repo, check=True)
+    _write_lifecycle_task_context(contract, integration_branch="super")
+    return commit
+
+
+def _write_lifecycle_task_context(contract, *, integration_branch: str) -> None:
+    master_path = contract.task_root / "task.json"
+    previous_master = json.loads(master_path.read_text()) if master_path.is_file() else {}
+    sprint_path = contract.task_root.parent / "lifecycle-fixture-sprint" / "task.json"
+    previous_sprint = json.loads(sprint_path.read_text()) if sprint_path.is_file() else {}
     write_task_doc(
         contract.task_root,
         TaskDocument.model_validate(
             {
+                **previous_master,
                 "id": "DURABLE-LIFECYCLE",
                 "slug": "durable-lifecycle",
                 "title": "Durable lifecycle",
@@ -212,6 +252,17 @@ def _publish_integration_branch_authority(contract) -> str:
                 "repo": "repo",
                 "createdAt": "2026-08-15T00:00:00+00:00",
                 "executionNature": "organizational",
+                "subTasks": previous_master.get(
+                    "subTasks",
+                    [
+                        {
+                            "number": contract.leaf_id,
+                            "name": contract.leaf_id,
+                            "file": f"{contract.leaf_id.lower()}.md",
+                            "status": "inProgress",
+                        }
+                    ],
+                ),
             }
         ),
     )
@@ -219,6 +270,7 @@ def _publish_integration_branch_authority(contract) -> str:
         contract.task_root.parent / "lifecycle-fixture-sprint",
         TaskDocument.model_validate(
             {
+                **previous_sprint,
                 "id": "LIFECYCLE-FIXTURE-SPRINT",
                 "slug": "lifecycle-fixture-sprint",
                 "title": "Lifecycle fixture sprint",
@@ -227,7 +279,7 @@ def _publish_integration_branch_authority(contract) -> str:
                 "repo": "repo",
                 "createdAt": "2026-08-15T00:00:00+00:00",
                 "orchestrates": ["durable-lifecycle"],
-                "integrationBranch": "super",
+                "integrationBranch": integration_branch,
                 "executionGraph": {
                     "nodes": [{"repository": "repo", "path": "durable-lifecycle/task.json"}],
                     "edges": [],
@@ -235,7 +287,6 @@ def _publish_integration_branch_authority(contract) -> str:
             }
         ),
     )
-    return commit
 
 
 def _integration_ready(contract):
@@ -254,61 +305,27 @@ def _completed_closeout_for_integration(contract):
     commit = _publish_integration_branch_authority(contract)
     contract = replace(load_contract(contract.contract_path), code_source_branch="super")
     write_contract(contract.contract_path, contract)
-    operation_input = _input(contract)
-    start_closeout_operation(operation_input, launcher=lambda *_: None)
-    store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
-    runtime = lifecycle_operation_worker.OperationRuntime(store)
-    runtime.start()
-    runtime.progress(
-        "approval-claim",
-        {"current_command": "claim closeout approval", "approval_claimed": True},
-    )
-    finalized = replace(
-        load_contract(contract.contract_path),
-        approved_for_commit=True,
-        commit_approval_note=operation_input.approvalNote,
-        human_review_status="approved",
-        closeout_status="completed",
-        code_commit=commit,
-    )
-    runtime.progress(
-        "contract-finalization",
-        {
-            "current_command": "finalize closeout contract edge",
-            "recovery_commits": {
-                "codeCommit": commit,
-                "memoryContentCommit": "",
-                "ledgerCommit": "",
-            },
-            "closeout_finalized_contract_sha256": closeout_contract_sha256(finalized),
-        },
-    )
-    write_contract(finalized.contract_path, finalized)
-    runtime.finish({"state": "closed"}, ok=True)
-    completed = store.read()
-    assert completed is not None
-    assert completed.doorPublication is not None
-    assert completed.doorPublication.state == "proven"
-    assert completed.closeoutFinalizedContractSha256 == closeout_contract_sha256(finalized)
-    return finalized
+    return finish_closeout_for_integration(contract, commit, _input(contract))
 
 
 def test_integration_authority_refuses_incomplete_closeout_edges(tmp_path: Path) -> None:
-    closed = _integration_ready(_contract(tmp_path / "internal"))
+    closed = ready_selected_integration(selected_contract(tmp_path / "internal"))
     operation_input = IntegrateOperationInput(
         configPath=(closed.code_repo_path.parent / "settings.json").as_posix(),
         contractPath=closed.contract_path.as_posix(),
     )
     with pytest.raises(RuntimeError, match="completed closeout code commit"):
-        lifecycle_operations._integration_authority(
+        snapshot_integration_authority(
             replace(closed, code_commit=""),
             operation_input,
         )
 
     fixture = _authority_fixture(tmp_path / "external", external_memory=True)
-    external = _closed_external_leaf_worktrees(fixture, tmp_path / "external")
+    external = _closed_external_leaf_worktrees(
+        fixture, tmp_path / "external", publish_closeout_evidence=False
+    )
     with pytest.raises(RuntimeError, match="external-memory integration authority"):
-        lifecycle_operations._integration_authority(
+        snapshot_integration_authority(
             replace(external, memory_content_commit=""),
             IntegrateOperationInput(
                 configPath=fixture.config_path.as_posix(),
@@ -318,8 +335,7 @@ def test_integration_authority_refuses_incomplete_closeout_edges(tmp_path: Path)
 
 
 def test_start_returns_immediately_and_duplicate_observes_one_launch(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
-    (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
+    contract = selected_contract(tmp_path, candidate_file=("candidate.py", "VALUE = 1\n"))
     launches = []
 
     def launcher(loaded, record) -> None:
@@ -341,8 +357,7 @@ def test_start_returns_immediately_and_duplicate_observes_one_launch(tmp_path: P
 def test_conflicting_commit_message_refuses_while_task_operation_exists(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
-    (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
+    contract = selected_contract(tmp_path, candidate_file=("candidate.py", "VALUE = 1\n"))
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
 
     with pytest.raises(RuntimeError, match="conflicting closeout intent"):
@@ -354,7 +369,7 @@ def test_conflicting_commit_message_refuses_while_task_operation_exists(
 def test_contract_lifecycle_lease_excludes_cross_kind_and_terminal_mutation(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
 
     with contract_lifecycle_lease(contract):
@@ -366,7 +381,7 @@ def test_contract_lifecycle_lease_excludes_cross_kind_and_terminal_mutation(
 
 
 def test_changed_worktree_is_a_different_closeout_candidate(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     first = store.read()
@@ -385,7 +400,7 @@ def test_changed_worktree_is_a_different_closeout_candidate(tmp_path: Path) -> N
 
 
 def test_status_projects_every_current_task_operation(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     config = load_config(tmp_path / "settings.json")
     closeout = Mock()
     closeout.model_dump.return_value = {"kind": "closeout", "status": "completed"}
@@ -400,9 +415,9 @@ def test_status_projects_every_current_task_operation(tmp_path: Path) -> None:
     )
     with (
         patch.object(worktree_tools.git_worktree_manager, "status_result", return_value=result),
-        patch.object(worktree_tools, "resolve_lifecycle_caller", return_value=None),
+        patch.object(status_application, "resolve_lifecycle_caller", return_value=None),
         patch.object(
-            worktree_tools,
+            status_application,
             "current_operation_projections",
             return_value=[closeout, integrate],
         ) as current,
@@ -410,7 +425,7 @@ def test_status_projects_every_current_task_operation(tmp_path: Path) -> None:
         payload = worktree_tools.worktree_status_tool(
             config,
             TaskRef(
-                repo_id="repo",
+                repo_id=contract.repo_name,
                 contract_path=contract.contract_path.as_posix(),
             ),
         )
@@ -432,11 +447,11 @@ def test_status_projects_every_current_task_operation(tmp_path: Path) -> None:
             "status_result",
             return_value=WorktreeCommandResult(0, {"task_name": "unattached"}),
         ),
-        patch.object(worktree_tools, "current_operation_projections") as current,
+        patch.object(status_application, "current_operation_projections") as current,
     ):
         unattached = worktree_tools.worktree_status_tool(
             config,
-            TaskRef(repo_id="repo"),
+            TaskRef(repo_id=contract.repo_name),
         )
     assert "lifecycleOperation" not in unattached
     current.assert_not_called()
@@ -454,7 +469,7 @@ def test_closeout_preview_path_is_task_addressed() -> None:
 
 
 def test_stale_queued_generation_requires_explicit_recover(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     old = datetime(2026, 8, 12, 12, 0, tzinfo=UTC)
     start_closeout_operation(_input(contract), launcher=lambda *_: None, now=old)
     launches = []
@@ -476,7 +491,7 @@ def test_stale_queued_generation_requires_explicit_recover(tmp_path: Path) -> No
 
 
 def test_repeated_apply_resumes_exact_preboundary_failure_same_generation(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     store.update(
@@ -509,7 +524,7 @@ def test_repeated_apply_resumes_exact_preboundary_failure_same_generation(tmp_pa
 def test_cancel_before_boundary_proves_exit_before_releasing_worker_authority(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     worker_lease = "c" * 64
@@ -573,8 +588,7 @@ def test_cancel_before_boundary_proves_exit_before_releasing_worker_authority(
 def test_cancel_after_boundary_refuses_without_making_approval_reusable(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
-    (contract.code_worktree / "boundary.txt").write_text("boundary\n", encoding="utf-8")
+    contract = selected_contract(tmp_path, candidate_file=("boundary.txt", "boundary\n"))
     operation_input = _input(contract)
     start_closeout_operation(operation_input, launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
@@ -599,7 +613,7 @@ def test_cancel_after_boundary_refuses_without_making_approval_reusable(
 
 
 def test_internal_operation_key_is_stable_but_not_part_of_projection(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     operation_input = _input(contract)
     fingerprint = operation_fingerprint(operation_input)
     key = operation_key(contract.contract_path, "closeout", fingerprint)
@@ -650,7 +664,7 @@ def test_consumed_gate_recovers_only_the_same_internal_operation(tmp_path: Path)
 def test_observe_latest_terminal_cancel_and_launch_failure_are_task_addressed(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     assert observe_operation(contract.contract_path, "closeout") is None
     assert latest_operation_projection(contract.contract_path) is None
 
@@ -667,7 +681,9 @@ def test_observe_latest_terminal_cancel_and_launch_failure_are_task_addressed(
     assert failed.result["failureEvidence"]["errorType"] == "RuntimeError"  # type: ignore[index]
     assert cancel_current_generation(contract.contract_path, "closeout").status == "cancelled"
 
-    contract = _completed_closeout_for_integration(_contract(tmp_path / "integration"))
+    contract = completed_selected_closeout_for_integration(
+        selected_contract(tmp_path / "integration")
+    )
     integration = IntegrateOperationInput(
         configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
         contractPath=contract.contract_path.as_posix(),
@@ -680,7 +696,7 @@ def test_observe_latest_terminal_cancel_and_launch_failure_are_task_addressed(
 def test_detached_launcher_uses_native_environment_and_private_process_group(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     record = store.read()
@@ -731,7 +747,7 @@ def test_detached_launcher_uses_native_environment_and_private_process_group(
 
 
 def test_input_identity_and_closeout_approval_are_validated_before_launch(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     with pytest.raises(RuntimeError, match="does not resolve"):
         lifecycle_operations._validate_input_identity(
             contract,
@@ -747,8 +763,7 @@ def test_input_identity_and_closeout_approval_are_validated_before_launch(tmp_pa
 def test_operation_runtime_tracks_progress_reports_and_terminal_outcomes(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
-    (contract.code_worktree / "runtime.txt").write_text("runtime\n", encoding="utf-8")
+    contract = selected_contract(tmp_path, candidate_file=("runtime.txt", "runtime\n"))
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -846,7 +861,7 @@ def test_operation_runtime_tracks_progress_reports_and_terminal_outcomes(
 def test_operation_runtime_heartbeat_updates_running_and_ignores_terminal_record(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -866,7 +881,7 @@ def test_operation_runtime_heartbeat_updates_running_and_ignores_terminal_record
 
 
 def test_operation_runtime_failure_modes_and_cancelled_progress(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     runtime = lifecycle_operation_worker.OperationRuntime(store)
@@ -881,7 +896,7 @@ def test_operation_runtime_failure_modes_and_cancelled_progress(tmp_path: Path) 
     runtime.finish({"ok": True}, ok=True)
     assert store.read().status == "cancelled"  # type: ignore[union-attr]
 
-    second_contract = _contract(tmp_path / "second")
+    second_contract = selected_contract(tmp_path / "second")
     start_closeout_operation(_input(second_contract), launcher=lambda *_: None)
     second_store = LifecycleOperationStore(
         operation_record_path(second_contract.worktree_group, "closeout")
@@ -893,13 +908,9 @@ def test_operation_runtime_failure_modes_and_cancelled_progress(tmp_path: Path) 
 
 
 def test_execute_operation_dispatches_closeout_and_integration_payloads(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     runtime = Mock()
-    config = SimpleNamespace(
-        repositories={
-            contract.repo_name: SimpleNamespace(certification_profile=Path("profile.json"))
-        }
-    )
+    config = load_config(Path(_input(contract).configPath))
     with patch.object(lifecycle_operation_worker, "load_config", return_value=config):
         start_closeout_operation(_input(contract), launcher=lambda *_: None)
         closeout_store = LifecycleOperationStore(
@@ -909,10 +920,13 @@ def test_execute_operation_dispatches_closeout_and_integration_payloads(tmp_path
         assert closeout is not None
         with patch.object(
             lifecycle_operation_worker,
-            "closeout_result",
+            "execute_selected_closeout",
             return_value=WorktreeCommandResult(0, {"state": "closed"}),
-        ):
+        ) as execute_selected:
             lifecycle_operation_worker.execute_operation(closeout, runtime)
+        execute_selected.assert_called_once_with(
+            load_contract(contract.contract_path), closeout, runtime.store
+        )
         runtime.finish.assert_called_with(
             {"state": "closed", "ok": True, "operation": "worktree_closeout_apply"}, ok=True
         )
@@ -923,7 +937,9 @@ def test_execute_operation_dispatches_closeout_and_integration_payloads(tmp_path
             ok=True,
         )
 
-        contract = _completed_closeout_for_integration(_contract(tmp_path / "integration"))
+        contract = completed_selected_closeout_for_integration(
+            selected_contract(tmp_path / "integration")
+        )
         integration_input = IntegrateOperationInput(
             configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
             contractPath=contract.contract_path.as_posix(),
@@ -952,7 +968,7 @@ def test_execute_operation_dispatches_closeout_and_integration_payloads(tmp_path
 
 
 def test_integration_completion_auto_closes_seats_only_for_a_green_edge(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     operation_input = IntegrateOperationInput(
         configPath="settings.json",
         contractPath=contract.contract_path.as_posix(),
@@ -991,7 +1007,7 @@ def test_integration_completion_auto_closes_seats_only_for_a_green_edge(tmp_path
 def test_run_worker_records_execution_outcome(
     tmp_path: Path, side_effect: Exception | None, expected: int
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     worker_lease = _reserve_test_worker(store)
@@ -1010,7 +1026,7 @@ def test_run_worker_records_execution_outcome(
 
 
 def test_run_worker_refuses_missing_or_non_startable_durable_state(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     with pytest.raises(RuntimeError, match="no closeout operation is queued"):
         lifecycle_operation_worker.run_worker(
             contract.contract_path,
@@ -1028,7 +1044,7 @@ def test_run_worker_refuses_missing_or_non_startable_durable_state(tmp_path: Pat
         lifecycle_operation_worker.run_worker(contract.contract_path, "closeout", worker_lease) == 0
     )
 
-    second = _contract(tmp_path / "non-startable")
+    second = selected_contract(tmp_path / "non-startable")
     start_closeout_operation(_input(second), launcher=lambda *_: None)
     second_store = LifecycleOperationStore(operation_record_path(second.worktree_group, "closeout"))
     second_lease = _reserve_test_worker(second_store)
@@ -1042,7 +1058,7 @@ def test_run_worker_refuses_missing_or_non_startable_durable_state(tmp_path: Pat
 def test_run_worker_observes_terminal_generation_while_waiting_for_lease(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     queued = store.read()
@@ -1067,7 +1083,7 @@ def test_run_worker_observes_terminal_generation_while_waiting_for_lease(
 
 
 def test_run_worker_observes_matching_lease_after_waiting(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     queued = store.read()
@@ -1103,7 +1119,7 @@ def test_run_worker_observes_matching_lease_after_waiting(tmp_path: Path) -> Non
 
 
 def test_operation_location_decision_binds_developer_decision(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     start_closeout_operation(_input(contract), launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     record = store.read()

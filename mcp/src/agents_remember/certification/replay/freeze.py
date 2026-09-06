@@ -18,17 +18,14 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    CertificationContractFinding,
-    FrozenContractModel,
-    SemanticText,
-)
+from agents_remember.certification.models import CertificationContractFinding
 from agents_remember.certification.replay.models import (
     PopulationGeneration,
     ReplayFreezeInputChange,
     ReplayStratum,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import FrozenContractModel, SemanticText
 
 _DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 _ID_PATTERN = r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"

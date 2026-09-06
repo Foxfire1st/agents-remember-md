@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import stat
 from pathlib import Path
-from typing import Literal, Never, TypeVar
+from typing import Never, TypeVar
 
 from pydantic import Field
 
@@ -15,21 +16,33 @@ from agents_remember.certification.certificate_models import (
     FinalizationCertificateAuthority,
     GateCertificate,
 )
-from agents_remember.certification.models import (
-    CertificationContractFinding,
-    FrozenContractModel,
-    GateResultManifest,
-    SemanticText,
+from agents_remember.certification.frozen_run.authorities import CandidateAuthorityRecords
+from agents_remember.certification.frozen_run.models import FrozenCertificationRun
+from agents_remember.certification.lifecycle_models import (
+    CertificationRecoveryRecord,
+    LifecycleAdmissionManifest,
+    PriorRedDispositionManifest,
 )
+from agents_remember.certification.models import CertificationContractFinding, GateResultManifest
 from agents_remember.errors import CertificationContractError
 from agents_remember.kernel.atomic_write import atomic_write_bytes
+from agents_remember.kernel.file_lock import exclusive_file_lock
+from agents_remember.models.certification.base import FrozenContractModel, SemanticText
+from agents_remember.models.certification.references import (
+    CertificateObjectKind,
+    CertificateObjectReference,
+)
 
-CertificateObjectKind = Literal["admission", "result-manifest", "certificate", "finalization"]
 CertificateObject = (
     CertificationAdmissionManifest
     | GateResultManifest
     | GateCertificate
     | FinalizationCertificateAuthority
+    | FrozenCertificationRun
+    | CandidateAuthorityRecords
+    | LifecycleAdmissionManifest
+    | PriorRedDispositionManifest
+    | CertificationRecoveryRecord
 )
 CertificateObjectT = TypeVar("CertificateObjectT", bound=CertificateObject)
 
@@ -39,7 +52,23 @@ _KINDS: tuple[CertificateObjectKind, ...] = (
     "result-manifest",
     "certificate",
     "finalization",
+    "frozen-run",
+    "candidate-authorities",
+    "lifecycle-admission",
+    "prior-red-disposition",
+    "recovery",
 )
+_MODELS: dict[CertificateObjectKind, type[CertificateObject]] = {
+    "admission": CertificationAdmissionManifest,
+    "result-manifest": GateResultManifest,
+    "certificate": GateCertificate,
+    "finalization": FinalizationCertificateAuthority,
+    "frozen-run": FrozenCertificationRun,
+    "candidate-authorities": CandidateAuthorityRecords,
+    "lifecycle-admission": LifecycleAdmissionManifest,
+    "prior-red-disposition": PriorRedDispositionManifest,
+    "recovery": CertificationRecoveryRecord,
+}
 
 
 class CertificateStorePolicy(FrozenContractModel):
@@ -58,29 +87,44 @@ class ContentAddressedCertificateStore:
         self._root = root
         self._policy = policy
 
-    def publish_admission(self, value: CertificationAdmissionManifest) -> Path:
-        return self._publish("admission", value.admissionDigest, value)
+    def publish(self, value: CertificateObject) -> Path:
+        """Publish one exact registered model at its canonical kind and digest."""
+        kind = _kind_for_model(type(value))
+        return self._publish(kind, _object_digest(value), value)
 
-    def publish_result_manifest(self, value: GateResultManifest) -> Path:
-        return self._publish("result-manifest", value.manifestDigest, value)
+    def load(self, model: type[CertificateObjectT], digest: str) -> CertificateObjectT:
+        """Read an exact address using its registered model as the typed selector."""
+        return self._load(_kind_for_model(model), digest, model)
 
-    def publish_certificate(self, value: GateCertificate) -> Path:
-        return self._publish("certificate", value.certificateDigest, value)
+    def reference(self, kind: CertificateObjectKind, digest: str) -> CertificateObjectReference:
+        """Bind schema-validated readback bytes before the caller selects their reference."""
 
-    def publish_finalization(self, value: FinalizationCertificateAuthority) -> Path:
-        return self._publish("finalization", value.authorityDigest, value)
+        self.exact_path(kind, digest)
+        value = self._load(kind, digest, _MODELS[kind])
+        raw = _canonical_bytes(value)
+        return CertificateObjectReference(
+            kind=kind,
+            semanticDigest=digest,
+            contentSha256=hashlib.sha256(raw).hexdigest(),
+            sizeBytes=len(raw),
+        )
 
-    def load_admission(self, digest: str) -> CertificationAdmissionManifest:
-        return self._load("admission", digest, CertificationAdmissionManifest)
+    def load_reference(self, reference: CertificateObjectReference) -> CertificateObject:
+        """Read only the selected semantic address and verify its complete original bytes."""
 
-    def load_result_manifest(self, digest: str) -> GateResultManifest:
-        return self._load("result-manifest", digest, GateResultManifest)
-
-    def load_certificate(self, digest: str) -> GateCertificate:
-        return self._load("certificate", digest, GateCertificate)
-
-    def load_finalization(self, digest: str) -> FinalizationCertificateAuthority:
-        return self._load("finalization", digest, FinalizationCertificateAuthority)
+        value = self._load(reference.kind, reference.semanticDigest, _MODELS[reference.kind])
+        raw = _canonical_bytes(value)
+        if (
+            len(raw) != reference.sizeBytes
+            or hashlib.sha256(raw).hexdigest() != reference.contentSha256
+        ):
+            _raise(
+                "certificate object reference refused",
+                "certificate-object-reference-mismatch",
+                self.exact_path(reference.kind, reference.semanticDigest).as_posix(),
+                "stored canonical bytes do not match the selected original object reference",
+            )
+        return value
 
     def exact_path(self, kind: CertificateObjectKind, digest: str) -> Path:
         """Return the sole address for one kind/digest pair."""
@@ -92,9 +136,28 @@ class ContentAddressedCertificateStore:
                 "digest",
                 "content-addressed lookup requires one exact lowercase SHA-256 digest",
             )
+        if kind not in _KINDS:
+            _raise(
+                "certificate object lookup refused",
+                "certificate-object-kind-invalid",
+                "kind",
+                "content-addressed lookup requires a declared certificate object kind",
+            )
         return self._root / kind / "sha256" / digest[:2] / f"{digest}.json"
 
     def _publish(
+        self,
+        kind: CertificateObjectKind,
+        digest: str,
+        value: CertificateObject,
+    ) -> Path:
+        # One store-level mutex/flock also serializes capacity across different
+        # addresses. The journal owner selects references only after this ends;
+        # no other resource lock is acquired inside the publication transaction.
+        with exclusive_file_lock(self._root / "publication", "certificate store publication"):
+            return self._publish_locked(kind, digest, value)
+
+    def _publish_locked(
         self,
         kind: CertificateObjectKind,
         digest: str,
@@ -188,14 +251,34 @@ def _canonical_bytes(value: CertificateObject) -> bytes:
     ).encode("utf-8")
 
 
+def _kind_for_model(model: type[CertificateObject]) -> CertificateObjectKind:
+    for kind, registered in _MODELS.items():
+        if model is registered:
+            return kind
+    _raise(
+        "certificate object model refused",
+        "certificate-object-model-invalid",
+        "model",
+        f"content-addressed storage requires an exact registered model, not {model.__name__}",
+    )
+
+
 def _object_digest(value: CertificateObject) -> str:
-    if isinstance(value, CertificationAdmissionManifest):
-        return value.admissionDigest
-    if isinstance(value, GateResultManifest):
-        return value.manifestDigest
-    if isinstance(value, GateCertificate):
-        return value.certificateDigest
-    return value.authorityDigest
+    if isinstance(value, (CertificationAdmissionManifest, LifecycleAdmissionManifest)):
+        digest = value.admissionDigest
+    elif isinstance(value, GateResultManifest):
+        digest = value.manifestDigest
+    elif isinstance(value, GateCertificate):
+        digest = value.certificateDigest
+    elif isinstance(value, FrozenCertificationRun):
+        digest = value.runDigest
+    elif isinstance(value, PriorRedDispositionManifest):
+        digest = value.dispositionDigest
+    elif isinstance(value, CertificationRecoveryRecord):
+        digest = value.recoveryDigest
+    else:
+        digest = value.authorityDigest
+    return digest
 
 
 def _read_regular_file(path: Path, *, missing_ok: bool) -> bytes | None:

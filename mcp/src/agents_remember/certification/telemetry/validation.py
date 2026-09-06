@@ -15,12 +15,7 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
-from agents_remember.certification.models import (
-    CertificationContractFinding,
-    FrozenContractModel,
-    GateId,
-    SemanticText,
-)
+from agents_remember.certification.models import CertificationContractFinding
 from agents_remember.certification.telemetry.models import (
     DIAGNOSTIC_ONLY_EVENT_KINDS,
     CatalogRailRecord,
@@ -36,6 +31,7 @@ from agents_remember.certification.telemetry.models import (
     RailTerminalPayload,
     TelemetryEvent,
 )
+from agents_remember.models.certification.base import FrozenContractModel, GateId, SemanticText
 
 _ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _COUNT_FINDINGS_CAP = 4096

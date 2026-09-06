@@ -17,7 +17,6 @@ from agents_remember.certification.models import (
     RailApplicability,
     RailDefinition,
     RailEvidenceContract,
-    RailIdentity,
     RailRuntimeInputs,
 )
 from agents_remember.memory_quality.final_certification.catalog import (
@@ -27,6 +26,7 @@ from agents_remember.memory_quality.final_certification.catalog import (
 from agents_remember.memory_quality.incremental_scope.registry import (
     checker_registry_version,
 )
+from agents_remember.models.certification.base import RailIdentity
 
 _CORRECTIVE_OWNER = "memory-curator"
 _ADAPTER_ID = "memory-final-certification"

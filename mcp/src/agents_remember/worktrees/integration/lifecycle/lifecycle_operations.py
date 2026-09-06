@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import subprocess
 import sys
@@ -22,7 +21,6 @@ from agents_remember.models.lifecycles.door import CloseoutDoorGeneration
 from agents_remember.models.lifecycles.operation import (
     CloseoutOperationInput,
     IntegrateOperationInput,
-    IntegrationConflictTransaction,
     IntegrationOperationAuthority,
     LifecycleOperationInput,
     LifecycleOperationKind,
@@ -38,6 +36,16 @@ from agents_remember.models.task_intent import (
     task_intent_is_missing,
 )
 from agents_remember.worktrees.closeout_input import require_effective_closeout_plan
+from agents_remember.worktrees.integration.closeout.certification.admission import (
+    FrozenCloseoutAdmission,
+    initial_certification_state,
+    prepare_closeout_certification,
+    validate_selected_currentness,
+)
+from agents_remember.worktrees.integration.closeout.certification.selection import (
+    require_selected_certification,
+    require_unchanged_retry_admissible,
+)
 from agents_remember.worktrees.integration.closeout.door import (
     DoorPublicationError,
     classify_door_publication,
@@ -57,15 +65,21 @@ from agents_remember.worktrees.integration.closeout.recovery_projection import (
 from agents_remember.worktrees.integration.configured_contract_authority import (
     reread_configured_contract,
 )
-from agents_remember.worktrees.integration.integration_branch_authority import integration_targets
+from agents_remember.worktrees.integration.integration_branch_authority import (
+    require_series_contract_authority,
+)
 from agents_remember.worktrees.integration.integration_publication_fence import (
     classify_integration_door_authority,
 )
+from agents_remember.worktrees.integration.lifecycle.generation.creation import (
+    queued_operation_record,
+    snapshot_integration_authority,
+)
+from agents_remember.worktrees.integration.lifecycle.generation.resume import (
+    requeued_same_generation,
+)
 from agents_remember.worktrees.integration.lifecycle.lifecycle_closeout_claim_evidence import (
     closeout_preview_args,
-)
-from agents_remember.worktrees.integration.lifecycle.lifecycle_generation_resume import (
-    requeued_same_generation,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_candidate import (
     LifecycleOperationCandidate,
@@ -85,7 +99,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_lease i
     require_lifecycle_operation_compatible,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
-    located_lifecycle_operation_report_path,
     located_lifecycle_operation_store,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_projection import (
@@ -94,6 +107,7 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_project
     parse_operation_stamp,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
+    InitialCertificationSelection,
     LifecycleOperationStore,
 )
 from agents_remember.worktrees.integration.lifecycle.worker import launch as lifecycle_worker_launch
@@ -105,15 +119,14 @@ from agents_remember.worktrees.integration.lifecycle.worker.termination import (
     worker_process_fingerprint,
 )
 from agents_remember.worktrees.integration.mutation_evidence import (
-    initial_closeout_mutation_evidence,
     reconcile_closeout_mutations,
 )
-from agents_remember.worktrees.modules.git import branch_commit, is_ancestor
 from agents_remember.worktrees.queue.closeout_projection_publication import (
     projection_refresh_failure_effect,
     refresh_closeout_projection,
 )
 from agents_remember.worktrees.queue.closeout_queue import require_first_ready_generation
+from agents_remember.worktrees.series_closeout import refuse_series_workbench_commit
 from agents_remember.worktrees.worktree_contract import (
     WorktreeContract,
     load_contract,
@@ -127,6 +140,7 @@ OperationLauncher = Callable[[WorktreeContract, LifecycleOperationRecord], None]
 class _OperationExecution:
     timestamp: datetime
     launcher: OperationLauncher
+    certification: FrozenCloseoutAdmission | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +154,14 @@ class _CloseoutClaimContext:
 
 
 @dataclass(frozen=True)
+class _GenerationCreation:
+    contract: WorktreeContract
+    operation_input: LifecycleOperationInput
+    candidate: LifecycleOperationCandidate
+    initial_certification: InitialCertificationSelection | None = None
+
+
+@dataclass(frozen=True)
 class _GenerationReplacement:
     store: LifecycleOperationStore
     queued: LifecycleOperationRecord
@@ -147,6 +169,7 @@ class _GenerationReplacement:
     contract: WorktreeContract
     operation_input: LifecycleOperationInput
     candidate: LifecycleOperationCandidate
+    initial_certification: InitialCertificationSelection | None = None
 
 
 class _CloseoutResumeNoLongerRequired(Exception):
@@ -159,11 +182,6 @@ def now_iso() -> str:
 
 def operation_fingerprint(operation_input: LifecycleOperationInput) -> str:
     return fingerprint_payload(operation_input.model_dump(mode="json"))
-
-
-def operation_key(contract_path: Path, kind: LifecycleOperationKind, fingerprint: str) -> str:
-    identity = f"{contract_path.resolve().as_posix()}\0{kind}\0{fingerprint}"
-    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
 def start_or_observe_operation(
@@ -200,7 +218,7 @@ def start_or_observe_operation(
         store = _store(contract, "integrate")
         retained = _retained_integration_recovery_record(store.read(), operation_input)
         if retained is None:
-            integration_authority = _integration_authority(contract, operation_input)
+            integration_authority = snapshot_integration_authority(contract, operation_input)
             candidate = lifecycle_operation_candidate(
                 LifecycleOperationCandidateBinding(
                     operation_input=operation_input,
@@ -251,13 +269,41 @@ def start_or_observe_closeout_operation(
             current_contract,
             operation_kind="closeout",
         )
+        if candidate.tree is None:
+            raise RuntimeError("closeout admission has no exact code candidate")
+        current = store.read()
+        if current_contract.kind == "series":
+            _require_series_recording_only(current_contract, operation_input)
+            certification = None
+        elif current is not None and current.fingerprint == candidate.fingerprint:
+            selected = validate_selected_currentness(current_contract, operation_input, current)
+            require_unchanged_retry_admissible(selected)
+            certification = None
+        else:
+            certification = prepare_closeout_certification(
+                current_contract, operation_input, current, candidate_tree=candidate.tree
+            )
         return _start_or_observe_operation(
             current_contract,
             operation_input,
             candidate=candidate,
             integration_authority=None,
-            execution=_operation_execution(launcher, now),
+            execution=_operation_execution(launcher, now, certification=certification),
         )
+
+
+def _require_series_recording_only(
+    contract: WorktreeContract,
+    operation_input: CloseoutOperationInput,
+) -> None:
+    """Keep series recording outside leaf certification without admitting commit legs."""
+    require_series_contract_authority(contract, operation="worktree_closeout")
+    effective = operation_input.effectiveInput
+    if effective.contractKind != "series" or any(
+        effective.enabled(leg) for leg in ("code", "memory", "ledger")
+    ):
+        raise RuntimeError("series closeout may only record existing commits")
+    refuse_series_workbench_commit(contract)
 
 
 def _require_pending_initial_door_convergent(
@@ -303,7 +349,7 @@ def _start_or_observe_operation(
             store,
             operation_input,
             candidate=candidate,
-            timestamp=timestamp,
+            execution=execution,
         )
         projection_effects = []
         if refresh_required:
@@ -340,9 +386,7 @@ def _start_or_observe_operation(
     current, created = _create_or_replace_generation(
         store,
         queued,
-        contract=contract,
-        operation_input=operation_input,
-        candidate=candidate,
+        creation=_GenerationCreation(contract, operation_input, candidate),
     )
     return _recover_launch_and_project(
         contract,
@@ -359,7 +403,7 @@ def _claim_closeout_operation(
     operation_input: CloseoutOperationInput,
     *,
     candidate: LifecycleOperationCandidate,
-    timestamp: datetime,
+    execution: _OperationExecution,
 ) -> tuple[LifecycleOperationRecord, WorktreeContract, bool, TaskDocumentRef, bool]:
     """Transfer one first-ready waiting generation into root-journal authority."""
 
@@ -369,12 +413,14 @@ def _claim_closeout_operation(
             operation_input.configPath,
         )
         _validate_input_identity(contract, operation_input)
+        if contract.kind == "series":
+            _require_series_recording_only(contract, operation_input)
         queued = queued_operation_record(
             contract,
             operation_input,
             candidate,
             None,
-            timestamp,
+            execution.timestamp,
         )
         door = contract.closeout_door
         if door is None:
@@ -400,10 +446,21 @@ def _claim_closeout_operation(
         current, created = _create_or_replace_generation(
             store,
             queued,
-            contract=contract,
-            operation_input=operation_input,
-            candidate=candidate,
+            creation=_GenerationCreation(
+                contract,
+                operation_input,
+                candidate,
+                (
+                    lambda record: initial_certification_state(
+                        contract, record, execution.certification
+                    )
+                )
+                if contract.kind == "leaf"
+                else None,
+            ),
         )
+        if contract.kind == "leaf":
+            require_selected_certification(contract, current)
         if not created:
             current, created = _resume_exact_duplicate_closeout(
                 store,
@@ -415,8 +472,17 @@ def _claim_closeout_operation(
             return current, contract, created, sprint_ref, False
         publication = current.doorPublication
         refresh_required = publication is not None and publication.state == "intent"
+        recovered_initial_claim = (
+            not created
+            and refresh_required
+            and current.status == "queued"
+            and not current.cancelRequested
+            and current.workerPid is None
+            and current.workerLease is None
+            and current.workerProcessFingerprint is None
+        )
         current, contract = _publish_initial_closeout_door(contract, store, current)
-        return current, contract, created, sprint_ref, refresh_required
+        return current, contract, created or recovered_initial_claim, sprint_ref, refresh_required
 
 
 def _prepare_closeout_claim(
@@ -599,13 +665,11 @@ def _create_or_replace_generation(
     store: LifecycleOperationStore,
     queued: LifecycleOperationRecord,
     *,
-    contract: WorktreeContract,
-    operation_input: LifecycleOperationInput,
-    candidate: LifecycleOperationCandidate,
+    creation: _GenerationCreation,
 ) -> tuple[LifecycleOperationRecord, bool]:
     """Create one generation or replace only a terminal, advanced generation."""
 
-    current, created = store.create(queued)
+    current, created = store.create(queued, initial_certification=creation.initial_certification)
     if task_intent_is_missing(current.taskIntent) and current.operationKind in {
         "closeout",
         "direct-landing",
@@ -616,18 +680,21 @@ def _create_or_replace_generation(
                 "the active legacy operation predates canonical task intent and cannot be reused",
                 next_action="developer-decision",
             )
-        return store.replace_terminal(queued), True
-    if current.fingerprint == candidate.fingerprint:
+        return store.replace_terminal(
+            queued, initial_certification=creation.initial_certification
+        ), True
+    if current.fingerprint == creation.candidate.fingerprint:
         return current, created
-    _require_terminal_generation(current, operation_input, contract)
+    _require_terminal_generation(current, creation.operation_input, creation.contract)
     return _replace_terminal_generation(
         _GenerationReplacement(
             store=store,
             queued=queued,
             current=current,
-            contract=contract,
-            operation_input=operation_input,
-            candidate=candidate,
+            contract=creation.contract,
+            operation_input=creation.operation_input,
+            candidate=creation.candidate,
+            initial_certification=creation.initial_certification,
         )
     )
 
@@ -673,6 +740,7 @@ def _replace_cancelled_generation(
             replacement.queued,
             replacement.current,
             replacement.contract,
+            replacement.initial_certification,
         )
     raise RuntimeError(
         f"terminal {replacement.operation_input.kind} generation requires the explicit "
@@ -699,6 +767,7 @@ def _replace_cancelled_closeout(
     queued: LifecycleOperationRecord,
     current: LifecycleOperationRecord,
     contract: WorktreeContract,
+    initial_certification: InitialCertificationSelection | None,
 ) -> tuple[LifecycleOperationRecord, bool]:
     successor = contract.closeout_door
     observed = (
@@ -711,7 +780,7 @@ def _replace_cancelled_closeout(
             "cancelled closeout can advance only through the current waiting door "
             "after proven worker exit"
         )
-    return store.replace_terminal(queued), True
+    return store.replace_terminal(queued, initial_certification=initial_certification), True
 
 
 def _replace_completed_generation(
@@ -728,7 +797,9 @@ def _replace_completed_generation(
         replacement.operation_input,
         replacement.candidate,
     )
-    return replacement.store.replace_terminal(replacement.queued), True
+    return replacement.store.replace_terminal(
+        replacement.queued, initial_certification=replacement.initial_certification
+    ), True
 
 
 def _require_released_closeout_output(
@@ -863,10 +934,13 @@ def _recover_launch_and_project(
 def _operation_execution(
     launcher: OperationLauncher | None,
     now: datetime | None,
+    *,
+    certification: FrozenCloseoutAdmission | None = None,
 ) -> _OperationExecution:
     return _OperationExecution(
         timestamp=(now or datetime.now(UTC)).replace(microsecond=0),
         launcher=launcher or launch_detached_worker,
+        certification=certification,
     )
 
 
@@ -1020,119 +1094,6 @@ def launch_detached_worker(contract: WorktreeContract, record: LifecycleOperatio
             if current.status == "queued" and current.fingerprint == record.fingerprint
             else current
         )
-    )
-
-
-def queued_operation_record(
-    contract: WorktreeContract,
-    operation_input: LifecycleOperationInput,
-    candidate: LifecycleOperationCandidate,
-    integration_authority: IntegrationOperationAuthority | None,
-    timestamp: datetime,
-) -> LifecycleOperationRecord:
-    stamp = timestamp.isoformat()
-    record = LifecycleOperationRecord(
-        taskId=contract.task_id,
-        taskName=contract.task_name,
-        contractPath=contract.contract_path.as_posix(),
-        operationKind=operation_input.kind,
-        candidateState=candidate.state,
-        candidateTree=candidate.tree,
-        taskIntent=candidate.task_intent,
-        fingerprint=candidate.fingerprint,
-        operationKey=operation_key(
-            contract.contract_path, operation_input.kind, candidate.fingerprint
-        ),
-        integrationAuthority=integration_authority,
-        input=operation_input,
-        status="queued",
-        phase="queued",
-        queuedAt=stamp,
-        currentCommand=f"waiting to start {operation_input.kind}",
-        reportPath=located_lifecycle_operation_report_path(
-            contract,
-            operation_input.kind,
-        ).as_posix(),
-        mutationEvidence=(
-            initial_closeout_mutation_evidence(contract, operation_input.effectiveInput)
-            if isinstance(operation_input, CloseoutOperationInput)
-            else {}
-        ),
-    )
-    if operation_input.kind == "integrate":
-        return record.model_copy(update={"dependencies": lifecycle_operation_dependencies(record)})
-    return record
-
-
-def _integration_authority(
-    contract: WorktreeContract, operation_input: IntegrateOperationInput
-) -> IntegrationOperationAuthority:
-    if contract.closeout_status != "completed" or not contract.code_commit:
-        raise RuntimeError("integration authority requires a completed closeout code commit")
-    targets = {target.side: target for target in integration_targets(contract)}
-    code_target = targets["code"]
-    code_source_commit = branch_commit(contract.code_repo_path, code_target.branch)
-    code_replay_required = not is_ancestor(
-        contract.code_repo_path, code_source_commit, contract.code_commit
-    )
-    memory_source_commit = ""
-    memory_replay_required = False
-    if contract.memory_mode == "external":
-        if (
-            contract.memory_repo_path is None
-            or not contract.memory_content_commit
-            or not contract.ledger_commit
-        ):
-            raise RuntimeError(
-                "external-memory integration authority requires repo and closeout commits"
-            )
-        memory_target = targets["memory"]
-        memory_source_commit = branch_commit(contract.memory_repo_path, memory_target.branch)
-        memory_replay_required = not is_ancestor(
-            contract.memory_repo_path, memory_source_commit, contract.ledger_commit
-        )
-    else:
-        memory_target = None
-    conflict = None
-    if operation_input.strategy == "replay" and (code_replay_required or memory_replay_required):
-        if contract.kind == "series":
-            raise RuntimeError(
-                "atomic series integration cannot open a leaf conflict worktree; source drift "
-                "requires orchestrator-owned block recovery or graph reshape"
-            )
-        conflict = IntegrationConflictTransaction(
-            codeReplayRequired=code_replay_required,
-            memoryReplayRequired=memory_replay_required,
-            codeSourceRef=f"refs/heads/{code_target.branch}",
-            codeSourceCommit=code_source_commit,
-            codeCandidateCommit=contract.code_commit,
-            memorySourceRef=(
-                f"refs/heads/{memory_target.branch}" if memory_target is not None else ""
-            ),
-            memorySourceCommit=memory_source_commit,
-            memoryContentCommit=contract.memory_content_commit,
-            ledgerCommit=contract.ledger_commit,
-            codeWorktree=contract.code_worktree.resolve().as_posix(),
-            memoryWorktree=(
-                contract.memory_worktree.resolve().as_posix()
-                if contract.memory_worktree is not None
-                else ""
-            ),
-        )
-    return IntegrationOperationAuthority(
-        targetKind=code_target.kind,
-        codeRepository=code_target.repository.as_posix(),
-        codeSourceBranch=code_target.branch,
-        codeSourceRef=f"refs/heads/{code_target.branch}",
-        codeSourceCommit=code_source_commit,
-        codeCandidateCommit=contract.code_commit,
-        memoryRepository=(memory_target.repository.as_posix() if memory_target is not None else ""),
-        memorySourceBranch=(memory_target.branch if memory_target is not None else ""),
-        memorySourceRef=(f"refs/heads/{memory_target.branch}" if memory_target is not None else ""),
-        memorySourceCommit=memory_source_commit,
-        memoryContentCommit=contract.memory_content_commit,
-        ledgerCommit=contract.ledger_commit,
-        conflictTransaction=conflict,
     )
 
 

@@ -20,12 +20,12 @@ from agents_remember.memory_quality.incremental_scope.errors import (
     ScopeUnprovenError,
 )
 from agents_remember.memory_quality.incremental_scope.models import (
-    CanonicalTaskObservation,
     GitTreeDelta,
     TaskObservationPair,
 )
 from agents_remember.models.lifecycles.door import CloseoutDoorGeneration
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
+from agents_remember.models.task_document import CanonicalTaskObservation
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity, missing_task_intent
 from agents_remember.tasks.document_refs import TaskDocumentRefError

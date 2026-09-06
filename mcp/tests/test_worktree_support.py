@@ -6,7 +6,6 @@ import sys
 import tempfile
 import unittest
 from argparse import Namespace
-from collections.abc import Mapping
 from contextlib import (
     contextmanager,
     redirect_stdout,
@@ -19,11 +18,6 @@ from unittest import mock
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
-from agents_remember.certification.models import CandidateIdentity
-from agents_remember.certification.repository_profiles import (
-    admit_repository_profile_execution,
-    load_repository_profile,
-)
 from agents_remember.certification.repository_profiles.canonical import (
     repository_profile_digest,
 )
@@ -58,10 +52,7 @@ from agents_remember.worktrees.closeout_input import (
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_location import (
     publish_new_lifecycle_operation_location,
 )
-from agents_remember.worktrees.modules.git import require_git
-from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
-from agents_remember.worktrees.modules.quality import gate as code_quality_gate
-from agents_remember.worktrees.queue import closeout_staged_quality
+from agents_remember.worktrees.modules import closeout as closeout_module
 from agents_remember.worktrees.route_review import (
     build_route_review,
     document_ref,
@@ -85,53 +76,6 @@ from curator_coherence_test_support import (
 
 drift = adopt_baseline.drift
 TEST_CERTIFICATION_PROFILE_REFERENCE = Path("mcp/certification-profile-v1.json")
-
-
-def publish_passing_closeout_quality(
-    target: code_quality_gate.QualityGateTarget,
-    *,
-    diff_base: str = "",
-    plan: code_quality_gate.QualityGatePlan | None = None,
-    invocation: str = "closeout-staged",
-    attestation: Mapping[str, str] | None = None,
-) -> dict[str, object]:
-    """Publish exact-profile passing evidence for direct closeout-mechanics fixtures."""
-
-    del invocation
-    candidate_tree = require_git(target.code_worktree, ["write-tree"])
-    admitted = load_repository_profile(
-        target.repository_id,
-        target.code_worktree,
-        target.profile_reference,
-    )
-    profile_execution = admit_repository_profile_execution(
-        admitted,
-        purpose="closeout",
-        mode=(plan or code_quality_gate.QualityGatePlan()).mode,
-        candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
-    )
-    with tempfile.TemporaryDirectory() as temporary:
-        export = Path(temporary)
-        (export / "clean-quality-results.json").write_text(
-            json.dumps({"status": "passed", "exitCode": 0}) + "\n",
-            encoding="utf-8",
-        )
-        clean_quality_executor._publish_reports(  # pyright: ignore[reportPrivateUsage]
-            export,
-            target.worktree_group / "reports",
-            candidate_tree=candidate_tree,
-            profile_execution=profile_execution,
-            bindings=clean_quality_executor.ReportBindings(
-                attestation=attestation, runtime_authority_digest=None
-            ),
-        )
-    return {
-        "required": True,
-        "passed": True,
-        "command": "fixture: published passing Dagger generation",
-        "diffBase": diff_base,
-        "candidateTree": candidate_tree,
-    }
 
 
 def _benchmark_git_subcommands(recorder: mock.Mock) -> list[str]:
@@ -473,7 +417,7 @@ def initialized_memory_repo(
     return git(memory_repo, "rev-parse", "HEAD")
 
 
-def open_external_contract_fixture(root: Path):
+def open_external_contract_fixture(root: Path, *, lifecycle_id: str = ""):
     code_repo = root / "repo-a"
     init_repo(code_repo, "main")
     install_fixture_profile(code_repo, "repo-a")
@@ -496,7 +440,7 @@ def open_external_contract_fixture(root: Path):
             workflow_kind="chat-task",
             memory_mode="external",
         ),
-        leaf=LeafIdentity(worktree_name="commit-approval-thing"),
+        leaf=LeafIdentity(worktree_name="commit-approval-thing", lifecycle_id=lifecycle_id),
         code=RepoBranchPlan(
             repo_path=code_repo,
             source_branch="super",
@@ -564,8 +508,8 @@ def open_external_contract_fixture(root: Path):
     return contract
 
 
-def dirty_open_external_contract_fixture(root: Path):
-    contract = open_external_contract_fixture(root)
+def dirty_open_external_contract_fixture(root: Path, *, lifecycle_id: str = ""):
+    contract = open_external_contract_fixture(root, lifecycle_id=lifecycle_id)
     (contract.code_worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
     assert contract.memory_worktree is not None
     write_file_onboarding(
@@ -884,19 +828,19 @@ def closeout_args(contract, *, dry_run: bool = False) -> Namespace:
     )
 
 
-def run_authorized_closeout_mechanics(
+def closeout_publication_facts(
+    contract: WorktreeContract,
     args: Namespace,
-    *,
-    publish_code_quality: bool = False,
-) -> int:
-    """Exercise commit mechanics with explicit test evidence authority, never the CLI."""
+) -> closeout_module._CloseoutPublicationFacts:
+    """Build current inputs for the isolated writer component, without certifying gates.
+
+    The real pair, attestation and memory-check owners supply their own facts. The
+    fixture stages its exact candidate for the existing staged-index writer; this
+    fixture does not establish selected-operation or code-gate acceptance.
+    """
     worktree_args = worktree_manager.WorktreeArgs.from_namespace(args)
-    if worktree_args.dry_run:
-        return worktree_manager.command_closeout(args)
     if worktree_args.operation_progress is None:
         raise AssertionError("applying closeout mechanics require an evidence recorder")
-    assert worktree_args.contract_path is not None
-    contract = load_contract(worktree_args.contract_path)
     effective = normalize_closeout_input(
         contract,
         raw_closeout_messages(
@@ -910,20 +854,44 @@ def run_authorized_closeout_mechanics(
             arguments={"contract_path": contract.contract_path.as_posix()},
         ),
     )
-    effective_args = replace(
-        worktree_args,
-        closeout_input=effective,
-        ledger_commit_message="",
+    pair = closeout_module.accepted_closeout_memory_pair(contract)
+    worklist = closeout_module.closeout_changed_paths(contract)
+    route_review = closeout_module.require_current_route_review(contract)
+    attestations = closeout_module._closeout_attestations(contract, worklist, pair.no_impact)
+    memory_quality = closeout_module._memory_quality_before_refresh(contract)
+    git(contract.code_worktree, "add", "-A")
+    return closeout_module._CloseoutPublicationFacts(
+        args=replace(
+            worktree_args,
+            closeout_input=effective,
+            ledger_commit_message="",
+            candidate_tree=git(contract.code_worktree, "write-tree"),
+        ),
+        effective_input=effective,
+        worklist=worklist,
+        quality=closeout_module._CloseoutQualityFacts(
+            attestations=attestations,
+            code_quality_gate={"status": "component-fixture", "acceptanceClaim": False},
+            memory_quality_before_refresh=memory_quality,
+            strict_code_quality_required=True,
+            coherence_no_impact=pair.no_impact,
+            pair_identity=pair.pair_identity,
+        ),
+        route_review=route_review,
+        approval_note=closeout_module._closeout_approval_note(worktree_args),
     )
-    if publish_code_quality:
-        with mock.patch.object(
-            closeout_staged_quality,
-            "run_strict_code_quality_gate",
-            side_effect=publish_passing_closeout_quality,
-        ):
-            result = worktree_manager.closeout_result(effective_args, contract)
-    else:
-        result = worktree_manager.closeout_result(effective_args, contract)
+
+
+def run_authorized_closeout_mechanics(args: Namespace) -> int:
+    """Exercise the real writer component; apply results make no gate-acceptance claim."""
+    worktree_args = worktree_manager.WorktreeArgs.from_namespace(args)
+    if worktree_args.dry_run:
+        return worktree_manager.command_closeout(args)
+    assert worktree_args.contract_path is not None
+    contract = load_contract(worktree_args.contract_path)
+    result = closeout_module._publish_closeout_candidate(
+        contract, closeout_publication_facts(contract, args)
+    )
     print(json.dumps(result.payload, indent=2))
     return result.returncode
 
@@ -938,13 +906,12 @@ def integrate_args(contract, *, dry_run: bool = False) -> Namespace:
     )
 
 
-def integrated_external_contract_fixture(root: Path):
-    contract = dirty_open_external_contract_fixture(root)
+def integrated_external_contract_fixture(root: Path, *, lifecycle_id: str = ""):
+    contract = dirty_open_external_contract_fixture(root, lifecycle_id=lifecycle_id)
     with redirect_stdout(io.StringIO()):
         assert (
             run_authorized_closeout_mechanics(
                 closeout_args(contract),
-                publish_code_quality=True,
             )
             == 0
         )

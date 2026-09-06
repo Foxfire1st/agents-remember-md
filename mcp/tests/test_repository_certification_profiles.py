@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import CandidateIdentity, RailIdentity
+from agents_remember.certification.models import CandidateIdentity
 from agents_remember.certification.repository_profiles import (
     AdmittedRepositoryProfile,
     DaggerModuleExecutorAdapter,
@@ -37,6 +37,7 @@ from agents_remember.certification.repository_profiles.models import (
     RepositoryGateSelection,
 )
 from agents_remember.errors import CertificationProfileError
+from agents_remember.models.certification.base import RailIdentity
 from agents_remember_test_support.code_quality import profile_rails, profile_selection
 from agents_remember_test_support.testing.dagger_admission import require_dagger_admission
 from repository_profile_test_support import (
@@ -46,6 +47,11 @@ from repository_profile_test_support import (
     RUST_FIXTURE,
     FixtureRepository,
     fixture_profile,
+)
+from source_selection_test_support import (
+    ambient_selection_fixture,
+    source_selection_fixture,
+    write_ambient_selection,
 )
 
 _CANDIDATE = CandidateIdentity(kind="content-digest", value="c" * 64)
@@ -159,7 +165,8 @@ def test_agents_remember_profile_preserves_the_complete_approved_gate_inventory(
     plan = compile_repository_profile_plan(
         admitted.canonical,
         selection_id="closeout-full",
-        candidate_identity=_CANDIDATE,
+        candidate_identity=CandidateIdentity(kind="git-tree", value="c" * 40),
+        source_selection=source_selection_fixture("c" * 40),
     )
 
     observed = {gate.gate: {rail.identity.railId for rail in gate.rails} for gate in plan.gates}
@@ -523,7 +530,6 @@ def test_distinct_fixture_adapters_and_decoders_complete_the_declared_protocol(
         repository_bundle=tmp_path / "candidate.bundle",
         execution_manifest=tmp_path / "manifest.json",
         mode="full",
-        diff_base="base-sha",
         export_root=tmp_path / "reports",
         memory_cap_bytes=4096,
     )
@@ -689,22 +695,34 @@ def test_non_python_selector_fixture_emits_the_canonical_generic_result(
 def test_repository_profile_teardown_adapter_requires_a_passing_cleanup_checkpoint(
     tmp_path: Path,
 ) -> None:
+    selection = write_ambient_selection(tmp_path)
+    decision = ambient_selection_fixture()
     summary = tmp_path / "summary.json"
-    detail = tmp_path / "run-1.json"
+    common = {
+        "mode": decision.mode,
+        "candidate": {"tree": decision.sourceSelection.candidateTree},
+        "diffBase": decision.sourceSelection.baseCommit,
+        "selectedPaths": list(decision.selectedPaths),
+    }
     summary.write_text(
         json.dumps(
             {
+                **common,
                 "schema": "ar-ambient-role-chat-e2e-summary/v1",
                 "status": "passed",
-                "runs": [{"status": "passed", "report": detail.name}],
+                "runs": [
+                    {"run": index, "status": "passed", "report": f"run-{index}.json"}
+                    for index in (1, 2)
+                ],
             }
-        ),
-        encoding="utf-8",
+        )
     )
-    detail.write_text(json.dumps({"checkpoints": []}), encoding="utf-8")
-
+    for index in (1, 2):
+        (tmp_path / f"run-{index}.json").write_text(
+            json.dumps({**common, "run": index, "retry": False, "checkpoints": []})
+        )
     with pytest.raises(RuntimeError, match="teardown checkpoint"):
-        profile_rails._verify_teardown(summary, tmp_path / "proof.json")
+        profile_rails._verify_teardown(summary, tmp_path / "proof.json", selection)
 
 
 def test_framework_profile_package_contains_no_repository_specific_plan() -> None:
@@ -870,7 +888,9 @@ def test_profile_publication_and_adapter_ambiguity_refuse_at_admission(
         profile = profile.model_copy(
             update={
                 "executorAdapters": (
-                    executor.model_copy(update={"diffBaseArgument": executor.sourceArgument}),
+                    executor.model_copy(
+                        update={"retainedReportsArgument": executor.sourceArgument}
+                    ),
                 )
             }
         )

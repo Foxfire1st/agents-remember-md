@@ -13,6 +13,13 @@ from pydantic import ValidationError
 from agents_remember.controlplane.durable_store import StoreOwnership, exclusive_access
 from agents_remember.errors import TaskIntentError
 from agents_remember.kernel.atomic_write import atomic_write_text
+from agents_remember.models.lifecycles.certification import (
+    OperationCertificationState,
+    validate_certification_transition,
+)
+from agents_remember.models.lifecycles.integration_certification import (
+    validate_integration_certification_transition,
+)
 from agents_remember.models.lifecycles.mutation_evidence import GitMutationEvidence
 from agents_remember.models.lifecycles.operation import (
     LifecycleOperationKind,
@@ -349,6 +356,25 @@ def _validate_identity_and_evidence_transition(
         raise RuntimeError("a claimed approval cannot become unclaimed")
     _validate_recovery_commits_transition(current, updated)
     _validate_quality_certification_transition(current, updated)
+    validate_integration_certification_transition(
+        current.integrationCertification,
+        updated.integrationCertification,
+        operation_key=current.operationKey,
+        generation=current.generation,
+        can_select=current.operationKind == "integrate"
+        and current.status == "running"
+        and not current.cancelRequested
+        and not updated.cancelRequested,
+    )
+    validate_certification_transition(
+        current.certification,
+        updated.certification,
+        operation_key=current.operationKey,
+        generation=current.generation,
+        can_select=current.status in {"queued", "running"}
+        and not current.cancelRequested
+        and not updated.cancelRequested,
+    )
     _validate_integration_publication_transition(current, updated)
     _validate_organizational_repair_transition(current, updated)
     _validate_mutation_evidence_transition(current, updated)
@@ -402,6 +428,7 @@ def operation_report_path(worktree_group: Path, operation_kind: LifecycleOperati
 
 
 JournalReadSide = Literal["current-record"]
+InitialCertificationSelection = Callable[[LifecycleOperationRecord], OperationCertificationState]
 
 
 class LifecycleOperationReadError(RuntimeError):
@@ -564,7 +591,12 @@ class LifecycleOperationStore:
             self._write(updated)
             return updated, True
 
-    def create(self, record: LifecycleOperationRecord) -> tuple[LifecycleOperationRecord, bool]:
+    def create(
+        self,
+        record: LifecycleOperationRecord,
+        *,
+        initial_certification: InitialCertificationSelection | None = None,
+    ) -> tuple[LifecycleOperationRecord, bool]:
         # Validate the candidate against this store address even when a current
         # generation already exists. Otherwise a record for another lifecycle
         # plane can be mistaken for a convergent duplicate.
@@ -575,8 +607,34 @@ class LifecycleOperationStore:
             current = self.read()
             if current is not None:
                 return current, False
+            record = self._with_initial_certification(record, initial_certification)
             self._write(record)
             return record, True
+
+    def _with_initial_certification(
+        self,
+        record: LifecycleOperationRecord,
+        selection: InitialCertificationSelection | None,
+    ) -> LifecycleOperationRecord:
+        """Select only certification, inside the sole creation/replacement write boundary."""
+        if selection is None:
+            return record
+        if record.operationKind != "closeout" or record.certification is not None:
+            raise RuntimeError("initial certification requires an unselected closeout generation")
+        initial = selection(record)
+        if not isinstance(initial, OperationCertificationState):
+            raise RuntimeError("initial certification callback must return a typed selection")
+        selected = LifecycleOperationRecord.model_validate(
+            record.model_copy(update={"certification": initial}).model_dump(mode="json")
+        )
+        validate_certification_transition(
+            record.certification,
+            selected.certification,
+            operation_key=record.operationKey,
+            generation=record.generation,
+            can_select=record.status == "queued" and not record.cancelRequested,
+        )
+        return selected
 
     def update(
         self,
@@ -643,7 +701,12 @@ class LifecycleOperationStore:
             self._write(updated)
             return updated, True
 
-    def replace_terminal(self, candidate: LifecycleOperationRecord) -> LifecycleOperationRecord:
+    def replace_terminal(
+        self,
+        candidate: LifecycleOperationRecord,
+        *,
+        initial_certification: InitialCertificationSelection | None = None,
+    ) -> LifecycleOperationRecord:
         """Archive one exact terminal predecessor, then atomically publish N+1."""
         with exclusive_access(self.path, _OWNERSHIP):
             current = self.read()
@@ -685,6 +748,7 @@ class LifecycleOperationStore:
             if current.operationKind in {"closeout", "direct-landing"} and task_intent_is_missing(
                 current.taskIntent
             ):
+                validated = self._with_initial_certification(validated, initial_certification)
                 return self._retire_missing_intent_generation(current, validated)
             predecessor = LifecycleOperationRecord.model_validate(
                 current.model_copy(
@@ -696,6 +760,7 @@ class LifecycleOperationStore:
                 ).model_dump(mode="json")
             )
             self._archive_generation(predecessor)
+            validated = self._with_initial_certification(validated, initial_certification)
             self._write(validated)
             return validated
 

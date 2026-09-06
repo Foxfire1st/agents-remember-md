@@ -10,8 +10,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
-from agents_remember.models.task_document_ref import TaskDocumentRef
-from agents_remember.models.task_intent import TaskIntentState
+from agents_remember.models.task_document import CanonicalTaskObservation
 
 Hash = Annotated[str, Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
@@ -109,32 +108,6 @@ class GitTreeDelta(_StrictModel):
             raise ValueError("Git changes must be deterministically sorted")
         if len(set(key(item) for item in value)) != len(value):
             raise ValueError("Git changes must be unique")
-        return value
-
-
-class CanonicalTaskObservation(_StrictModel):
-    """Exact output from the task source, R01 topology, and R02 intent owners."""
-
-    taskRoot: str
-    taskDocumentRef: TaskDocumentRef
-    sourceDigest: Sha256
-    sourceAuthorityNamespace: Literal[
-        "agents-remember.closeout-door-generation",
-        "agents-remember.task-document-source",
-    ]
-    sourceValidatorVersion: str = Field(min_length=1)
-    semanticTopologySchema: Literal["semantic-topology/v2"] = "semantic-topology/v2"
-    semanticTopologyDigest: Sha256 | None
-    taskIntent: TaskIntentState | None
-    owner: Literal["agents-remember.task-domain"] = "agents-remember.task-domain"
-    ownerVersion: Literal["task-scope-observation/v1"] = "task-scope-observation/v1"
-
-    @field_validator("taskRoot")
-    @classmethod
-    def _absolute_task_root(cls, value: str) -> str:
-        path = Path(value)
-        if not path.is_absolute() or path.as_posix() != value or ".." in path.parts:
-            raise ValueError("task root must be one normalized absolute POSIX path")
         return value
 
 
@@ -299,7 +272,6 @@ class ScopeManifest(_StrictModel):
 
 
 __all__ = [
-    "CanonicalTaskObservation",
     "CheckerScopePolicy",
     "DependencySnapshot",
     "EdgeClass",

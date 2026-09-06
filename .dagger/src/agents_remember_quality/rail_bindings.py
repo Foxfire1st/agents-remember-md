@@ -71,6 +71,7 @@ def bounded_capture_bytes(output: str | bytes, *, max_bytes: int = MAX_CAPTURE_B
 #                      dashboard/coverage/coverage-final.json (vitest.config.ts
 #                      coverage.reporter includes "json", default file name).
 ARTIFACT_FILE_PATHS: dict[str, str] = {
+    "causal-failure-report": "causal-failures.json",
     "python-coverage-data": "coverage.data",
     "python-coverage-json": "coverage.json",
     "python-suite-result": "pytest-phases.json",

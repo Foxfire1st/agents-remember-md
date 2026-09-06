@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import shlex
 import time
 from collections.abc import Mapping
@@ -11,13 +10,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NoReturn
 
-from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.frozen_run.models import FrozenCertificationRun
 from agents_remember.certification.repository_profiles import (
     AdmittedRepositoryProfile,
     DaggerModuleExecutorAdapter,
-    JsonExitStatusDecoder,
     RepositoryExecutionRequest,
-    compile_repository_profile_plan,
     load_repository_profile,
     resolve_repository_profile_selection,
 )
@@ -35,17 +32,22 @@ from agents_remember.models.test_evidence import (
 )
 from agents_remember.worktrees.modules.git import require_git
 from agents_remember.worktrees.modules.quality import certification_records
+from agents_remember.worktrees.modules.quality.certification_run import (
+    SelectedCodeCertification,
+    record_terminal_generation,
+    require_recorded_generation,
+    verify_selected_code_terminals,
+)
+from agents_remember.worktrees.modules.quality.certification_terminal import RecordedGateTerminal
 from agents_remember.worktrees.modules.quality.clean_executor import (
     CleanQualityOutcome,
     CleanQualityRequest,
     certifying_evidence_from_published_manifest,
-    published_generation_root,
     published_report_path_from_manifest,
     run_clean_quality,
 )
 from agents_remember.worktrees.modules.quality.published_manifest import (
     PublishedQualityManifest,
-    load_published_quality_manifest,
 )
 
 FAILURE_OUTPUT_LINES = 40
@@ -64,6 +66,7 @@ class QualityGatePlan:
 
     mode: ProfileMode = GATE_TARGETED
     memory_cap_bytes: int | None = None
+    selected: SelectedCodeCertification | None = None
 
 
 @dataclass(frozen=True)
@@ -240,6 +243,28 @@ def _publish_gate_test_report(
     )
 
 
+def _resolve_certification_records(
+    target: QualityGateTarget,
+    *,
+    plan: QualityGatePlan,
+    candidate_tree: str,
+    diff_base: str,
+) -> certification_records.PreparedCertificationRun:
+    """Freeze a new run or reopen the exact selected run for the staged candidate."""
+    selected = plan.selected
+    if selected is None:
+        return _freeze_certification_records(
+            target, plan=plan, candidate_tree=candidate_tree, diff_base=diff_base
+        )
+    selected.execution.validate()
+    prepared = certification_records.prepared_from_frozen_run(
+        target.worktree_group, selected.execution.run
+    )
+    if prepared.candidateTree != candidate_tree:
+        raise RuntimeError("selected frozen certification does not name the staged candidate")
+    return prepared
+
+
 def run_strict_code_quality_gate(
     target: QualityGateTarget,
     *,
@@ -257,9 +282,13 @@ def run_strict_code_quality_gate(
     """
     code_worktree = target.code_worktree
     plan = _validated_quality_gate_plan(plan)
-    command, invocation = _gate_command_parts(target, plan, diff_base, invocation)
     candidate_tree = require_git(code_worktree, ["write-tree"])
-    _freeze_certification_records(target, plan=plan, candidate_tree=candidate_tree)
+    selected = plan.selected
+    prepared = _resolve_certification_records(
+        target, plan=plan, candidate_tree=candidate_tree, diff_base=diff_base
+    )
+    command = _profile_report_command(target, plan, diff_base, frozen_run=prepared.frozen_run)
+    invocation = "master-integration" if plan.mode == GATE_FULL else invocation
     started_at = datetime.now(UTC)
     started = time.monotonic()
     result = run_clean_quality(
@@ -272,11 +301,23 @@ def run_strict_code_quality_gate(
             diff_base=diff_base,
             memory_cap_bytes=plan.memory_cap_bytes,
             attestation=attestation,
+            execution=selected.execution if selected is not None else None,
+            protected_generations=selected.protected_generations if selected is not None else None,
+            authorize_start=selected.authorize_start if selected is not None else None,
         )
     )
     if result.manifest is None and result.returncode == 0:
         raise RuntimeError("repository certification passed without a published manifest")
     report_path = test_results_report_path(target.worktree_group)
+    recorded = None
+    if result.manifest is not None:
+        recorded = record_terminal_generation(
+            prepared,
+            result.manifest,
+            retained=selected.execution.retained if selected is not None else (),
+        )
+        if selected is not None:
+            selected.select_terminals(recorded)
     _publish_gate_test_report(
         report_path,
         _GateRunReportInputs(
@@ -289,6 +330,8 @@ def run_strict_code_quality_gate(
             started=started,
         ),
     )
+    if recorded is not None:
+        require_recorded_generation(recorded)
     if result.returncode != 0:
         raise RuntimeError(
             _gate_failure_message(
@@ -309,104 +352,64 @@ def run_strict_code_quality_gate(
         raise RuntimeError(
             "quality candidate changed while Dagger certification was being published"
         )
-    _record_certification_generation(
-        target,
-        plan=plan,
-        candidate_tree=candidate_tree,
-        manifest=manifest,
-    )
+
     return _strict_quality_success_payload(
         target,
-        diff_base=diff_base,
-        plan=plan,
+        inputs=_GateSuccessInputs(diff_base, plan, command),
         evidence=evidence,
         manifest=manifest,
     )
 
 
-def recover_strict_code_quality_gate(
+def render_selected_code_certification(
     target: QualityGateTarget,
+    prepared: certification_records.PreparedCertificationRun,
+    terminals: tuple[RecordedGateTerminal, ...],
     *,
     diff_base: str,
     plan: QualityGatePlan,
-    attestation: Mapping[str, str],
-) -> dict[str, object] | None:
-    """Recover one exact passed Dagger generation after its caller crashed."""
-
-    reports = target.worktree_group / REPORT_DIRECTORY_NAME
-    try:
-        manifest = load_published_quality_manifest(reports)
-    except RuntimeError:
-        return None
-    published = None if manifest.attestation is None else dict(manifest.attestation)
-    if published != dict(attestation):
-        return None
-    candidate_tree = require_git(target.code_worktree, ["write-tree"])
-    admitted, selection = _admitted_selection(target, plan.mode)
-    expected_plan = compile_repository_profile_plan(
-        admitted.canonical,
-        selection_id=selection.selectionId,
-        candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
-    )
-    expected_decoder = next(
-        decoder
-        for decoder in admitted.canonical.profile.resultDecoders
-        if decoder.decoderId == selection.resultDecoderId
+) -> dict[str, object]:
+    """Render an exact journal selection after full original-object and artifact readback."""
+    verified = certification_records.prepared_from_frozen_run(
+        target.worktree_group, prepared.frozen_run
     )
     if (
-        manifest.candidate_tree != candidate_tree
-        or manifest.profile_digest != admitted.canonical.profileDigest
-        or manifest.profile_plan_digest != expected_plan.planDigest
-        or manifest.profile_selection_id != selection.selectionId
-        or manifest.executor_adapter_id != selection.executorAdapterId
-        or manifest.result_decoder != expected_decoder
+        verified.worktree_group != prepared.worktree_group
+        or require_git(target.code_worktree, ["write-tree"]) != verified.candidateTree
+        or target.repository_id != verified.frozen_run.admission.semanticEnvelope.repositoryId
     ):
-        return None
-    published_report_path_from_manifest(
-        reports,
-        manifest,
-        manifest.result_decoder.artifactPath,
-    )
-    if (
-        JsonExitStatusDecoder()
-        .decode(
-            manifest.result_decoder,
-            published_generation_root(reports, manifest),
-            manifest.files,
-        )
-        .exit_code
-        != 0
-    ):
-        return None
+        raise RuntimeError("selected code certification does not name the current target")
+    manifest = verify_selected_code_terminals(verified, terminals)
     evidence = certifying_evidence_from_published_manifest(
-        reports,
+        target.worktree_group / REPORT_DIRECTORY_NAME,
         manifest,
-        candidate_tree=candidate_tree,
+        candidate_tree=verified.candidateTree,
     )
     require_certifying_evidence(evidence, consumer=EvidenceConsumer.LIFECYCLE)
-    _record_certification_generation(
-        target,
-        plan=plan,
-        candidate_tree=candidate_tree,
-        manifest=manifest,
-    )
+    command = _profile_report_command(target, plan, diff_base, frozen_run=verified.frozen_run)
     return _strict_quality_success_payload(
         target,
-        diff_base=diff_base,
-        plan=plan,
+        inputs=_GateSuccessInputs(diff_base, plan, command),
         evidence=evidence,
         manifest=manifest,
     )
+
+
+@dataclass(frozen=True)
+class _GateSuccessInputs:
+    diff_base: str
+    plan: QualityGatePlan
+    command: list[str]
 
 
 def _strict_quality_success_payload(
     target: QualityGateTarget,
     *,
-    diff_base: str,
-    plan: QualityGatePlan,
+    inputs: _GateSuccessInputs,
     evidence: CertifyingTestEvidence,
     manifest: PublishedQualityManifest,
 ) -> dict[str, object]:
+    diff_base, plan, command = inputs.diff_base, inputs.plan, inputs.command
     published_result_path = published_report_path_from_manifest(
         target.worktree_group / REPORT_DIRECTORY_NAME,
         manifest,
@@ -416,12 +419,7 @@ def _strict_quality_success_payload(
         "required": True,
         "status": GATE_ENFORCED,
         "passed": True,
-        "command": _gate_command(
-            target,
-            diff_base,
-            mode=plan.mode,
-            memory_cap_bytes=plan.memory_cap_bytes,
-        ),
+        "command": shlex.join(command),
         "diffBase": diff_base,
         "mode": plan.mode,
         "executor": "dagger",
@@ -461,9 +459,11 @@ def run_local_quality_diagnostic(
     )
 
 
-def _freeze_certification_records(target, *, plan, candidate_tree) -> None:
+def _freeze_certification_records(
+    target: QualityGateTarget, *, plan: QualityGatePlan, candidate_tree: str, diff_base: str
+) -> certification_records.PreparedCertificationRun:
     """Freeze the exact R21 admission authority before Gate-1 execution."""
-    certification_records.prepare_certification_records(
+    return certification_records.prepare_certification_records(
         certification_records.CertificationRunTarget(
             repository_id=target.repository_id,
             code_worktree=target.code_worktree,
@@ -472,39 +472,8 @@ def _freeze_certification_records(target, *, plan, candidate_tree) -> None:
         ),
         mode=plan.mode,
         candidate_tree=candidate_tree,
+        diff_base=diff_base,
     )
-
-
-def _record_certification_generation(target, *, plan, candidate_tree, manifest) -> None:
-    """Publish typed gate result/certificate records for one green generation."""
-    prepared = certification_records.prepare_certification_records(
-        certification_records.CertificationRunTarget(
-            repository_id=target.repository_id,
-            code_worktree=target.code_worktree,
-            profile_reference=target.profile_reference,
-            worktree_group=target.worktree_group,
-        ),
-        mode=plan.mode,
-        candidate_tree=candidate_tree,
-    )
-    if prepared is None:
-        return
-    reports = target.worktree_group / REPORT_DIRECTORY_NAME
-    try:
-        artifact = published_report_path_from_manifest(
-            reports,
-            manifest,
-            manifest.result_decoder.artifactPath,
-        )
-        payload = json.loads(artifact.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise RuntimeError(
-            "green repository certification generation has no readable decoder artifact"
-        ) from error
-    if isinstance(payload, dict):
-        recorded = certification_records.record_published_generation(prepared, manifest, payload)
-        if recorded["refused"]:
-            raise RuntimeError(f"repository certificate evidence refused: {recorded['refused']}")
 
 
 def _write_test_results_report(report: _QualityGateReport) -> None:
@@ -597,11 +566,23 @@ def _profile_report_command(
     target: QualityGateTarget,
     plan: QualityGatePlan,
     diff_base: str,
+    *,
+    frozen_run: FrozenCertificationRun | None = None,
 ) -> list[str]:
-    admitted, selection = _admitted_selection(target, plan.mode)
+    del diff_base  # The immutable execution manifest binds the comparison commit.
+    if frozen_run is None:
+        admitted, selection = _admitted_selection(target, plan.mode)
+        profile = admitted.canonical
+    else:
+        profile = frozen_run.repositoryProfile
+        selection = resolve_repository_profile_selection(
+            profile, purpose="closeout", mode=plan.mode
+        )
+        if selection.selectionId != frozen_run.repositoryPlan.selectionId:
+            raise RuntimeError("quality mode differs from the selected frozen profile plan")
     executor = next(
         definition
-        for definition in admitted.canonical.profile.executorAdapters
+        for definition in profile.profile.executorAdapters
         if definition.adapterId == selection.executorAdapterId
     )
     return list(
@@ -612,7 +593,6 @@ def _profile_report_command(
                 repository_bundle=Path("<exact-git-ancestry-bundle>"),
                 execution_manifest=Path("<exact-admission-manifest>"),
                 mode=selection.mode,
-                diff_base=diff_base,
                 export_root=Path("<profile-report-export>"),
                 memory_cap_bytes=plan.memory_cap_bytes,
             ),

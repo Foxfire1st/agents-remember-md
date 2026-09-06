@@ -24,12 +24,14 @@ class QualityProgress:
     attempted: list[str] = dataclass_field(default_factory=list)
     completed: list[str] = dataclass_field(default_factory=list)
     skipped: list[str] = dataclass_field(default_factory=list)
+    not_applicable: dict[str, str] = dataclass_field(default_factory=dict)
     step_exit_codes: dict[str, int] = dataclass_field(default_factory=dict)
     failure_details: dict[str, str] = dataclass_field(default_factory=dict)
     selection_results: dict[str, dict[str, object]] = dataclass_field(default_factory=dict)
     gate_catalog: list[dict[str, object]] = dataclass_field(default_factory=list)
     retained_captures: dict[str, bytes] = dataclass_field(default_factory=dict)
     retained_files: dict[str, dagger.File] = dataclass_field(default_factory=dict)
+    environment_reconstruction: list[dict[str, object]] = dataclass_field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -126,6 +128,10 @@ def profile_result_payload(
         "stepExitCodes": progress.step_exit_codes,
         "attemptNonce": attempt_nonce,
     }
+    if progress.not_applicable:
+        result["notApplicableSteps"] = dict(progress.not_applicable)
+    if progress.environment_reconstruction:
+        result["environmentReconstruction"] = progress.environment_reconstruction
     if gates is not None:
         result["gates"] = list(gates)
     if progress.failure_details:
@@ -181,7 +187,13 @@ def quality_result_payload(
         e2e_completed=e2e_completed,
         e2e_skipped=e2e_skipped,
     )
-    if ambient_evidence is not None:
+    if "ambient-role-chat-e2e" in progress.not_applicable:
+        result["ambientRoleChatEvidence"] = {
+            "status": "not-applicable",
+            "sourceSelection": progress.not_applicable["ambient-role-chat-e2e"],
+            "zeroStart": True,
+        }
+    elif ambient_evidence is not None:
         result["ambientRoleChatEvidence"] = ambient_evidence
     return result
 

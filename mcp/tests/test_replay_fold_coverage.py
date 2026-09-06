@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents_remember.certification.models import RailIdentity
 from agents_remember.certification.replay.measure import measure_replay_run
 from agents_remember.certification.replay.models import (
     ReplayLegIdentity,
@@ -29,6 +28,7 @@ from agents_remember.certification.telemetry.models import (
     TelemetryEvent,
     TelemetrySpan,
 )
+from agents_remember.models.certification.base import RailIdentity
 
 _DIGEST = "a" * 64
 _GIT = "c" * 40

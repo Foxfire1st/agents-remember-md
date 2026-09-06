@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,29 +24,26 @@ from agents_remember.worktrees.modules.models import VerifiedChange
 from agents_remember.worktrees.queue import closeout_recovery as recovery_mod
 from agents_remember.worktrees.queue.closeout_recovery import resume_external_commits
 from closeout_input_test_support import closeout_operation_input, start_closeout_operation
-from test_worktree_support import git, open_external_contract_fixture
+from test_closeout_certification_entrypoint import _review_and_declare
+from test_closeout_queue import MASTER_A, QueueFixture
+from test_worktree_support import git
 
 
 def _journaled_ledger_fixture(root: Path):
-    contract = open_external_contract_fixture(root)
+    fixture = QueueFixture(root, memory_mode="external")
+    contract = fixture.contracts[MASTER_A]
     assert contract.memory_worktree is not None
-    config_path = root / "settings.json"
-    config_path.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "coordinationRoot": contract.coordination_root.as_posix(),
-                "workspaceRoot": root.as_posix(),
-                "repositories": {"repo-a": {}},
-            }
-        ),
-        encoding="utf-8",
-    )
+    config_path = fixture.config_path
     (contract.code_worktree / "accepted.txt").write_text("accepted\n", encoding="utf-8")
-    git(contract.code_worktree, "add", "accepted.txt")
+    git(contract.code_worktree, "add", "-A")
     git(contract.code_worktree, "commit", "-m", "accepted code output")
     code_commit = git(contract.code_worktree, "rev-parse", "HEAD")
+    git(contract.memory_worktree, "add", "-A")
+    if git(contract.memory_worktree, "diff", "--cached", "--name-only"):
+        git(contract.memory_worktree, "commit", "-m", "accepted memory output")
     memory_commit = git(contract.memory_worktree, "rev-parse", "HEAD")
+    _review_and_declare(fixture)
+    contract = fixture.contracts[MASTER_A]
     operation_input = closeout_operation_input(
         contract,
         config_path=config_path,

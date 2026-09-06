@@ -13,12 +13,12 @@ from agents_remember.certification.limits import (
 )
 from agents_remember.certification.models import (
     CanonicalRailRegistry,
-    GateId,
     RailDefinition,
     RegistryProfile,
     RegistryValidationFinding,
     RegistryValidationReport,
 )
+from agents_remember.models.certification.base import GateId
 
 _CLASS_GATE: dict[str, GateId] = {
     "pre-test-quality": 1,

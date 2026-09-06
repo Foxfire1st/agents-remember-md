@@ -41,7 +41,6 @@ from agents_remember.certification.models import (
     CandidateIdentity,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     GatePlan,
     GateResultAdmission,
     GateResultManifest,
@@ -51,7 +50,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailRegistry,
     RailResult,
     RailRuntimeInputs,
@@ -91,6 +89,7 @@ from agents_remember.certification.telemetry.models import (
     R21DependencyDecision,
     RailStartedPayload,
 )
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 _DIGEST = "a" * 64
 _CANDIDATE = CandidateIdentity(kind="content-digest", value="c" * 64)

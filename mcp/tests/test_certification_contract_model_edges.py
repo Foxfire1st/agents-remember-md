@@ -14,13 +14,11 @@ from agents_remember.certification import (
 )
 from agents_remember.certification.digests import content_digest
 from agents_remember.certification.lifecycle_models import (
-    CorrectiveInputChange,
     DurableFinalizationLeg,
     ExactCandidateObservation,
     FinalizationJournalState,
     FinalizationLeg,
     FinalizationLegState,
-    RedCatalogDisposition,
 )
 from agents_remember.certification.models import (
     CandidateIdentity,
@@ -30,7 +28,6 @@ from agents_remember.certification.models import (
     GateResultAdmission,
     GateResultManifest,
     RailApplicability,
-    RailIdentity,
     RailResult,
     RailTerminalObservation,
     RegistryProfile,
@@ -39,6 +36,11 @@ from agents_remember.certification.models import (
 from agents_remember.errors import (
     CertificationContractError,
     HarnessAdapterBusyError,
+)
+from agents_remember.models.certification.base import RailIdentity
+from agents_remember.models.certification.corrective import (
+    CorrectiveInputChange,
+    RedCatalogDisposition,
 )
 from certification_registry_test_support import (
     _CANDIDATE,

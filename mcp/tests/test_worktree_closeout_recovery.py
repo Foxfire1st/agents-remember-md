@@ -117,7 +117,7 @@ class CloseoutRecoveryTests(unittest.TestCase):
                 ) as recover,
                 self.assertRaisesRegex(RuntimeError, "contract path does not match"),
             ):
-                closeout_module.closeout_result(
+                closeout_module._closeout_contract(
                     WorktreeArgs(
                         contract_path=requested_path,
                         operation_key="a" * 64,

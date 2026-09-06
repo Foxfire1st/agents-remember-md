@@ -43,6 +43,10 @@ from agents_remember.models.lifecycles.operation import (
     LifecycleOperationRecoveryCommits,
     OrganizationalCompletionRepairEvidence,
 )
+from agents_remember.worktrees.integration.certification import IntegrationCertificationOwner
+from agents_remember.worktrees.integration.closeout.certification.execution import (
+    execute_selected_closeout,
+)
 from agents_remember.worktrees.integration.closeout.ledger_recovery import (
     CloseoutLedgerRecoveryDecision,
 )
@@ -341,7 +345,11 @@ def execute_operation(record: LifecycleOperationRecord, runtime: OperationRuntim
             approval_note=operation_input.approvalNote,
             closeout_input=operation_input.effectiveInput,
         )
-        result = closeout_result(args, current_contract)
+        result = (
+            execute_selected_closeout(current_contract, record, runtime.store)
+            if current_contract.kind == "leaf"
+            else closeout_result(args, current_contract)
+        )
         payload = {
             **result.payload,
             "ok": result.returncode == 0,
@@ -353,6 +361,7 @@ def execute_operation(record: LifecycleOperationRecord, runtime: OperationRuntim
             gate_policy=_policy(operation_input),
             strategy=operation_input.strategy,
             ledger_commit_message=operation_input.ledgerCommitMessage,
+            integration_certification_owner=IntegrationCertificationOwner(record, runtime.store),
         )
         result = integrate_result(args, current_contract)
         payload = integration_completion_payload(config, operation_input, result)

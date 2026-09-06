@@ -21,7 +21,6 @@ taxonomy intends: every model that is not built on ``FlexibleResponseModel`` kee
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -43,7 +42,6 @@ from agents_remember.application.gate_tools import GateRaise, GateWait
 from agents_remember.application.lifecycle.direct_landing import DirectLandingRequest
 from agents_remember.application.lifecycle.legacy_operation_tool import LegacyOperationRequest
 from agents_remember.application.lifecycle.lifecycle_enclosure_tools import EnclosureAdoptionRequest
-from agents_remember.application.lifecycle.lifecycle_operation_worker import run_worker
 from agents_remember.application.lifecycle.lifecycle_status_wait import LifecycleStatusWaitRequest
 from agents_remember.application.memory_tools import CarryoverSelection, CitationOperationScope
 from agents_remember.application.orchestration_tools import NudgeSubject, NudgeTarget
@@ -78,7 +76,6 @@ from agents_remember.mcp.tools import memory as memory_payload_tools
 from agents_remember.mcp.tools.base import _tool_payload
 from agents_remember.models.base import FlexibleResponseModel
 from agents_remember.models.lifecycles.curator_coherence import CuratorCoherenceRequest
-from agents_remember.models.lifecycles.operation import LifecycleOperationKind
 from agents_remember.models.memory import MemoryQualitySyncRequest
 from agents_remember.models.structural.agent import (
     DispatchAgentRequest,
@@ -102,9 +99,8 @@ from agents_remember.observer.ambient import AmbientTiming
 from agents_remember.serving.agent_notifier_heartbeat import AgentNotifierHeartbeatStore
 from agents_remember.serving.build_info import ServingBuild
 from agents_remember.tasks import TaskDocument, write_task_doc
-from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
-    LifecycleOperationStore,
-    operation_record_path,
+from agents_remember.worktrees.queue.closeout_projection_publication import (
+    refresh_closeout_projection,
 )
 from agents_remember.worktrees.worktree_contract import (
     ContractTask,
@@ -114,39 +110,31 @@ from agents_remember.worktrees.worktree_contract import (
     load_contract,
     write_contract,
 )
-from closeout_input_test_support import ensure_fixture_waiting_door
-from curator_coherence_test_support import write_curator_evidence
+from repository_profile_test_support import (
+    AGENTS_REMEMBER_PROFILE_REFERENCE,
+    NODE_FIXTURE,
+    install_fixture_profile,
+)
+from selected_lifecycle_test_support import declare_selected_candidate
+from task_reopen_test_support import (
+    _completed_leaf_contract,
+    _leaf_doc,
+    _master_doc,
+    _runtime_config,
+)
 from test_config import settings_payload
 from test_worktree_support import (
     commit_file,
     git,
     init_repo,
     initialized_memory_repo,
+    integrated_external_contract_fixture,
     write_file_onboarding,
 )
 
 REPO = "agents-remember"
 DRY_RUN_SCOPE = ProviderQueryScope(dry_run=True)
 EXTERNAL_MEMORY_BASES = TaskBases(memory_mode="external")
-
-
-def _reserve_conformance_worker(
-    contract_path: str,
-    kind: LifecycleOperationKind,
-) -> str:
-    contract = load_contract(Path(contract_path))
-    store = LifecycleOperationStore(operation_record_path(contract.worktree_group, kind))
-    lease = ("a" if kind == "closeout" else "b") * 64
-    store.update(
-        lambda current: current.model_copy(
-            update={
-                "workerPid": os.getpid(),
-                "workerLease": lease,
-                "workerProcessFingerprint": ("c" if kind == "closeout" else "d") * 64,
-            }
-        )
-    )
-    return lease
 
 
 def _write_json(path: Path, data: dict) -> None:
@@ -450,6 +438,16 @@ def _worktree_lifecycle_fixture(root: Path, *, task_name: str, worktree_name: st
     """Create one isolated, addressable worktree lifecycle fixture."""
 
     config = _base_fixture(root, execution_graph=False)
+    settings = json.loads(config.config_path.read_text())
+    settings["repositories"][REPO]["certificationProfile"] = (
+        AGENTS_REMEMBER_PROFILE_REFERENCE.as_posix()
+    )
+    _write_json(config.config_path, settings)
+    config = load_config(config.config_path)
+    code_root = config.workspace_root / REPO
+    install_fixture_profile(code_root, REPO, NODE_FIXTURE)
+    _run_git(code_root, ["add", "-A"])
+    _run_git(code_root, ["commit", "-m", "declare certification profile before branch cuts"])
     # worktree_start needs a memory git repo to exist even when memory is disabled.
     tools.memory_init_payload(config, REPO, dry_run=False, initialize_git=True)
     memory_root = root / "ar-coordination" / "memory-repos" / f"ar-{REPO}"
@@ -567,14 +565,7 @@ def _worktree_payloads(root: Path) -> dict[str, dict]:
     assert payloads["worktree_start"].get("contract_path"), payloads["worktree_start"]
     contract_path = payloads["worktree_start"]["contract_path"]
     contract = load_contract(Path(contract_path))
-    contract, _ = ensure_fixture_waiting_door(contract)
-    write_curator_evidence(
-        contract,
-        caller_ref=TaskDocumentRef(
-            repository=REPO,
-            path="lifecycle-fixture-sprint/task.json",
-        ),
-    )
+    contract = declare_selected_candidate(contract, config_path=config.config_path)
     payloads["worktree_status"] = tools.worktree_status_payload(
         config, TaskRef(repo_id=REPO, contract_path=contract_path)
     )
@@ -591,14 +582,15 @@ def _worktree_payloads(root: Path) -> dict[str, dict]:
             ledger="ledger commit message",
         ),
     )
+    # Rebuild from the current sources before claiming the prepared fixture door.
+    assert contract.closeout_door is not None
+    refresh_closeout_projection(
+        config.coordination_root, contract.closeout_door.sprintTaskDocumentRef
+    )
     with (
         mock.patch(
             "agents_remember.worktrees.integration.lifecycle.lifecycle_operations."
             "launch_detached_worker"
-        ),
-        mock.patch(
-            "agents_remember.worktrees.integration.lifecycle.lifecycle_operations."
-            "require_first_ready_generation"
         ),
     ):
         payloads["worktree_closeout_apply"] = tools.worktree_closeout_apply_payload(
@@ -611,12 +603,10 @@ def _worktree_payloads(root: Path) -> dict[str, dict]:
             ),
             CloseoutApproval(intent_note="intent note"),
         )
-    assert payloads["worktree_closeout_apply"]["ok"] is True, payloads["worktree_closeout_apply"]
-    closeout_lease = _reserve_conformance_worker(contract_path, "closeout")
-    assert run_worker(Path(contract_path), "closeout", closeout_lease) == 0
-    # CCR-R15: the read-only wait tool's representative payload, captured against
-    # the completed closeout generation with a zero timeout and the admission
-    # cursor, deterministically returns the changed outcome with its next cursor.
+    assert payloads["worktree_closeout_apply"]["ok"] is True, json.dumps(
+        payloads["worktree_closeout_apply"], sort_keys=True
+    )
+    # Capture the real queued generation; this schema suite does not execute gates.
     payloads["worktree_status_wait"] = tools.worktree_status_wait_payload(
         config,
         LifecycleStatusWaitRequest(
@@ -627,37 +617,21 @@ def _worktree_payloads(root: Path) -> dict[str, dict]:
             timeout_seconds=0.0,
         ),
     )
-    assert payloads["worktree_status_wait"]["ok"] is True, payloads["worktree_status_wait"]
+    assert payloads["worktree_status_wait"]["ok"] is True, json.dumps(
+        payloads["worktree_status_wait"], sort_keys=True
+    )
     payloads["worktree_operation_control"] = tools.worktree_operation_control_payload(
         config,
         OperationControlRequest(
             contract_path=contract_path,
             operation_kind="closeout",
-            action="retire",
+            action="cancel",
             expected_generation=1,
-            intent_note="observe completed operation",
+            intent_note="preview cancellation of queued operation",
             dry_run=True,
         ),
     )
-    _run_git(config.workspace_root / REPO, ["checkout", "ar/demo-task"])
-    with mock.patch(
-        "agents_remember.worktrees.integration.lifecycle.lifecycle_operations.launch_detached_worker"
-    ):
-        payloads["worktree_integrate"] = tools.worktree_integrate_payload(
-            config, contract_path, dry_run=False
-        )
-    assert payloads["worktree_integrate"]["ok"] is True, payloads["worktree_integrate"]
-    integrate_lease = _reserve_conformance_worker(contract_path, "integrate")
-    assert run_worker(Path(contract_path), "integrate", integrate_lease) == 0
-    payloads["worktree_cleanup"] = tools.worktree_cleanup_payload(
-        config, contract_path, dry_run=False
-    )
-    payloads["lifecycle_finalize_task"] = tools.lifecycle_finalize_task_payload(
-        config, contract_path, dry_run=True
-    )
-    # Reopen the fully landed demo-task leaf (closeout+integrate+cleanup completed above) —
-    # after the finalize preview so its landed-commit proof still saw the completed contract.
-    payloads["task_reopen"] = tools.task_reopen_payload(config, contract_path, dry_run=False)
+    payloads.update(_landed_worktree_payloads(root / "landed"))
     # Representative direct-landing payload: the real builder refuses cleanly on the
     # fail-closed policy gate (directExecutionEnabled defaults off), which still exercises
     # the full payload → application path and validates the response model.
@@ -671,6 +645,48 @@ def _worktree_payloads(root: Path) -> dict[str, dict]:
             intent_note="representative landing preview",
             dry_run=True,
         ),
+    )
+    return payloads
+
+
+def _landed_worktree_payloads(root: Path) -> dict[str, dict]:
+    """Exercise landed payloads from real Git outputs, without claiming gate acceptance."""
+    integrated_root = root / "integrated"
+    contract = integrated_external_contract_fixture(
+        integrated_root, lifecycle_id="LC-CONFORMANCE-LANDED"
+    )
+    settings = settings_payload(integrated_root)
+    settings["workspaceRoot"] = str(integrated_root)
+    settings["repositories"] = {contract.repo_name: {}}
+    config_path = integrated_root / "settings.json"
+    _write_json(config_path, settings)
+    config = load_config(config_path)
+    contract_path = str(contract.contract_path)
+    payloads = {
+        "worktree_integrate": tools.worktree_integrate_payload(config, contract_path, dry_run=True),
+        "worktree_cleanup": tools.worktree_cleanup_payload(config, contract_path, dry_run=False),
+    }
+    assert payloads["worktree_integrate"]["ok"] is True, json.dumps(
+        payloads["worktree_integrate"], sort_keys=True
+    )
+    assert payloads["worktree_cleanup"]["ok"] is True, json.dumps(
+        payloads["worktree_cleanup"], sort_keys=True
+    )
+    assert not contract.code_worktree.exists()
+    assert contract.memory_worktree is not None and not contract.memory_worktree.exists()
+    completed_root = root / "completed"
+    completed = _completed_leaf_contract(completed_root)
+    _leaf_doc(completed.task_root)
+    _master_doc(completed.task_root)
+    completed_config = _runtime_config(completed_root, completed)
+    payloads["lifecycle_finalize_task"] = tools.lifecycle_finalize_task_payload(
+        completed_config, str(completed.contract_path), dry_run=True
+    )
+    payloads["task_reopen"] = tools.task_reopen_payload(
+        completed_config, str(completed.contract_path), dry_run=False
+    )
+    assert payloads["task_reopen"]["ok"] is True, json.dumps(
+        payloads["task_reopen"], sort_keys=True
     )
     return payloads
 

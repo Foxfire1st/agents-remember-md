@@ -14,8 +14,8 @@ from agents_remember.certification.certificate_models import (
     GateCertificateIdentity,
     GateFiveSemanticInputs,
 )
-from agents_remember.certification.models import FrozenContractModel, GateId, SemanticText
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import FrozenContractModel, GateId, SemanticText
 
 InputChangeClass = Literal[
     "code",

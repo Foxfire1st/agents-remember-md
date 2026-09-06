@@ -1158,17 +1158,7 @@ def _run_integration_quality_gate(
         outcome = run_integration_quality_gate(
             contract,
             completion=completion,
-            certification=args.quality_certification,
-            certification_sink=(
-                lambda certification: report_operation_progress(
-                    args,
-                    "integration-quality",
-                    current_command="persist exact organizational full-gate certification",
-                    quality_certification=certification.model_dump(mode="json"),
-                )
-            )
-            if completion is not None
-            else None,
+            owner=args.integration_certification_owner,
             profile_reference=args.certification_profile,
         )
     except IntegrationQualityFailure as error:

@@ -43,6 +43,10 @@ def publish_completed_disposition_task_authority(
 ) -> DeclaredCaller:
     """Publish real task, review, and planning authority for disposition tests."""
 
+    door = load_contract(contract.contract_path).closeout_door
+    judgment_id = (
+        door.schedulingProvenance.judgmentId if door is not None else FIXTURE_GRADE_JUDGMENT
+    )
     leaf_slug = contract.leaf_id.lower()
     review_ref = "notes/reports/lifecycle-disposition-review.md"
     review = contract.task_root / review_ref
@@ -128,6 +132,7 @@ def publish_completed_disposition_task_authority(
         ),
     )
     if not sprint_owned:
+        _detach_fixture_sprint(contract, master_ref)
         return DeclaredCaller(role="architect", task_document_ref=master_ref)
 
     sprint_ref = TaskDocumentRef(
@@ -166,7 +171,7 @@ def publish_completed_disposition_task_authority(
                         body=_register_body(
                             JUDGMENT_REGISTER_HEADER,
                             (
-                                FIXTURE_GRADE_JUDGMENT,
+                                judgment_id,
                                 "priority",
                                 subject,
                                 "priority=normal",
@@ -183,7 +188,7 @@ def publish_completed_disposition_task_authority(
                         heading=PRIORITY_REGISTER_HEADING,
                         body=_register_body(
                             PRIORITY_REGISTER_HEADER,
-                            (subject, "normal", "", FIXTURE_GRADE_JUDGMENT),
+                            (subject, "normal", "", judgment_id),
                         ),
                     ),
                 ],
@@ -191,6 +196,21 @@ def publish_completed_disposition_task_authority(
         ),
     )
     return DeclaredCaller(role="orchestrator", task_document_ref=sprint_ref)
+
+
+def _detach_fixture_sprint(contract: WorktreeContract, master_ref: TaskDocumentRef) -> None:
+    """Make the explicit standalone case independent of earlier selected-door topology."""
+    path = contract.task_root.parent / "lifecycle-fixture-sprint" / "task.json"
+    if not path.is_file():
+        return
+    sprint = read_task_doc(path)
+    assert sprint.orchestrates == [contract.task_name]
+    assert sprint.executionGraph is not None
+    assert [node.ref for node in sprint.executionGraph.nodes] == [master_ref]
+    assert not sprint.executionGraph.edges
+    value = sprint.model_dump(mode="json")
+    value.update(orchestrates=[], executionGraph=None, integrationBranch=None)
+    write_task_doc(path.parent, TaskDocument.model_validate(value))
 
 
 def _register_body(header: tuple[str, ...], row: tuple[str, ...]) -> str:

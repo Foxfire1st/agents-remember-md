@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from unittest import mock
 
 import pytest
 from agents_remember.certification import (
@@ -41,7 +40,6 @@ from agents_remember.certification.models import (
     CandidateIdentity,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     GateResultAdmission,
     GateResultManifest,
     RailAdapterDefinition,
@@ -51,7 +49,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailPosture,
     RailRegistry,
     RailRuntimeInputs,
@@ -72,143 +69,52 @@ from agents_remember.certification.repository_profiles.models import (
     repository_gate_plan_digest,
 )
 from agents_remember.errors import CloseoutReadinessContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 from agents_remember.models.tools.tool_response import finalize_tool_response
 from agents_remember.models.worktree import WorktreeIntegrateResponse
 from agents_remember.worktrees.modules.quality import clean_executor as clean_quality_executor
-from agents_remember.worktrees.modules.quality import gate as code_quality_gate
+from integration_certification_test_support import selected_code_fixture
 from pydantic import ValidationError
-from repository_profile_test_support import (
-    AGENTS_REMEMBER_PROFILE_REFERENCE,
-    REPOSITORY_ROOT,
-    agents_remember_profile_execution,
-)
 
 
 class QualityGatePublicContractTests(unittest.TestCase):
     def test_recovery_refuses_same_id_decoder_byte_drift(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            candidate_tree = "c" * 40
-            export = root / "export"
-            reports = root / "reports"
-            export.mkdir()
-            (export / "clean-quality-results.json").write_text(
-                json.dumps({"status": "passed", "exitCode": 0}) + "\n",
-                encoding="utf-8",
-            )
-            clean_quality_executor._publish_reports(
-                export,
-                reports,
-                candidate_tree=candidate_tree,
-                profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
-                bindings=clean_quality_executor.ReportBindings(
-                    attestation={"id": "decoder-drift"}, runtime_authority_digest=None
+            selected = selected_code_fixture(Path(tmp))
+            original = selected.terminals[-1]
+            changed = replace(
+                original.publication,
+                result_decoder=original.publication.result_decoder.model_copy(
+                    update={"passedValue": "accepted"}
                 ),
             )
-            pointer = reports / clean_quality_executor.REPORT_SET_MANIFEST
-            manifest = json.loads(pointer.read_text(encoding="utf-8"))
-            manifest["resultDecoder"]["passedValue"] = "accepted"
-            pointer.write_text(json.dumps(manifest), encoding="utf-8")
-            target = code_quality_gate.QualityGateTarget(
-                REPOSITORY_ROOT,
-                root,
-                "agents-remember",
-                AGENTS_REMEMBER_PROFILE_REFERENCE,
+            forged = replace(
+                selected,
+                terminals=(
+                    *selected.terminals[:-1],
+                    replace(original, publication=changed),
+                ),
             )
-
-            with mock.patch.object(
-                code_quality_gate,
-                "require_git",
-                return_value=candidate_tree,
-            ):
-                recovered = code_quality_gate.recover_strict_code_quality_gate(
-                    target,
-                    diff_base="a" * 40,
-                    plan=code_quality_gate.QualityGatePlan(mode="full"),
-                    attestation={"id": "decoder-drift"},
-                )
-
-            self.assertIsNone(recovered)
+            self.assertEqual(changed.generation, original.publication.generation)
+            with self.assertRaisesRegex(ValueError, "dependencies do not match"):
+                forged.render()
 
     def test_recovery_uses_one_manifest_generation_when_the_pointer_rotates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            candidate_tree = "c" * 40
-            export = root / "export"
-            reports = root / "reports"
-            export.mkdir()
-            result_path = export / "clean-quality-results.json"
-            result_path.write_text(
-                json.dumps({"status": "passed", "exitCode": 0, "generation": "a"}) + "\n",
-                encoding="utf-8",
-            )
-            generation_a = clean_quality_executor._publish_reports(
-                export,
-                reports,
-                candidate_tree=candidate_tree,
-                profile_execution=agents_remember_profile_execution(candidate_tree=candidate_tree),
-                bindings=clean_quality_executor.ReportBindings(
-                    attestation={"id": "a"}, runtime_authority_digest=None
-                ),
-            )["generation"]
-            real_loader = code_quality_gate.load_published_quality_manifest
-
-            def rotate_after_snapshot(destination: Path):
-                snapshot = real_loader(destination)
-                result_path.write_text(
-                    json.dumps({"status": "failed", "exitCode": 1, "generation": "b"}) + "\n",
-                    encoding="utf-8",
-                )
-                clean_quality_executor._publish_reports(
-                    export,
-                    reports,
-                    candidate_tree=candidate_tree,
-                    profile_execution=agents_remember_profile_execution(
-                        candidate_tree=candidate_tree
-                    ),
-                    bindings=clean_quality_executor.ReportBindings(
-                        attestation={"id": "b"}, runtime_authority_digest=None
-                    ),
-                )
-                return snapshot
-
-            target = code_quality_gate.QualityGateTarget(
-                REPOSITORY_ROOT,
-                root,
-                "agents-remember",
-                AGENTS_REMEMBER_PROFILE_REFERENCE,
-            )
-            plan = code_quality_gate.QualityGatePlan(mode="full")
-            with (
-                mock.patch.object(
-                    code_quality_gate,
-                    "load_published_quality_manifest",
-                    side_effect=rotate_after_snapshot,
-                ) as loader,
-                mock.patch.object(
-                    code_quality_gate,
-                    "require_git",
-                    return_value=candidate_tree,
-                ),
-            ):
-                recovered = code_quality_gate.recover_strict_code_quality_gate(
-                    target,
-                    diff_base="a" * 40,
-                    plan=plan,
-                    attestation={"id": "a"},
-                )
-
-            assert recovered is not None
-            self.assertEqual(loader.call_count, 1)
+            selected = selected_code_fixture(root / "selected")
+            original = selected.render()
+            other = selected_code_fixture(root / "other")
+            reports = selected.target.worktree_group / "reports"
+            pointer = reports / clean_quality_executor.REPORT_SET_MANIFEST
+            other_pointer = other.target.worktree_group / "reports" / pointer.name
+            pointer.write_bytes(other_pointer.read_bytes())
+            recovered = selected.render()
+            self.assertEqual(recovered, original)
             published = Path(str(recovered["publishedResultPath"]))
-            self.assertEqual(published.parent.name, generation_a)
-            self.assertEqual(
-                json.loads(published.read_text(encoding="utf-8"))["generation"],
-                "a",
-            )
-            current = real_loader(reports)
-            self.assertNotEqual(current.generation, generation_a)
-            self.assertEqual(dict(current.attestation or {}), {"id": "b"})
+            self.assertEqual(published.parent.name, selected.terminals[-1].publication.generation)
+            self.assertEqual(json.loads(published.read_bytes())["exitCode"], 0)
+            self.assertEqual(pointer.read_bytes(), other_pointer.read_bytes())
 
     def test_public_worktree_response_models_and_retains_both_quality_paths(self) -> None:
         quality_result = {
@@ -402,6 +308,7 @@ def _readiness_repository_plan(plan: CertificationPlan) -> RepositoryProfilePlan
         "purpose": "closeout",
         "mode": "targeted",
         "gates": [gate.model_dump(mode="json") for gate in gates],
+        "sourceSelection": None,
     }
     return RepositoryProfilePlan(**payload, planDigest=content_digest(payload))
 

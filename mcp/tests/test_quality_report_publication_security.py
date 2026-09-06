@@ -24,6 +24,7 @@ from repository_profile_test_support import (
     NODE_FIXTURE,
     agents_remember_profile_execution,
     fixture_profile,
+    write_source_selection_artifacts,
 )
 
 CANDIDATE_TREE = "c" * 40
@@ -49,6 +50,7 @@ def _source(root: Path, name: str, *, attempt: str) -> Path:
         json.dumps({"status": "passed", "exitCode": 0, "attempt": attempt}) + "\n",
         encoding="utf-8",
     )
+    write_source_selection_artifacts(source, _profile_execution().plan)
     return source
 
 
@@ -269,6 +271,7 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
                     )
                     for name in artifact_names:
                         (source / name).write_text("evidence\n", encoding="utf-8")
+                    write_source_selection_artifacts(source, _profile_execution().plan)
                     with self.assertRaisesRegex(RuntimeError, message):
                         _publish_reports(source, root / f"reports-{index}")
 
@@ -300,6 +303,7 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
                 destination = complete / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_text("evidence\n", encoding="utf-8")
+            write_source_selection_artifacts(complete, _profile_execution().plan)
 
             manifest = _publish_reports(complete, root / "reports-complete")
 
@@ -319,6 +323,7 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
             )
             for name in artifacts[:2]:
                 (selector_absent / name).write_text("evidence\n", encoding="utf-8")
+            write_source_selection_artifacts(selector_absent, _profile_execution().plan)
 
             _publish_reports(selector_absent, root / "reports-selector-absent")
 
@@ -338,6 +343,7 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
             )
             for name in artifacts[:2]:
                 (nullable_optionals / name).write_text("evidence\n", encoding="utf-8")
+            write_source_selection_artifacts(nullable_optionals, _profile_execution().plan)
 
             _publish_reports(nullable_optionals, root / "reports-nullable-optionals")
 
@@ -355,6 +361,7 @@ class QualityReportPublicationSecurityTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (active_null / artifacts[1]).write_text("evidence\n", encoding="utf-8")
+            write_source_selection_artifacts(active_null, _profile_execution().plan)
 
             _publish_reports(active_null, root / "reports-active-null")
 

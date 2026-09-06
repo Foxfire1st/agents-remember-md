@@ -45,8 +45,12 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import
 )
 from agents_remember.worktrees.modules.models import WorktreeCommandResult
 from closeout_input_test_support import closeout_operation_input, start_closeout_operation
+from selected_lifecycle_test_support import (
+    completed_selected_closeout_for_integration,
+    selected_contract,
+)
 from test_direct_landing import _series_fixture
-from test_lifecycle_operations import _completed_closeout_for_integration, _contract
+from test_lifecycle_operations import _contract
 
 JournalMode = Literal["malformed", "invalid-schema-3", "os-error"]
 UnreadableContractJournalMode = Literal["valid", "malformed"]
@@ -84,12 +88,12 @@ def _status(config, contract) -> dict[str, Any]:
 
 
 def _admit(tmp_path: Path, kind: Literal["closeout", "integrate"]):
-    contract = _contract(tmp_path)
+    contract = selected_contract(tmp_path)
     if kind == "closeout":
         operation_input = closeout_operation_input(contract)
         start_closeout_operation(operation_input, launcher=lambda *_: None)
     else:
-        contract = _completed_closeout_for_integration(contract)
+        contract = completed_selected_closeout_for_integration(contract)
         operation_input = IntegrateOperationInput(
             configPath=(contract.code_repo_path.parent / "settings.json").as_posix(),
             contractPath=contract.contract_path.as_posix(),

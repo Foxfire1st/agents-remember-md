@@ -18,7 +18,6 @@ from agents_remember.certification.models import (
     CandidateIdentity,
     CanonicalRailRegistry,
     CertificationPlan,
-    GateId,
     GatePlan,
     GateResultAdmission,
     GateResultManifest,
@@ -30,7 +29,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailPosture,
     RailRegistry,
     RailResult,
@@ -40,6 +38,7 @@ from agents_remember.certification.models import (
     RegistryProfile,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 _DIGEST = "a" * 64
 _CANDIDATE = CandidateIdentity(kind="content-digest", value="c" * 64)

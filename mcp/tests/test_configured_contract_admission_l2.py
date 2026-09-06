@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
 from dataclasses import replace
 from pathlib import Path
@@ -710,9 +711,20 @@ def test_public_consumers_do_not_enumerate_configured_reread_lower_families() ->
         direct_app.direct_landing_tool,
     )
     for consumer in consumers:
-        source = inspect.getsource(consumer)
-        assert all(name not in source for name in forbidden)
-        assert "except Exception" not in source
+        tree = ast.parse(inspect.getsource(consumer))
+        identifiers = {
+            node.id if isinstance(node, ast.Name) else node.attr
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Name, ast.Attribute))
+        }
+        assert identifiers.isdisjoint(forbidden)
+        for handler in (node for node in ast.walk(tree) if isinstance(node, ast.ExceptHandler)):
+            assert handler.type is not None
+            assert not any(
+                (isinstance(node, ast.Name) and node.id == "Exception")
+                or (isinstance(node, ast.Attribute) and node.attr == "Exception")
+                for node in ast.walk(handler.type)
+            )
 
 
 def test_domain_entry_signatures_require_the_admitted_contract_without_defaults() -> None:

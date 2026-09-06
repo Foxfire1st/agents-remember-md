@@ -20,7 +20,10 @@ from agents_remember_test_support.testing.dagger_admission import (
     DaggerAdmission,
     DaggerAdmissionError,
 )
-from repository_profile_test_support import agents_remember_profile_execution
+from repository_profile_test_support import (
+    agents_remember_profile_execution,
+    write_source_selection_artifacts,
+)
 
 
 class PythonTestEvidenceFirewallTests(unittest.TestCase):
@@ -111,11 +114,13 @@ class PythonTestEvidenceFirewallTests(unittest.TestCase):
         result = exported / "clean-quality-results.json"
         result.write_text('{"status":"passed","exitCode":0}\n', encoding="utf-8")
         reports = self.root / "reports"
+        execution = agents_remember_profile_execution(candidate_tree="b" * 40)
+        write_source_selection_artifacts(exported, execution.plan)
         clean_quality_executor._publish_reports(  # pyright: ignore[reportPrivateUsage]
             exported,
             reports,
             candidate_tree="b" * 40,
-            profile_execution=agents_remember_profile_execution(candidate_tree="b" * 40),
+            profile_execution=execution,
         )
 
         for consumer in (

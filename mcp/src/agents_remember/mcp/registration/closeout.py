@@ -15,6 +15,7 @@ from agents_remember.application.worktree_tools import (
     OperationControlRequest,
 )
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
+from agents_remember.models.certification.corrective import RedCatalogDisposition
 from agents_remember.models.closeout.source import CandidateAdmissionFacts, SchedulingGradeInput
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.operation import IntegrateStrategy
@@ -127,6 +128,7 @@ def _register_closeout_command_tools(server: FastMCP, config: McpRuntimeConfig) 
         memory_commit_message: str | None = None,
         ledger_commit_message: str | None = None,
         dry_run: bool = False,
+        corrective_dispositions: list[RedCatalogDisposition] | None = None,
     ) -> dict[str, Any]:
         """Start or observe an approved task-bound worktree closeout. A mutating call
         returns promptly with queued/running/current-phase state; the plane-owned worker
@@ -154,6 +156,7 @@ def _register_closeout_command_tools(server: FastMCP, config: McpRuntimeConfig) 
                 ledger=ledger_commit_message,
             ),
             CloseoutApproval(intent_note=intent_note, dry_run=dry_run),
+            corrective_dispositions=tuple(corrective_dispositions or ()),
         )
 
 

@@ -38,6 +38,7 @@ from agents_remember.application.worktree_tools import (
     worktree_sync_tool,
 )
 from agents_remember.kernel.primitives.runtime_config import McpRuntimeConfig
+from agents_remember.models.certification.corrective import RedCatalogDisposition
 from agents_remember.models.declared_caller import DeclaredCaller
 from agents_remember.models.lifecycles.operation import (
     IntegrateStrategy,
@@ -140,10 +141,18 @@ def worktree_closeout_apply_payload(
     contract_path: str,
     messages: CloseoutCommitMessages,
     approval: CloseoutApproval,
+    *,
+    corrective_dispositions: tuple[RedCatalogDisposition, ...] = (),
 ) -> dict[str, Any]:
     return _tool_payload(
         "worktree_closeout_apply",
-        worktree_closeout_apply_tool(config, contract_path, messages, approval),
+        worktree_closeout_apply_tool(
+            config,
+            contract_path,
+            messages,
+            approval,
+            corrective_dispositions=corrective_dispositions,
+        ),
     )
 
 

@@ -18,11 +18,14 @@ from agents_remember.worktrees.modules.args import WorktreeArgs
 from agents_remember.worktrees.modules.quality import clean_executor, published_manifest
 from agents_remember.worktrees.modules.quality import gate as gate_mod
 from agents_remember.worktrees.modules.quality.clean_executor import CleanQualityOutcome
+from gate_certification_test_support import _green_outcome_factory, _lane_for
 from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
     agents_remember_profile_execution,
+    write_source_selection_artifacts,
 )
 from test_worktree_closeout_quality_gate import _checkout_with_profile, _quality_target
+from test_worktree_support import git
 
 _CANDIDATE = "c" * 40
 
@@ -34,11 +37,13 @@ def _valid_manifest(tmp_path: Path) -> dict[str, object]:
         json.dumps({"status": "passed", "exitCode": 0}) + "\n",
         encoding="utf-8",
     )
+    execution = agents_remember_profile_execution(candidate_tree=_CANDIDATE)
+    write_source_selection_artifacts(source, execution.plan)
     return clean_executor._publish_reports(
         source,
         tmp_path / "reports",
         candidate_tree=_CANDIDATE,
-        profile_execution=agents_remember_profile_execution(candidate_tree=_CANDIDATE),
+        profile_execution=execution,
     )
 
 
@@ -127,6 +132,8 @@ def test_strict_gate_refuses_success_without_a_manifest_before_and_after_reporti
     tmp_path: Path,
 ) -> None:
     worktree = _checkout_with_profile(tmp_path / "code")
+    git(worktree, "add", "-A")
+    diff_base = git(worktree, "rev-parse", "HEAD")
     target = _quality_target(worktree, tmp_path / "enclosure")
     missing = CleanQualityOutcome(
         subprocess.CompletedProcess(["dagger"], 0, stdout="passed\n"),
@@ -137,26 +144,27 @@ def test_strict_gate_refuses_success_without_a_manifest_before_and_after_reporti
         mock.patch.object(gate_mod, "run_clean_quality", return_value=missing),
         pytest.raises(RuntimeError, match="passed without a published manifest"),
     ):
-        gate_mod.run_strict_code_quality_gate(target)
+        gate_mod.run_strict_code_quality_gate(target, diff_base=diff_base)
 
-    visible = SimpleNamespace(
-        executor_adapter_id="certifying-dagger",
-        profile_digest="a" * 64,
-        profile_plan_digest="b" * 64,
-        profile_selection_id="closeout-targeted",
-        runtime_authority_digest=None,
-    )
-    flapping = SimpleNamespace(returncode=0, manifest=visible, evidence=None)
+    _admitted, lane, candidate_tree = _lane_for(worktree, diff_base=diff_base)
+    publish = _green_outcome_factory(target.worktree_group, lane, candidate_tree)
+    flapping = SimpleNamespace(returncode=0, manifest=None, evidence=None)
+
+    def _published_outcome(request):
+        outcome = publish(request)
+        flapping.manifest = outcome.manifest
+        flapping.evidence = outcome.evidence
+        return flapping
 
     def _drop_manifest(_report) -> None:
         flapping.manifest = None
 
     with (
-        mock.patch.object(gate_mod, "run_clean_quality", return_value=flapping),
+        mock.patch.object(gate_mod, "run_clean_quality", side_effect=_published_outcome),
         mock.patch.object(gate_mod, "_write_test_results_report", side_effect=_drop_manifest),
         pytest.raises(RuntimeError, match="passed without a published manifest"),
     ):
-        gate_mod.run_strict_code_quality_gate(target)
+        gate_mod.run_strict_code_quality_gate(target, diff_base=diff_base)
 
 
 def test_recovery_refuses_a_typed_published_failed_terminal_result(tmp_path: Path) -> None:
@@ -190,14 +198,13 @@ def test_recovery_refuses_a_typed_published_failed_terminal_result(tmp_path: Pat
         ),
     )
 
-    recovered = gate_mod.recover_strict_code_quality_gate(
-        target,
-        diff_base="",
-        plan=gate_mod.QualityGatePlan(mode=gate_mod.GATE_TARGETED),
-        attestation=attestation,
-    )
-
-    assert recovered is None
+    manifest = clean_executor.load_published_quality_manifest(target.worktree_group / "reports")
+    with pytest.raises(RuntimeError, match="did not pass acceptance"):
+        clean_executor.certifying_evidence_from_published_manifest(
+            target.worktree_group / "reports",
+            manifest,
+            candidate_tree=candidate_tree,
+        )
 
 
 @pytest.mark.parametrize("with_progress", (False, True))

@@ -14,7 +14,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import GateId
 from agents_remember.certification.replay.models import (
     CatalogCounts,
     CatalogRailRecord,
@@ -29,6 +28,7 @@ from agents_remember.certification.telemetry.models import (
     TelemetryEvent,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId
 
 
 class _MeasurementState:

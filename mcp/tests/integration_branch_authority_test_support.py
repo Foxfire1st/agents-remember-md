@@ -58,6 +58,8 @@ from closeout_input_test_support import (
     publish_closeout_finalization,
     start_closeout_operation,
 )
+from repository_profile_test_support import AGENTS_REMEMBER_PROFILE_REFERENCE
+from selected_lifecycle_test_support import selected_closeout_operation_input
 from test_source_lineage import _commit_on, _fixture, _git
 
 
@@ -147,10 +149,15 @@ def _closed_external_leaf_worktrees(
     return closed
 
 
-def _publish_completed_closeout_fixture(fixture, closed: WorktreeContract) -> WorktreeContract:
-    """Attach the exact claimed-door/root-journal evidence integration now consumes."""
+def _publish_completed_closeout_fixture(
+    fixture, closed: WorktreeContract, *, final_source_branch: str | None = None
+) -> WorktreeContract:
+    """Attach integration evidence after valid admission, optionally varying its final target."""
 
-    operation_input = closeout_operation_input(
+    input_factory = (
+        selected_closeout_operation_input if closed.kind == "leaf" else closeout_operation_input
+    )
+    operation_input = input_factory(
         closed,
         config_path=fixture.config_path,
         approval_note="approved closed integration fixture",
@@ -161,6 +168,7 @@ def _publish_completed_closeout_fixture(fixture, closed: WorktreeContract) -> Wo
     runtime.start()
     finalized = replace(
         load_contract(closed.contract_path),
+        code_source_branch=final_source_branch or closed.code_source_branch,
         closeout_status="completed",
         approved_for_commit=True,
         human_review_status="approved",
@@ -183,6 +191,7 @@ def _authority_fixture(root: Path, *, external_memory: bool = False) -> Any:
         root,
         external_memory=external_memory,
         publish_locations=False,
+        selected_profile=True,
     )
     configured_code = root / "repo"
     configured_code.symlink_to(fixture.code_repo, target_is_directory=True)
@@ -203,7 +212,9 @@ def _authority_fixture(root: Path, *, external_memory: bool = False) -> Any:
                 "version": 1,
                 "coordinationRoot": fixture.coordination.as_posix(),
                 "workspaceRoot": root.as_posix(),
-                "repositories": {"repo": {}},
+                "repositories": {
+                    "repo": {"certificationProfile": AGENTS_REMEMBER_PROFILE_REFERENCE.as_posix()}
+                },
             }
         ),
         encoding="utf-8",

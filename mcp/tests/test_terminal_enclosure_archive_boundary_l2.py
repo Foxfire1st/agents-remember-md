@@ -28,11 +28,13 @@ from agents_remember.worktrees.worktree_contract import (
     write_contract,
 )
 from closeout_input_test_support import (
-    closeout_operation_input,
     start_closeout_operation,
     with_mutation_intent,
 )
+from selected_lifecycle_test_support import selected_closeout_operation_input
+from test_lifecycle_operation_controls_l2 import _integration_source_ready_contract
 from test_lifecycle_operations import _contract
+from test_worktree_support import git
 
 TerminalOperation = Literal["worktree_cleanup", "worktree_abandon"]
 
@@ -246,9 +248,8 @@ def test_public_terminal_operation_retries_same_disposition_after_destructive_cu
 
 def _start_closeout_record(contract: WorktreeContract) -> LifecycleOperationStore:
     start_closeout_operation(
-        closeout_operation_input(contract),
+        selected_closeout_operation_input(contract),
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
     return LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
 
@@ -265,7 +266,7 @@ def _assert_status_route(result: dict[str, object], contract: WorktreeContract) 
 def test_public_abandon_refuses_active_operation_with_executable_status_route(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _integration_source_ready_contract(_contract(tmp_path, selected_profile=True))
     config = load_config(tmp_path / "settings.json")
     _start_closeout_record(contract)
 
@@ -280,13 +281,15 @@ def test_public_abandon_refuses_active_operation_with_executable_status_route(
 def test_public_abandon_refuses_ambiguous_mutation_with_executable_status_route(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _integration_source_ready_contract(_contract(tmp_path, selected_profile=True))
     config = load_config(tmp_path / "settings.json")
     (contract.code_worktree / "candidate.txt").write_text("candidate\n", encoding="utf-8")
     store = _start_closeout_record(contract)
     store.update(with_mutation_intent)
     store.update(lambda record: record.model_copy(update={"status": "failed", "phase": "failed"}))
     (contract.code_worktree / "candidate.txt").unlink()
+    git(contract.code_worktree, "add", "-u", "--", "candidate.txt")
+    assert git(contract.code_worktree, "status", "--porcelain") == ""
 
     refused = _call_terminal_operation(config, contract, "worktree_abandon")
 

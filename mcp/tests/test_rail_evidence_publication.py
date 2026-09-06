@@ -31,7 +31,11 @@ from agents_remember.worktrees.modules.quality.published_manifest import (
 )
 from agents_remember_test_support.code_quality import profile_rails
 from agents_remember_test_support.testing import pytest_phase_reporter
-from repository_profile_test_support import agents_remember_profile_execution
+from repository_profile_test_support import (
+    agents_remember_profile_execution,
+    write_source_selection_artifacts,
+)
+from source_selection_test_support import write_ambient_selection
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -120,6 +124,7 @@ def _rail(*, maximum=1024, artifact=None):
         evidence_contract=(
             {"evidenceId": "teardown-process-cleanliness-evidence", "maxBytes": maximum},
         ),
+        environments=(),
         output_artifacts=(
             () if artifact is None else ({"artifactId": artifact, "requiredOnPass": True},)
         ),
@@ -237,6 +242,7 @@ def test_terminal_binding_preserves_actual_failure_and_refuses_missing_proof(sta
 
 def _teardown_inputs(root: Path) -> tuple[Path, Path]:
     """Serialize checkpoint fixtures with the real owners, without running the scenario."""
+    write_ambient_selection(root)
     runner = _ROOT / "scripts/e2e_harness/run.py"
     completed = subprocess.run(
         [sys.executable, "-B", "-", str(runner), str(root)],
@@ -256,15 +262,16 @@ for index in range(1, harness["RUN_COUNT"] + 1):
         actual={"residualSessions": [], "cleanup": {"status": "clean"}},
         passed=True,
     )
-    report = recorder.report(run=index, status="passed", fixture=True)
+    report = recorder.report(run=index, status="passed", fixture=True, retry=False,
+        mode="targeted", diffBase="b" * 40, selectedPaths=["scripts/e2e_harness/run.py"], candidate={"tree": "a" * 40})
     harness["write_json"](root / f"run-{index}.json", report)
     reports.append(report)
 context = harness["_RunContext"](
     reports=root,
-    args=argparse.Namespace(mode="targeted", diff_base="fixture"),
+    args=argparse.Namespace(mode="targeted", diff_base="b" * 40),
     repository=Path(sys.argv[1]).parents[2],
-    selected=("checkpoint-serialization-fixture",),
-    candidate={"fixture": "checkpoint serialization only; no scenario execution"},
+    selected=("scripts/e2e_harness/run.py",),
+    candidate={"tree": "a" * 40, "fixture": "checkpoint serialization only; no scenario execution"},
     command="checkpoint-serialization-fixture",
     invocation="checkpoint-serialization-fixture",
 )
@@ -288,7 +295,7 @@ harness["_write_run_summary"](context, passed=True, changed=(), run_reports=repo
 def test_real_teardown_producer_bytes_reach_the_emitted_binding_and_export(tmp_path, capsys):
     summary, detail = _teardown_inputs(tmp_path)
     proof = tmp_path / "teardown-proof.json"
-    assert profile_rails._verify_teardown(summary, proof) == 0
+    assert profile_rails._verify_teardown(summary, proof, tmp_path / "source-selection.json") == 0
     actual_output = capsys.readouterr().out
     actual_proof = proof.read_bytes()
     parsed = json.loads(actual_proof)
@@ -339,6 +346,7 @@ def test_real_teardown_producer_bytes_reach_the_emitted_binding_and_export(tmp_p
         target = exported_root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(contents)
+    write_source_selection_artifacts(exported_root, execution.plan)
     retained_reports = tmp_path / "retained"
     clean_executor._publish_reports(
         exported_root, retained_reports, candidate_tree="a" * 40, profile_execution=execution
@@ -364,7 +372,7 @@ def test_teardown_refusal_never_writes_a_passing_proof(tmp_path, failure):
         detail.write_text(json.dumps(report))
     proof = tmp_path / "proof.json"
     with pytest.raises(RuntimeError):
-        profile_rails._verify_teardown(summary, proof)
+        profile_rails._verify_teardown(summary, proof, tmp_path / "source-selection.json")
     assert not proof.exists()
 
 
@@ -377,7 +385,7 @@ def test_teardown_refuses_obsolete_checkpoint_identity(tmp_path):
     detail.write_text(json.dumps(report))
     proof = tmp_path / "proof.json"
     with pytest.raises(RuntimeError, match="lacks a passing teardown checkpoint"):
-        profile_rails._verify_teardown(summary, proof)
+        profile_rails._verify_teardown(summary, proof, tmp_path / "source-selection.json")
     assert not proof.exists()
 
 

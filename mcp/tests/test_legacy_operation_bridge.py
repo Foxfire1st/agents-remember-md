@@ -38,10 +38,11 @@ from agents_remember.worktrees.integration.legacy.legacy_operation_bridge import
 from agents_remember.worktrees.integration.legacy.legacy_operation_public import (
     LEGACY_BRIDGE_REMOVAL_CONDITION,
 )
-from agents_remember.worktrees.integration.lifecycle.lifecycle_generation_resume import (
+from agents_remember.worktrees.integration.lifecycle.generation.resume import (
     requeued_same_generation,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import (
+    operation_key,
     operation_state_fingerprint,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
@@ -50,7 +51,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store i
     operation_record_path,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import (
-    operation_key,
     start_or_observe_operation,
 )
 from agents_remember.worktrees.modules.git import head_commit, require_git

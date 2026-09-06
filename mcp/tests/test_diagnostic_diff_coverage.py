@@ -42,14 +42,11 @@ from agents_remember.certification.diagnostics.store import (
     DiagnosticStorePolicy,
 )
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    GateId,
-    RailEvidenceReference,
-    RailRegistry,
-)
+from agents_remember.certification.models import RailEvidenceReference, RailRegistry
 from agents_remember.certification.planning import compile_certification_plan
 from agents_remember.certification.telemetry.models import DiagnosticTerminalPayload
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId
 from agents_remember.worktrees.modules.quality import dagger_authority as authority
 from agents_remember.worktrees.modules.quality.diagnostic_executor import (
     DiagnosticEngineOptions,

@@ -33,7 +33,6 @@ from agents_remember.memory_quality.incremental_scope.errors import (
     ScopeUnprovenError,
 )
 from agents_remember.memory_quality.incremental_scope.models import (
-    CanonicalTaskObservation,
     CheckerScopePolicy,
     GitPathChange,
     GitTreeDelta,
@@ -56,6 +55,7 @@ from agents_remember.memory_quality.incremental_scope.subresult_store import (
 from agents_remember.memory_quality.style.citations import range_resolution, source_index
 from agents_remember.memory_quality.style.citations.resolution import Trees
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
+from agents_remember.models.task_document import CanonicalTaskObservation
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity
 from pydantic import ValidationError

@@ -12,6 +12,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from repository_profile_test_support import FakeContainer, fixture_environment_census
+from source_selection_test_support import source_selection_fixture
 
 _DAGGER_SRC = Path(__file__).resolve().parents[2] / ".dagger" / "src"
 
@@ -89,7 +91,10 @@ def _lane(tmp_path: Path):
         admitted.canonical, purpose="closeout", mode="targeted"
     )
     repository_plan = compile_repository_profile_plan(
-        admitted.canonical, selection_id=selection.selectionId, candidate_identity=candidate
+        admitted.canonical,
+        selection_id=selection.selectionId,
+        candidate_identity=candidate,
+        source_selection=source_selection_fixture(candidate.value),
     )
     lane = compile_certification_lane(
         admitted.canonical,
@@ -279,10 +284,21 @@ def test_artifact_map_covers_every_declared_required_on_pass_artifact() -> None:
         for artifact in rail.get("outputArtifacts", []):
             if artifact.get("requiredOnPass", True) is not False:
                 declared.add(artifact["artifactId"])
-    mapped = set(rb.ARTIFACT_FILE_PATHS)
-    assert mapped == declared
+    environments = {item["artifactId"]: item["manifestPath"] for item in profile["environments"]}
+    # The census producer owns its profile-declared path; do not duplicate it
+    # in the fixed paths used by repository command producers.
+    assert set(rb.ARTIFACT_FILE_PATHS).isdisjoint(environments)
+    mapped = {**rb.ARTIFACT_FILE_PATHS, **environments}
+    assert set(mapped) == declared
     publications = {item["path"] for item in profile["publishedArtifacts"]}
-    assert set(rb.ARTIFACT_FILE_PATHS.values()) <= publications
+    assert set(mapped.values()) <= publications
+    for environment in profile["environments"]:
+        producer = next(
+            rail for rail in profile["rails"] if rail["identity"] == environment["producerRail"]
+        )
+        assert environment["artifactId"] in {
+            artifact["artifactId"] for artifact in producer["outputArtifacts"]
+        }
 
 
 def test_mapped_suite_result_binds_the_pytest_phases_file() -> None:
@@ -380,6 +396,7 @@ def test_emission_never_mutates_the_shared_execution_container(tmp_path) -> None
     rail = SimpleNamespace(
         identity_key="python-suite@1.0.0",
         evidence_contract=[{"evidenceId": "python-suite-evidence", "maxBytes": 1024}],
+        environments=(),
         output_artifacts=[
             {"artifactId": "python-coverage-data", "requiredOnPass": True},
             {"artifactId": "python-suite-result", "requiredOnPass": True},
@@ -398,3 +415,48 @@ def test_emission_never_mutates_the_shared_execution_container(tmp_path) -> None
     assert bindings["evidence"]
     assert bindings["artifacts"]
     assert rb  # pragma: no cover (binding module loaded above)
+
+
+@pytest.mark.parametrize("relocated", (False, True))
+def test_environment_producer_binds_actual_census_at_its_declared_locator(relocated):
+    emission = _emission()
+    rb = _bindings()
+    profile = json.loads(_PROFILE.read_text(encoding="utf-8"))
+    definition = profile["environments"][0]
+    if relocated:
+        definition["artifactId"] = "relocated-environment-census"
+        definition["manifestPath"] = "environment/relocated.json"
+    request = {
+        "definition": definition,
+        "candidateIdentity": {"kind": "git-tree", "value": "c" * 40},
+        "runtimeDigest": profile["executorAdapters"][0]["runtimeDigest"],
+    }
+    artifact_id = definition["artifactId"]
+    assert artifact_id not in rb.ARTIFACT_FILE_PATHS
+    producer = definition["producerRail"]
+    rail = SimpleNamespace(
+        identity_key=f"{producer['railId']}@{producer['version']}",
+        evidence_contract=(),
+        environments=(request,),
+        output_artifacts=({"artifactId": artifact_id, "requiredOnPass": True},),
+    )
+    parent = FakeContainer([])
+    progress = SimpleNamespace(container=parent, retained_captures={}, retained_files={})
+    bindings = asyncio.run(
+        emission.attach_rail_terminal_bindings(progress, rail, reports="/reports")
+    )
+    assert progress.container is parent
+    assert f"/reports/{definition['manifestPath']}" not in parent.files
+    retained = progress.retained_files[definition["manifestPath"]]
+    raw = asyncio.run(retained.contents()).encode()
+    # The SDK fixture runs the production census owner over actual tiny files.
+    assert json.loads(raw) == fixture_environment_census(request)
+    assert bindings["artifacts"] == [
+        {
+            "artifactId": artifact_id,
+            "evidenceRef": definition["manifestPath"],
+            "size": len(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+    ]
+    assert "unboundRequiredArtifacts" not in bindings

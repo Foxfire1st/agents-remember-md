@@ -39,6 +39,7 @@ from repository_profile_test_support import (
     _fake_selector_result,
     fixture_execution_manifest,
 )
+from source_selection_test_support import source_selection_fixture
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DAGGER_MANIFEST = REPOSITORY_ROOT / "dagger.json"
@@ -120,7 +121,13 @@ def runtime_authority_manifest() -> dict[str, object]:
     }
 
 
-def execution_manifest(*, mode: str, candidate: str = "c" * 40) -> FakeFile:
+def execution_manifest(
+    *,
+    mode: str,
+    candidate: str = "c" * 40,
+    diff_base: str = "b" * 40,
+    changed_paths: tuple[str, ...] = ("scripts/e2e_harness/run.py",),
+) -> FakeFile:
     admitted = load_repository_profile(
         "agents-remember",
         REPOSITORY_ROOT,
@@ -131,12 +138,16 @@ def execution_manifest(*, mode: str, candidate: str = "c" * 40) -> FakeFile:
         admitted.canonical,
         selection_id=selection_id,
         candidate_identity=CandidateIdentity(kind="git-tree", value=candidate),
+        source_selection=source_selection_fixture(
+            candidate, base_commit=diff_base, changed_paths=changed_paths
+        ),
     )
     profile = admitted.canonical.profile
     return FakeFile(
         json.dumps(
             {
                 "schemaVersion": "repository-certification-admission/v1",
+                "diffBase": diff_base,
                 "candidateTree": candidate,
                 "profile": {"profileDigest": admitted.canonical.profileDigest},
                 "profilePlan": plan.model_dump(mode="json"),
@@ -554,22 +565,23 @@ def test_retry_matrix_distinguishes_pytest_execution_from_explicit_skip(
 @pytest.mark.parametrize(
     ("diff_base", "memory_cap", "message"),
     [
-        ("", 0, "diff_base must name"),
-        ("base", -1, "memory_cap_bytes cannot be negative"),
+        ("", 0, "manifest.diffBase must be"),
+        ("b" * 40, -1, "memory_cap_bytes cannot be negative"),
     ],
 )
 def test_dagger_quality_refuses_invalid_public_inputs(
     diff_base: str, memory_cap: int, message: str
 ) -> None:
     module = load_dagger_module()
+    manifest = json.loads(execution_manifest(mode="targeted").value)
+    manifest["diffBase"] = diff_base
 
     with pytest.raises(ValueError, match=message):
         asyncio.run(
             module.AgentsRememberQuality().quality(
                 object(),
                 object(),
-                object(),
-                diff_base=diff_base,
+                FakeFile(json.dumps(manifest)),
                 memory_cap_bytes=memory_cap,
             )
         )
@@ -600,8 +612,7 @@ def test_dagger_quality_executes_the_exact_targeted_profile_plan() -> None:
             module.AgentsRememberQuality().quality(
                 FakeSource(),
                 object(),
-                execution_manifest(mode="targeted"),
-                diff_base="a" * 40,
+                execution_manifest(mode="targeted", diff_base="a" * 40),
                 memory_cap_bytes=1024,
             )
         )
@@ -656,8 +667,11 @@ def test_dagger_quality_executes_the_exact_targeted_profile_plan() -> None:
         "environment",
         "selector:agents-remember-test-selection",
     ]
-    assert payload["completedSteps"][-1] == "teardown-process-cleanliness"
-    assert len(payload["completedSteps"]) == 34
+    assert payload["completedSteps"][-2:] == [
+        "teardown-process-cleanliness",
+        "publication:source-selection/ambient-role.json",
+    ]
+    assert len(payload["completedSteps"]) == 35
     assert payload["attemptedSteps"] == payload["completedSteps"]
     assert payload["skippedSteps"] == []
     assert payload["failedStep"] is None
@@ -689,7 +703,6 @@ def test_portable_dagger_function_interprets_one_frozen_fixture_plan(fixture) ->
                 object(),
                 object(),
                 manifest,
-                diff_base="base-commit",
             )
         )
 
@@ -748,7 +761,7 @@ def test_profile_selector_shape_failure_is_a_typed_terminal_step() -> None:
     expected_path = f"/tmp/ar-profile/{selector.definition['resultPath']}"
 
     observed_path, values = asyncio.run(
-        module._run_profile_selector(
+        sys.modules["agents_remember_quality.profile_execution"]._run_profile_selector(
             progress,
             selector,
             scalar_values={
@@ -756,7 +769,7 @@ def test_profile_selector_shape_failure_is_a_typed_terminal_step() -> None:
                 "selection-mode": "full",
                 "candidate-kind": "git-tree",
                 "candidate-value": "d" * 40,
-                "diff-base": "base-commit",
+                "diff-base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "memory-cap-bytes": "0",
                 "clean-room": "/workspace",
             },
@@ -810,11 +823,13 @@ def test_dagger_quality_refuses_a_rail_runtime_outside_the_admitted_adapter() ->
         canonical,
         selection_id="closeout-full",
         candidate_identity=CandidateIdentity(kind="git-tree", value=candidate),
+        source_selection=source_selection_fixture(candidate),
     )
     manifest = FakeFile(
         json.dumps(
             {
                 "schemaVersion": "repository-certification-admission/v1",
+                "diffBase": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "candidateTree": candidate,
                 "profile": {"profileDigest": canonical.profileDigest},
                 "profilePlan": plan.model_dump(mode="json"),
@@ -834,39 +849,48 @@ def test_dagger_quality_refuses_a_rail_runtime_outside_the_admitted_adapter() ->
                 object(),
                 object(),
                 manifest,
-                diff_base="base-commit",
             )
         )
 
 
-def test_dagger_quality_treats_unselected_ambient_e2e_as_an_explicit_skip() -> None:
+def test_dagger_quality_records_unselected_ambient_e2e_before_any_scenario_start() -> None:
     module = load_dagger_module()
-    fake_dag = FakeDag([0, 0, *([0] * 27), module.E2E_NOT_SELECTED_EXIT_CODE, *([0] * 4)])
-
+    fake_dag = FakeDag([])
     with patch.object(module, "dag", fake_dag):
         result = asyncio.run(
             module.AgentsRememberQuality().quality(
                 FakeSource(),
                 object(),
-                execution_manifest(mode="targeted"),
-                diff_base="base-commit",
+                execution_manifest(mode="targeted", changed_paths=()),
             )
         )
-
     payload = json.loads(fake_dag.container_value.files["/reports/clean-quality-results.json"])
     assert result.exit_code == 0
     assert payload["status"] == "passed"
-    assert "ambient-role-chat-e2e" in payload["attemptedSteps"]
+    assert "ambient-role-chat-e2e" not in payload["attemptedSteps"]
     assert "ambient-role-chat-e2e" not in payload["completedSteps"]
-    assert payload["completedSteps"][-1] == "teardown-process-cleanliness"
-    assert payload["skippedSteps"] == ["ambient-role-chat-e2e"]
-    assert payload["failedStep"] is None
-    assert payload["stepExitCodes"]["ambient-role-chat-e2e"] == module.E2E_NOT_SELECTED_EXIT_CODE
-    assert payload["promptSubmitted"] is False
-    assert payload["codexProtocol"] == module.BASELINE_CODEX_PROTOCOL
+    assert "ambient-role-chat-e2e" not in payload["stepExitCodes"]
+    assert payload["skippedSteps"] == []
+    assert not any(
+        "scripts/e2e_harness/run.py" in command for command in fake_dag.container_value.commands
+    )
+    row = next(
+        row for row in payload["gates"][3]["rails"] if row["identity"] == "ambient-role-chat-e2e"
+    )
+    assert row["status"] == "not-applicable" and row["zeroStart"] is True
+    assert row["started"] is False and row["exitCode"] is None and row["artifacts"] == []
+    reference = row["evidence"][0]["reference"]
+    decision = json.loads(fake_dag.container_value.files["/reports/" + reference])
+    assert decision["applicability"]["status"] == "not-applicable"
+    assert decision["selectedPaths"] == []
+    assert payload["completedSteps"][-2:] == [
+        "teardown-process-cleanliness",
+        "publication:source-selection/ambient-role.json",
+    ]
     assert payload["ambientRoleChatEvidence"] == {
-        "status": "skipped",
-        "summary": "ambient-role-chat-e2e/summary.json",
+        "status": "not-applicable",
+        "sourceSelection": reference,
+        "zeroStart": True,
     }
 
 
@@ -925,8 +949,9 @@ def test_dagger_quality_full_uses_explicit_diff_base_without_targeted_flags() ->
             module.AgentsRememberQuality().quality(
                 FakeSource(),
                 object(),
-                execution_manifest(mode="full"),
-                diff_base="base-commit",
+                execution_manifest(
+                    mode="full", diff_base="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                ),
             )
         )
 
@@ -934,7 +959,7 @@ def test_dagger_quality_full_uses_explicit_diff_base_without_targeted_flags() ->
         command for command in fake_dag.container_value.commands if "python-suite" in command
     )
     assert suite[suite.index("--mode") + 1] == "full"
-    assert suite[suite.index("--diff-base") + 1] == "base-commit"
+    assert suite[suite.index("--diff-base") + 1] == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     assert suite[suite.index("--memory-cap-bytes") + 1] == "0"
     commands = fake_dag.container_value.commands
     assert admitted_command_index(commands, ["npm", "ci"]) >= 0
@@ -972,8 +997,9 @@ def test_dagger_quality_red_gate_one_still_terminalizes_every_gate_one_sibling()
             module.AgentsRememberQuality().quality(
                 FakeSource(),
                 object(),
-                execution_manifest(mode="full"),
-                diff_base="base-commit",
+                execution_manifest(
+                    mode="full", diff_base="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                ),
             )
         )
 
@@ -1049,8 +1075,9 @@ def test_dagger_quality_exports_failure_at_the_exact_completed_boundary(
             module.AgentsRememberQuality().quality(
                 FakeSource(),
                 object(),
-                execution_manifest(mode="full"),
-                diff_base="base-commit",
+                execution_manifest(
+                    mode="full", diff_base="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                ),
             )
         )
 

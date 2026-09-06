@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import io
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
@@ -14,6 +12,7 @@ MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
 from _quality_evidence_fixture import publish_passing_quality_gate
+from agents_remember.worktrees.modules.git import commit_verified_staged
 from agents_remember.worktrees.modules.quality import gate as code_quality_gate
 from agents_remember.worktrees.queue import closeout_staged_quality
 from agents_remember.worktrees.worktree_contract import (
@@ -28,11 +27,8 @@ from agents_remember.worktrees.worktree_contract import (
 from agents_remember_test_support.code_quality import check as quality_check
 from repository_profile_test_support import install_fixture_profile
 from test_worktree_support import (
-    closeout_args,
     git,
     init_repo,
-    run_authorized_closeout_mechanics,
-    write_passing_route_review,
 )
 
 CREATED_FILE = "pkg/leaf_addition.py"
@@ -135,12 +131,24 @@ class ScopeRecordingGate:
         return result
 
 
+def _run_staged_gate(contract) -> dict[str, object]:
+    """Exercise the staging/gate owner; selected public closeout has separate proofs."""
+    return closeout_staged_quality.gate_staged_code(
+        code_quality_gate.QualityGateTarget(
+            contract.code_worktree,
+            contract.worktree_group,
+            contract.repo_name,
+            Path("mcp/certification-profile-v1.json"),
+        ),
+        diff_base=contract.code_base_commit,
+    )
+
+
 class CloseoutGateSeesCreatedFilesTests(unittest.TestCase):
     def test_a_created_file_carrying_a_lint_error_fails_the_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             contract = gate_scope_contract_fixture(Path(tmp))
             (contract.code_worktree / CREATED_FILE).write_text("import os\n", encoding="utf-8")
-            write_passing_route_review(contract)
             gate = ScopeRecordingGate()
 
             with (
@@ -149,7 +157,7 @@ class CloseoutGateSeesCreatedFilesTests(unittest.TestCase):
                 ),
                 self.assertRaises(RuntimeError) as caught,
             ):
-                run_authorized_closeout_mechanics(closeout_args(contract))
+                _run_staged_gate(contract)
 
             message = str(caught.exception)
             self.assertIn("strict code-quality gate failed before code commit", message)
@@ -168,8 +176,6 @@ class CloseoutGateSeesCreatedFilesTests(unittest.TestCase):
             (contract.code_worktree / "pkg" / "existing.py").write_text(
                 "VALUE = 2\n", encoding="utf-8"
             )
-            write_passing_route_review(contract)
-
             with (
                 mock.patch.object(
                     closeout_staged_quality,
@@ -178,7 +184,7 @@ class CloseoutGateSeesCreatedFilesTests(unittest.TestCase):
                 ),
                 self.assertRaises(RuntimeError),
             ):
-                run_authorized_closeout_mechanics(closeout_args(contract))
+                _run_staged_gate(contract)
 
             self.assertEqual(
                 git(contract.code_worktree, "rev-parse", "HEAD"), contract.code_base_commit
@@ -194,16 +200,20 @@ class CloseoutGateSeesCreatedFilesTests(unittest.TestCase):
             contract = gate_scope_contract_fixture(Path(tmp))
             (contract.code_worktree / CREATED_FILE).write_text("VALUE = 2\n", encoding="utf-8")
             (contract.code_worktree / "pkg" / "existing.py").unlink()
-            write_passing_route_review(contract)
             gate = ScopeRecordingGate()
 
             with (
                 mock.patch.object(
                     closeout_staged_quality, "run_strict_code_quality_gate", side_effect=gate
                 ),
-                redirect_stdout(io.StringIO()),
             ):
-                self.assertEqual(run_authorized_closeout_mechanics(closeout_args(contract)), 0)
+                result = _run_staged_gate(contract)
+            self.assertTrue(result["passed"])
+            certified_tree = result["candidateTree"]
+            commit = commit_verified_staged(contract.code_worktree, "Commit certified scope")
+            self.assertEqual(
+                git(contract.code_worktree, "rev-parse", f"{commit}^{{tree}}"), certified_tree
+            )
 
             committed = git(
                 contract.code_worktree, "ls-tree", "-r", "--name-only", "HEAD"

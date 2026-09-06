@@ -68,7 +68,9 @@ from pydantic import ValidationError
 from test_worktree_support import (
     closeout_args,
     dirty_open_external_contract_fixture,
+    git,
     run_authorized_closeout_mechanics,
+    write_passing_route_review,
 )
 
 LIFECYCLE = "L-replay"
@@ -569,8 +571,8 @@ def _approved_closeout_gate_for(contract) -> str:
 class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
     """R3: the approval must be spent BEFORE the first thing that cannot be taken back.
 
-    These run real closeout commit mechanics with explicit mutation-evidence authority, because
-    the property is about where the claim sits among the commits.
+    These exercise the real publication, quality-preflight and approval components with
+    explicit fixture inputs. They do not establish public closeout or gate acceptance.
     """
 
     def _lifecycle_contract(self, root: Path):
@@ -579,13 +581,13 @@ class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
             dirty_open_external_contract_fixture(root), lifecycle_id=LIFECYCLE
         )
         write_contract(contract.contract_path, contract)
+        write_passing_route_review(contract)
         return contract
 
-    def _closeout(self, contract, *, publish_code_quality: bool = False) -> int:
+    def _closeout(self, contract) -> int:
         with redirect_stdout(io.StringIO()):
             return run_authorized_closeout_mechanics(
                 closeout_args(contract),
-                publish_code_quality=publish_code_quality,
             )
 
     def test_the_approval_is_already_consumed_when_the_first_commit_runs(self) -> None:
@@ -614,7 +616,7 @@ class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
                 return real_commit(repo, message)
 
             with mock.patch.object(closeout_recovery, "commit_verified_staged", side_effect=spy):
-                self.assertEqual(self._closeout(contract, publish_code_quality=True), 0)
+                self.assertEqual(self._closeout(contract), 0)
 
             self.assertTrue(seen, "closeout committed nothing; the ordering was never exercised")
             self.assertEqual(
@@ -636,6 +638,9 @@ class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
             contract = self._lifecycle_contract(Path(tmp))
             gate_id = _approved_closeout_gate_for(contract)
             store = GateStore(observer_logs_root(contract.coordination_root))
+            assert contract.memory_worktree is not None
+            code_head = git(contract.code_worktree, "rev-parse", "HEAD")
+            memory_head = git(contract.memory_worktree, "rev-parse", "HEAD")
 
             with (
                 mock.patch.object(closeout_mod, "requires_strict_code_quality", return_value=True),
@@ -646,13 +651,20 @@ class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
                 ),
                 self.assertRaisesRegex(RuntimeError, "strict code-quality gate failed"),
             ):
-                self._closeout(contract)
+                closeout_mod._closeout_quality_preflight(
+                    contract,
+                    WorktreeArgs.from_namespace(closeout_args(contract)),
+                    code_would_commit=True,
+                )
 
             self.assertEqual(
                 store.current(LIFECYCLE)[gate_id].state,
                 "approved",
                 "a refusal that committed nothing must not spend the developer's approval",
             )
+
+            self.assertEqual(git(contract.code_worktree, "rev-parse", "HEAD"), code_head)
+            self.assertEqual(git(contract.memory_worktree, "rev-parse", "HEAD"), memory_head)
 
     def test_an_unapproved_gate_refuses_before_the_worktree_is_staged(self) -> None:
         """The early read still earns its place: it denies without doing any of the work.
@@ -672,10 +684,16 @@ class ClaimPrecedesTheIrreversibleWorkTests(unittest.TestCase):
                 )
             )
 
+            index_before = git(contract.code_worktree, "write-tree")
+            status_before = git(contract.code_worktree, "status", "--porcelain=v1")
             with (
                 mock.patch.object(closeout_mod, "_gate_staged_code") as staged,
                 self.assertRaisesRegex(RuntimeError, "is open; await a policy-valid decision"),
             ):
-                self._closeout(contract)
+                closeout_mod._refuse_unsatisfied_closeout_gate(
+                    contract, WorktreeArgs.from_namespace(closeout_args(contract))
+                )
 
             staged.assert_not_called()
+            self.assertEqual(git(contract.code_worktree, "write-tree"), index_before)
+            self.assertEqual(git(contract.code_worktree, "status", "--porcelain=v1"), status_before)

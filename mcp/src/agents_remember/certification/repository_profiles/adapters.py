@@ -28,9 +28,9 @@ class RepositoryExecutionRequest:
     repository_bundle: Path
     execution_manifest: Path
     mode: ProfileMode
-    diff_base: str
     export_root: Path
     memory_cap_bytes: int | None = None
+    retained_reports: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -80,8 +80,12 @@ class DaggerModuleExecutorAdapter:
                 request.execution_manifest.as_posix(),
             ),
         ]
-        if request.diff_base:
-            command.append(_argument(definition.diffBaseArgument, request.diff_base))
+        if request.retained_reports is not None:
+            if definition.retainedReportsArgument is None:
+                raise ValueError("selected executor does not declare retained report transport")
+            command.append(
+                _argument(definition.retainedReportsArgument, request.retained_reports.as_posix())
+            )
         if request.memory_cap_bytes is not None:
             if request.memory_cap_bytes < 0:
                 raise ValueError("memory cap cannot be negative")

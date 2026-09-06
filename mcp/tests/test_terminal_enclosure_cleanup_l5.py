@@ -20,7 +20,8 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 from agents_remember.worktrees.integration.terminal_enclosure_archive import (
     terminal_archive_required_result,
 )
-from closeout_input_test_support import closeout_operation_input, start_closeout_operation
+from closeout_input_test_support import start_closeout_operation
+from selected_lifecycle_test_support import selected_closeout_operation_input
 from test_lifecycle_operations import _contract
 
 ABANDON_ARGUMENTS = TerminalWorktreeAbandonArguments(force=False)
@@ -121,11 +122,10 @@ def test_terminal_archive_reuses_bytes_after_crash_before_locator_publication(
 def test_terminal_archive_refuses_live_operation_and_preserves_enclosure(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     start_closeout_operation(
-        closeout_operation_input(contract),
+        selected_closeout_operation_input(contract),
         launcher=lambda *_: None,
-        fixture_bypass_scheduling=True,
     )
 
     refused = terminal_archive_required_result(

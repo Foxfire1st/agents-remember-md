@@ -8,7 +8,14 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from agents_remember.models.certification.corrective import RedCatalogDisposition
+from agents_remember.models.certification.references import CertificateObjectReference
 from agents_remember.models.closeout.input import EffectiveCloseoutInput, EnabledCloseoutLeg
+from agents_remember.models.lifecycles.certification import (
+    OperationCertificationState,
+    SelectedGateTerminal,
+    validate_certification_owner,
+)
 from agents_remember.models.lifecycles.direct_landing import (
     DirectLandingLedgerIntent,
     DirectLandingOperationInput,
@@ -23,6 +30,10 @@ from agents_remember.models.lifecycles.evidence_dependencies import (
     canonical_sha256,
     dependency,
     require_evidence_dependencies,
+)
+from agents_remember.models.lifecycles.integration_certification import (
+    IntegrationCertificationSelection,
+    validate_integration_completion_identity,
 )
 from agents_remember.models.lifecycles.legacy import LegacyCloseoutMigrationProof
 from agents_remember.models.lifecycles.mutation_evidence import (
@@ -203,6 +214,8 @@ class IntegrationQualityCertification(BaseModel):
     attestation: dict[str, str]
     resultSha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     result: dict[str, Any]
+    frozenRun: CertificateObjectReference
+    terminals: tuple[SelectedGateTerminal, ...] = Field(min_length=4, max_length=4)
 
     @model_validator(mode="after")
     def _passed_result_is_exact(self) -> IntegrationQualityCertification:
@@ -211,6 +224,19 @@ class IntegrationQualityCertification(BaseModel):
         _require_quality_certification_attestation(self)
         _require_quality_certification_result(self)
         _require_quality_certification_memory(self)
+        if self.frozenRun.kind != "frozen-run" or tuple(item.gate for item in self.terminals) != (
+            1,
+            2,
+            3,
+            4,
+        ):
+            raise ValueError(
+                "integration quality certification requires its original full code prefix"
+            )
+        if any(item.certificate is None for item in self.terminals):
+            raise ValueError(
+                "integration quality certification requires all four original certificates"
+            )
         if self.resultSha256 != digest:
             raise ValueError("integration quality certification result digest does not match")
         return self
@@ -288,6 +314,7 @@ class CloseoutOperationInput(BaseModel):
     effectiveInput: EffectiveCloseoutInput
     approvalNote: str
     gatePolicy: list[GatePolicyRuleSnapshot] = Field(default_factory=list)
+    correctiveDispositions: tuple[RedCatalogDisposition, ...] = Field(default_factory=tuple)
 
 
 class IntegrateOperationInput(BaseModel):
@@ -364,6 +391,8 @@ class LifecycleOperationRecord(BaseModel):
         pattern=r"^[0-9a-f]{64}$",
     )
     qualityCertification: IntegrationQualityCertification | None = None
+    certification: OperationCertificationState | None = None
+    integrationCertification: IntegrationCertificationSelection | None = None
     integrationPublication: IntegrationPublicationIntent | None = None
     organizationalRepair: OrganizationalCompletionRepairEvidence | None = None
     doorPublication: DoorPublicationEvidence | None = None
@@ -503,6 +532,8 @@ _MEANINGFUL_STATE_FIELDS: tuple[str, ...] = (
     "recoveryCommits",
     "closeoutFinalizedContractSha256",
     "qualityCertification",
+    "certification",
+    "integrationCertification",
     "integrationPublication",
     "organizationalRepair",
     "doorPublication",
@@ -528,9 +559,39 @@ def meaningful_state_changed(
     return meaningful_state_payload(current) != meaningful_state_payload(updated)
 
 
+def _require_integration_certification_authority(record: LifecycleOperationRecord) -> None:
+    selected = record.integrationCertification
+    if selected is not None and (
+        record.operationKind != "integrate"
+        or (selected.operationKey, selected.generation) != (record.operationKey, record.generation)
+    ):
+        raise ValueError("integration certification must name its exact operation generation")
+    quality = record.qualityCertification
+    if quality is None:
+        return
+    if (
+        selected is None
+        or quality.frozenRun != selected.frozenRun
+        or quality.terminals != selected.terminals
+    ):
+        raise ValueError(
+            "completed integration quality requires journal-selected original references"
+        )
+    validate_integration_completion_identity(
+        selected, quality.completionFingerprint, quality.attestation
+    )
+    authority = record.integrationAuthority
+    if authority is None or quality.codeCommit != authority.codeCandidateCommit:
+        raise ValueError("selected completion code commit must match integration authority")
+
+
 def _require_altitude_authority(record: LifecycleOperationRecord) -> None:
     if record.operationKind != record.input.kind:
         raise ValueError("lifecycle operation kind must equal its accepted input kind")
+    validate_certification_owner(
+        record.certification, record.operationKind, record.operationKey, record.generation
+    )
+    _require_integration_certification_authority(record)
     if record.operationKind != "direct-landing" and record.directLandingLedgerIntent is not None:
         raise ValueError("direct landing ledger intent belongs only to direct landing")
     if record.operationKind not in {"closeout", "direct-landing"} and (

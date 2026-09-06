@@ -9,6 +9,7 @@ import dagger
 from dagger import ReturnType
 
 from agents_remember_quality import rail_bindings
+from agents_remember_quality.environment.runtime import capture_environments
 from agents_remember_quality.profile_plan import FrozenRail
 from agents_remember_quality.profile_results import QualityProgress
 
@@ -49,7 +50,11 @@ async def terminal_rail_outcome(
         )
     gaps = outcome.get("unboundRequiredArtifacts")
     missing_known = isinstance(gaps, list) and any(
-        isinstance(artifact, str) and artifact in rail_bindings.ARTIFACT_FILE_PATHS
+        isinstance(artifact, str)
+        and (
+            artifact in rail_bindings.ARTIFACT_FILE_PATHS
+            or artifact in {item["definition"]["artifactId"] for item in rail.environments}
+        )
         for artifact in gaps
     )
     if (outcome.get("unavailableEvidenceStreams") or missing_known) and status == "pass":
@@ -91,6 +96,8 @@ async def attach_rail_terminal_bindings(
     for artifact_id, record in observed.items():
         source = rail_bindings.artifact_source_path(artifact_id, reports=reports)
         progress.retained_files[record.path] = progress.container.file(source)
+    if include_artifacts:
+        observed.update(await capture_environments(progress, rail, reports=reports))
     artifacts, gaps = rail_bindings.build_artifact_bindings(output_artifacts, observed)
     bindings: dict[str, object] = {"evidence": evidence, "artifacts": artifacts}
     if gaps:

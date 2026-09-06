@@ -10,6 +10,7 @@ from agents_remember.controlplane.enforcement import (
     evaluate_closeout_gate,
 )
 from agents_remember.controlplane.store import GateStore
+from agents_remember.errors import CertificationContractError
 from agents_remember.kernel.primitives.observer_paths import observer_logs_root
 from agents_remember.models.closeout.input import EffectiveCloseoutInput
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
@@ -1055,6 +1056,44 @@ def closeout_result(
     refuse_series_workbench_commit(contract)
     _revalidate_reviewed_candidate(contract, route_review, accepted_candidate_tree)
 
+    return _publish_closeout_candidate(
+        contract,
+        _CloseoutPublicationFacts(
+            args=args,
+            effective_input=effective_input,
+            worklist=worklist,
+            quality=quality,
+            route_review=route_review,
+            approval_note=approval_note,
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class _CloseoutPublicationFacts:
+    """Inputs already checked before the existing closeout writer claims approval."""
+
+    args: WorktreeArgs
+    effective_input: EffectiveCloseoutInput
+    worklist: dict[str, list[str]]
+    quality: _CloseoutQualityFacts
+    route_review: dict[str, Any]
+    approval_note: str
+
+
+def _publish_closeout_candidate(
+    contract: WorktreeContract,
+    facts: _CloseoutPublicationFacts,
+) -> WorktreeCommandResult:
+    """Publish under one owner with a final contract and candidate check before claiming."""
+    args = facts.args
+    effective_input = facts.effective_input
+    worklist = facts.worklist
+    quality = facts.quality
+    route_review = facts.route_review
+    approval_note = facts.approval_note
+    accepted_candidate_tree = cast(str, args.candidate_tree)
+
     def publication() -> tuple[_CloseoutCommitPhase, Any]:
         current = load_contract(contract.contract_path)
         if current != contract:
@@ -1115,6 +1154,17 @@ def _closeout_entry(
     args: WorktreeArgs,
     current_contract: WorktreeContract,
 ) -> tuple[WorktreeContract, EffectiveCloseoutInput, WorktreeCommandResult | None]:
+    if current_contract.kind == "leaf" and not args.dry_run:
+        raise CertificationContractError(
+            "leaf closeout requires its journal-selected certification operation",
+            (
+                {
+                    "code": "selected-closeout-operation-required",
+                    "path": str(current_contract.contract_path),
+                    "gateStarts": 0,
+                },
+            ),
+        )
     if not args.dry_run:
         require_closeout_mutation_authority(args)
     _contract_path, contract = _closeout_contract(args, current_contract)

@@ -47,7 +47,6 @@ from agents_remember.certification.models import (
     CanonicalRailRegistry,
     CertificationPlan,
     CompiledRail,
-    GateId,
     GatePlan,
     GateResultAdmission,
     GateResultManifest,
@@ -58,7 +57,6 @@ from agents_remember.certification.models import (
     RailDefinition,
     RailEvidenceContract,
     RailEvidenceReference,
-    RailIdentity,
     RailRegistry,
     RailRuntimeInputs,
     RailStatus,
@@ -105,7 +103,6 @@ from agents_remember.memory_quality.incremental_scope.compiler import (
     dependency_edge,
 )
 from agents_remember.memory_quality.incremental_scope.models import (
-    CanonicalTaskObservation,
     DependencySnapshot,
     GitPathChange,
     ScopeManifest,
@@ -114,8 +111,10 @@ from agents_remember.memory_quality.incremental_scope.models import (
     canonical_digest,
 )
 from agents_remember.memory_quality.style.document_shape import tables
+from agents_remember.models.certification.base import GateId, RailIdentity
 from agents_remember.models.lifecycles.curator_coherence import CuratorCoherenceRecord
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
+from agents_remember.models.task_document import CanonicalTaskObservation
 from agents_remember.models.task_document_ref import TaskDocumentRef
 from agents_remember.models.task_intent import TaskIntentIdentity
 from agents_remember.worktrees.integration.closeout.curator_coherence import (
@@ -273,7 +272,6 @@ def _inline_executor() -> DaggerModuleExecutorDefinition:
         functionName="portable-certification",
         sourceArgument="source",
         repositoryBundleArgument="repository-bundle",
-        diffBaseArgument="diff-base",
         memoryCapArgument="memory-cap-bytes",
         planArgument="execution-manifest",
         reportsField="reports",

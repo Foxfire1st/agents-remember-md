@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Any, Literal, cast
 
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import GateId, RailIdentity
 from agents_remember.certification.replay.models import (
     CatalogRailRecord,
     GateRunMeasurement,
@@ -26,6 +25,7 @@ from agents_remember.certification.replay.scenarios import (
     evaluate_replay_scenario,
 )
 from agents_remember.certification.replay.spans import analyze_span_categories
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 _DIGEST = "a" * 64
 

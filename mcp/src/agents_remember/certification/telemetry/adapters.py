@@ -34,11 +34,9 @@ from agents_remember.certification.lifecycle_models import (
 from agents_remember.certification.models import (
     CandidateIdentity,
     CertificationContractFinding,
-    GateId,
     GatePlan,
     GateResultManifest,
     RailEvidenceReference,
-    RailIdentity,
     RailResult,
 )
 from agents_remember.certification.telemetry.models import (
@@ -82,6 +80,7 @@ from agents_remember.certification.telemetry.models import (
     catalog_manifest_digest,
     rail_terminal_class,
 )
+from agents_remember.models.certification.base import GateId, RailIdentity
 from agents_remember.models.lifecycles.operation_kinds import LifecycleOperationKind
 
 _ID_PATTERN = r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"

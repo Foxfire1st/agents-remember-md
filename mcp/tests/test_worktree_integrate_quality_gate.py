@@ -7,7 +7,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +16,6 @@ from unittest import mock
 MCP_SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(MCP_SRC))
 
-from _quality_evidence_fixture import publish_passing_quality_gate
 from agents_remember.errors import CertificationProfileError
 from agents_remember.models.lifecycles.operation import (
     IntegrationOperationAuthority,
@@ -40,11 +38,11 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 from agents_remember.worktrees.modules import integrate as integrate_mod
 from agents_remember.worktrees.modules import integration_recovery
 from agents_remember.worktrees.modules.args import WorktreeArgs
+from agents_remember.worktrees.modules.quality import gate as code_quality_gate
 from agents_remember.worktrees.modules.quality.gate import (
     GATE_FULL,
     GATE_TARGETED,
     QualityGatePlan,
-    QualityGateTarget,
 )
 from agents_remember.worktrees.worktree_contract import (
     ContractTask,
@@ -55,11 +53,14 @@ from agents_remember.worktrees.worktree_contract import (
     default_series_contract,
     write_contract,
 )
+from integration_certification_test_support import integration_fixture
 from repository_profile_test_support import (
     AGENTS_REMEMBER_PROFILE_REFERENCE,
+    NODE_FIXTURE,
     install_agents_remember_profile,
     install_fixture_profile,
 )
+from test_closeout_certification_entrypoint import _executor
 from test_worktree_support import init_repo
 
 
@@ -373,9 +374,6 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                quality_mod, "requires_strict_code_quality", return_value=True
-            ) as requires,
-            mock.patch.object(
                 quality_mod, "run_strict_code_quality_gate", return_value={"passed": True}
             ) as gate,
         ):
@@ -388,7 +386,6 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
         self.assertFalse(result["required"])
         self.assertEqual(result["status"], "certified-at-leaf-closeout")
         self.assertEqual(result["mode"], GATE_TARGETED)
-        requires.assert_not_called()
         gate.assert_not_called()
 
     def test_prepare_runs_the_altitude_gate_exactly_once_for_each_contract_kind(self) -> None:
@@ -492,40 +489,28 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
         self.assertNotIn("wrapper", str(result.payload))
         merge.assert_not_called()
 
-    def test_consumer_master_without_a_profile_is_blocked_before_execution(
-        self,
-    ) -> None:
-        contract = replace(
-            integration_contract(self.root, kind="series"),
-            repo_name="consumer-repo",
-        )
-
-        result, blocked = integrate_mod._run_integration_quality_gate(
-            contract,
-            args=WorktreeArgs(certification_profile=None),
-        )
-
+    def test_consumer_master_without_a_profile_is_blocked_before_execution(self) -> None:
+        fixture = integration_fixture(self.root / "selected", contract_factory=integration_contract)
+        with mock.patch.object(quality_mod, "run_strict_code_quality_gate") as gate:
+            result, blocked = integrate_mod._run_integration_quality_gate(
+                fixture.contract,
+                args=WorktreeArgs(
+                    certification_profile=None,
+                    integration_certification_owner=fixture.owner,
+                ),
+            )
         self.assertEqual(result, {})
         self.assertIsNotNone(blocked)
         assert blocked is not None
         failure = cast(dict[str, object], blocked["failureEvidence"])
         self.assertEqual(failure["errorType"], "CertificationProfileError")
+        gate.assert_not_called()
 
     def test_series_integration_runs_the_full_capped_gate(self) -> None:
-        contract = integration_contract(self.root, kind="series")
-        exact_candidate = self.root / "exact-master-candidate"
-        init_repo(exact_candidate, "main")
-        install_agents_remember_profile(exact_candidate)
-        git(exact_candidate, "add", "-A")
-        git(exact_candidate, "commit", "-m", "Add repository certification profile")
-
+        fixture = integration_fixture(self.root / "selected", contract_factory=integration_contract)
+        contract = fixture.contract
+        calls = []
         with (
-            mock.patch.object(
-                quality_mod,
-                "integration_quality_checkout",
-                return_value=nullcontext(exact_candidate),
-            ),
-            mock.patch.object(quality_mod, "requires_strict_code_quality", return_value=True),
             mock.patch.object(
                 quality_mod,
                 "quality_gate_settings",
@@ -534,26 +519,30 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
             mock.patch.object(
                 quality_mod,
                 "run_strict_code_quality_gate",
-                side_effect=publish_passing_quality_gate,
+                wraps=code_quality_gate.run_strict_code_quality_gate,
             ) as gate,
+            mock.patch.object(
+                code_quality_gate,
+                "run_clean_quality",
+                side_effect=_executor(NODE_FIXTURE, calls),
+            ),
         ):
             result, blocked = integrate_mod._run_integration_quality_gate(
                 contract,
-                args=WorktreeArgs(certification_profile=AGENTS_REMEMBER_PROFILE_REFERENCE),
+                args=WorktreeArgs(
+                    certification_profile=AGENTS_REMEMBER_PROFILE_REFERENCE,
+                    integration_certification_owner=fixture.owner,
+                ),
             )
 
         self.assertIsNone(blocked)
         self.assertTrue(result["passed"])
         (target,), kwargs = gate.call_args
-        self.assertEqual(
-            target,
-            QualityGateTarget(
-                code_worktree=exact_candidate,
-                worktree_group=contract.worktree_group,
-                repository_id=contract.repo_name,
-                profile_reference=AGENTS_REMEMBER_PROFILE_REFERENCE,
-            ),
-        )
+        self.assertEqual(target.worktree_group, contract.worktree_group)
+        self.assertEqual(target.repository_id, contract.repo_name)
+        self.assertEqual(target.profile_reference, AGENTS_REMEMBER_PROFILE_REFERENCE)
+        self.assertNotEqual(target.code_worktree, contract.code_repo_path)
+        self.assertEqual(len(calls), 1)
         plan = kwargs["plan"]
         assert isinstance(plan, QualityGatePlan)
         self.assertEqual(plan.mode, GATE_FULL)
@@ -626,14 +615,14 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
         self.assertIsNone(quality_mod.quality_gate_settings(contract).memory_cap_bytes)
 
     def test_a_refused_master_gate_blocks_integration_without_merging(self) -> None:
-        contract = integration_contract(self.root, kind="series")
+        fixture = integration_fixture(self.root / "selected", contract_factory=integration_contract)
+        contract = fixture.contract
         private = "PRIVATE_QUALITY_BACKEND_STDERR /tmp/dagger stderr"
 
         def failing_gate(*_args: object, **_kwargs: object) -> dict[str, object]:
             raise RuntimeError(private)
 
         with (
-            mock.patch.object(quality_mod, "requires_strict_code_quality", return_value=True),
             mock.patch.object(quality_mod, "run_strict_code_quality_gate", failing_gate),
             mock.patch.object(integrate_mod, "write_contract"),
             mock.patch.object(
@@ -645,7 +634,11 @@ class IntegrationQualityGateAltitudeTests(unittest.TestCase):
         ):
             result = integrate_mod._apply_integration(
                 contract,
-                WorktreeArgs(strategy="ff-only"),
+                WorktreeArgs(
+                    strategy="ff-only",
+                    certification_profile=AGENTS_REMEMBER_PROFILE_REFERENCE,
+                    integration_certification_owner=fixture.owner,
+                ),
                 IntegrationSources(
                     current_code_source="c1",
                     current_memory_source="",

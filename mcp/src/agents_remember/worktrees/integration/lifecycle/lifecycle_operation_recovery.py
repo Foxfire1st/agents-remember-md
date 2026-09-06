@@ -23,7 +23,7 @@ from agents_remember.worktrees.integration.direct_landing.direct_landing_recover
     DirectLandingRecoveryClassification,
     classify_direct_landing_recovery,
 )
-from agents_remember.worktrees.integration.lifecycle import lifecycle_generation_resume
+from agents_remember.worktrees.integration.lifecycle.generation import resume
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_control_errors import (
     LifecycleControlError,
 )
@@ -46,7 +46,7 @@ def recover_direct_landing_under_authority(
     current_contract = load_contract(contract.contract_path)
     _require_recoverable_direct_state(current_contract, record)
     requeued, changed = store.resume_generation(
-        lifecycle_generation_resume.requeued_same_generation,
+        resume.requeued_same_generation,
         expected_generation=record.generation,
     )
     if not changed:

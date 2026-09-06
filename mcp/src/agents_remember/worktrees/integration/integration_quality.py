@@ -4,14 +4,26 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from agents_remember.errors import CertificationContractError
 from agents_remember.kernel.agentic_settings import load_agentic_settings
+from agents_remember.models.lifecycles.integration_certification import (
+    IntegrationCertificationSelection,
+)
 from agents_remember.models.lifecycles.operation import IntegrationQualityCertification
-from agents_remember.models.test_evidence import EvidenceConsumer
+from agents_remember.worktrees.integration.certification import (
+    IntegrationCertificationOwner,
+    IntegrationCertificationRequest,
+    authorize_integration_start,
+    load_integration_certification,
+    prepare_integration_certification,
+    protected_integration_generations,
+    require_resumable_integration,
+    select_completed_integration,
+    select_integration_terminals,
+)
 from agents_remember.worktrees.integration.integration_quality_checkout import (
     integration_quality_checkout,
 )
@@ -24,17 +36,13 @@ from agents_remember.worktrees.integration.organizational_completion import (
 from agents_remember.worktrees.integration.organizational_completion_integration import (
     preview_organizational_completion,
 )
-from agents_remember.worktrees.modules.git import require_git
-from agents_remember.worktrees.modules.quality.clean_executor import (
-    require_published_quality_evidence,
-)
+from agents_remember.worktrees.modules.quality.certification_run import SelectedCodeCertification
 from agents_remember.worktrees.modules.quality.gate import (
     GATE_FULL,
     QualityGatePlan,
     QualityGateTarget,
     code_quality_gate_preview,
-    recover_strict_code_quality_gate,
-    requires_strict_code_quality,
+    render_selected_code_certification,
     run_strict_code_quality_gate,
 )
 from agents_remember.worktrees.worktree_contract import WorktreeContract
@@ -87,13 +95,6 @@ class IntegrationQualityOutcome:
     certification: IntegrationQualityCertification | None = None
 
 
-@dataclass(frozen=True)
-class _IntegrationGateExecution:
-    result: dict[str, object]
-    recovered: bool
-    attestation: dict[str, str] | None
-
-
 def quality_gate_mode(contract: WorktreeContract) -> str:
     """Return the accepting mode for a branch-owning master integration."""
 
@@ -138,45 +139,21 @@ def run_integration_quality_gate(
     contract: WorktreeContract,
     *,
     completion: OrganizationalCompletionPlan | None = None,
-    certification: IntegrationQualityCertification | None = None,
-    certification_sink: Callable[[IntegrationQualityCertification], None] | None = None,
     profile_reference: Path | None,
+    owner: IntegrationCertificationOwner | None,
 ) -> IntegrationQualityOutcome:
-    """Run or reuse the one exact full integration gate.
-
-    Ordinary leaf integration consumes its targeted closeout certification. A final
-    organizational leaf and an atomic series use a detached checkout of the exact commit.
-    Only the organizational result is persisted for crash-safe reuse because its gate and
-    logical-master publication occur inside the journal-owned organizational landing
-    transaction.
-    """
-
+    """Consume explicit operation-selected originals and execute only the R21 suffix."""
     if contract.kind == "leaf" and completion is None:
         return IntegrationQualityOutcome(_leaf_closeout_certification())
     settings = quality_gate_settings(contract)
-    plan = QualityGatePlan(
-        mode=GATE_FULL,
-        memory_cap_bytes=settings.memory_cap_bytes,
-    )
-    if completion is not None and certification is not None:
-        try:
-            _require_matching_certification(contract, completion, certification, plan=plan)
-        except RuntimeError as error:
-            raise integration_quality_failure(
-                error,
-                stage="integration-quality-certification",
-                organizational_completion=True,
-            ) from error
-        return IntegrationQualityOutcome(
-            {**certification.result, "reusedCertification": True},
-            certification,
-        )
+    plan = QualityGatePlan(mode=GATE_FULL, memory_cap_bytes=settings.memory_cap_bytes)
     try:
-        execution = _execute_integration_gate(
+        return _execute_integration_gate(
             contract,
             completion=completion,
             plan=plan,
             profile_reference=profile_reference,
+            owner=owner,
         )
     except (CertificationContractError, RuntimeError) as error:
         raise integration_quality_failure(
@@ -184,15 +161,6 @@ def run_integration_quality_gate(
             stage="integration-quality-execution",
             organizational_completion=completion is not None,
         ) from error
-    if completion is None or execution.attestation is None:
-        return IntegrationQualityOutcome(execution.result)
-    gate = execution.result
-    if execution.recovered:
-        gate = {**gate, "recoveredPublishedReport": True}
-    certificate = _certification(completion, gate, attestation=execution.attestation)
-    if certification_sink is not None:
-        certification_sink(certificate)
-    return IntegrationQualityOutcome(gate, certificate)
 
 
 def _execute_integration_gate(
@@ -201,9 +169,9 @@ def _execute_integration_gate(
     completion: OrganizationalCompletionPlan | None,
     plan: QualityGatePlan,
     profile_reference: Path | None,
-) -> _IntegrationGateExecution:
-    """Run or recover the gate against one detached exact-candidate checkout."""
-
+    owner: IntegrationCertificationOwner | None,
+) -> IntegrationQualityOutcome:
+    """Select before execution and retain exact terminal references before returning."""
     with integration_quality_checkout(contract, commit=contract.code_commit) as checkout:
         target = QualityGateTarget(
             code_worktree=checkout,
@@ -211,45 +179,52 @@ def _execute_integration_gate(
             repository_id=contract.repo_name,
             profile_reference=profile_reference,
         )
-        if not requires_strict_code_quality(
-            target,
-            code_would_commit=True,
-        ):
-            preview = code_quality_gate_preview(
-                target,
-                code_would_commit=True,
-                diff_base=contract.code_base_commit,
-                plan=plan,
-            )
-            return _IntegrationGateExecution(preview, False, None)
         attestation = (
             _quality_attestation(completion, contract, plan) if completion is not None else None
         )
-        recovered = (
-            recover_strict_code_quality_gate(
+        request = IntegrationCertificationRequest(contract, target, plan, owner, attestation)
+        selected = prepare_integration_certification(request)
+        require_resumable_integration(selected)
+        original = selected.record.qualityCertification
+        if selected.reuse_plan.firstGateToRun in (1, 2, 3, 4):
+            execution = selected.execution()
+            run_strict_code_quality_gate(
                 target,
                 diff_base=contract.code_base_commit,
-                plan=plan,
-                attestation=attestation,
-            )
-            if attestation is not None
-            else None
-        )
-        gate = recovered
-        if gate is None:
-            gate = run_strict_code_quality_gate(
-                target,
-                diff_base=contract.code_base_commit,
-                plan=plan,
+                plan=QualityGatePlan(
+                    mode=plan.mode,
+                    memory_cap_bytes=plan.memory_cap_bytes,
+                    selected=SelectedCodeCertification(
+                        execution,
+                        lambda recorded: select_integration_terminals(request, recorded),
+                        lambda: protected_integration_generations(request),
+                        lambda: authorize_integration_start(request),
+                    ),
+                ),
                 invocation="master-integration",
                 attestation=attestation,
             )
-        require_published_quality_evidence(
-            contract.worktree_group / "reports",
-            candidate_tree=require_git(checkout, ["write-tree"]),
-            consumer=EvidenceConsumer.INTEGRATION,
+            selected = load_integration_certification(request)
+        result = render_selected_code_certification(
+            target,
+            selected.prepared,
+            selected.terminals,
+            diff_base=contract.code_base_commit,
+            plan=plan,
         )
-    return _IntegrationGateExecution(gate, recovered is not None, attestation)
+        if completion is None or attestation is None:
+            return IntegrationQualityOutcome(result)
+        if original is not None:
+            _require_matching_certification(contract, completion, original, plan=plan)
+            return IntegrationQualityOutcome({**result, "reusedCertification": True}, original)
+        certificate = _certification(
+            completion,
+            result,
+            attestation=attestation,
+            selection=selected.state,
+        )
+        select_completed_integration(request, certificate)
+        return IntegrationQualityOutcome(result, certificate)
 
 
 def _leaf_closeout_certification() -> dict[str, object]:
@@ -336,6 +311,7 @@ def _certification(
     result: dict[str, object],
     *,
     attestation: dict[str, str],
+    selection: IntegrationCertificationSelection,
 ) -> IntegrationQualityCertification:
     payload = json.dumps(result, sort_keys=True, separators=(",", ":"))
     return IntegrationQualityCertification(
@@ -345,6 +321,8 @@ def _certification(
         attestation=attestation,
         resultSha256=hashlib.sha256(payload.encode("utf-8")).hexdigest(),
         result=result,
+        frozenRun=selection.frozenRun,
+        terminals=selection.terminals,
     )
 
 

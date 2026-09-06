@@ -30,8 +30,9 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_locatio
 )
 from agents_remember.worktrees.modules.models import WorktreeCommandResult
 from agents_remember.worktrees.worktree_contract import contract_publication_text, write_contract
-from closeout_input_test_support import closeout_operation_input, start_closeout_operation
+from closeout_input_test_support import start_closeout_operation
 from lifecycle_enclosure_test_support import enclosure_contract
+from selected_lifecycle_test_support import selected_closeout_operation_input
 from test_lifecycle_operations import _contract
 
 
@@ -271,8 +272,8 @@ def test_locator_manifest_contract_and_root_contradictions_remain_distinct(
 
 
 def test_unreadable_contract_does_not_hide_exact_root_journal(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
-    operation_input = closeout_operation_input(contract, code="retain exact root journal")
+    contract = _contract(tmp_path, selected_profile=True)
+    operation_input = selected_closeout_operation_input(contract, code="retain exact root journal")
     start_closeout_operation(operation_input, launcher=lambda *_: None)
     location = resolve_lifecycle_operation_location(
         contract.coordination_root,

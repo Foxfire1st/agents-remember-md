@@ -12,10 +12,18 @@ from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from agents_remember.certification.models import RailDefinition
+from agents_remember.models.task_document import CanonicalTaskObservation
 from agents_remember.worktrees.worktree_contract import WorktreeContract
+
+if TYPE_CHECKING:
+    from agents_remember.certification.certificate_models import GateFiveSemanticInputs
+    from agents_remember.worktrees.integration.closeout.certification.execution import (
+        CloseoutCertificationHandoff,
+    )
+    from agents_remember.worktrees.modules.models import WorktreeCommandResult
 
 
 class TerminalGuard(Protocol):
@@ -98,6 +106,7 @@ class CertificationMemoryRailsPort(Protocol):
 
 
 class MemoryQualityPort(Protocol):
+    def observe_contract_task(self, contract: WorktreeContract) -> CanonicalTaskObservation: ...
     def check_groups(self) -> tuple[tuple[str, ...], tuple[str, ...]]: ...
     def drift_context(
         self,
@@ -116,12 +125,26 @@ class MemoryQualityPort(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class CertificationContinuationPort(Protocol):
+    """Composition-owned Gate 5 and finalization boundaries after exact code certificates."""
+
+    def observe_memory(
+        self, handoff: CloseoutCertificationHandoff
+    ) -> GateFiveSemanticInputs | None:
+        """Read and verify current memory authority; absence cannot authorize Gate-5 reuse."""
+        ...
+
+    def run_memory(self, handoff: CloseoutCertificationHandoff) -> WorktreeCommandResult: ...
+    def finalize(self, handoff: CloseoutCertificationHandoff) -> WorktreeCommandResult: ...
+
+
 @dataclass(frozen=True)
 class WorktreeServices:
     provider_lifecycle: ProviderLifecyclePort
     memory_quality: MemoryQualityPort
     citation_guard: CitationGuardPort
     certification_memory_rails: CertificationMemoryRailsPort | None = None
+    certification_continuation: CertificationContinuationPort | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +195,7 @@ def worktree_services() -> WorktreeServices:
 
 
 __all__ = [
+    "CertificationContinuationPort",
     "CertificationMemoryRailsPort",
     "CitationGuardPort",
     "MemoryQualityPort",

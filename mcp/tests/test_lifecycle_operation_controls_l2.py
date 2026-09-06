@@ -67,8 +67,9 @@ from agents_remember.worktrees.integration.lifecycle.worker.termination import (
 )
 from agents_remember.worktrees.modules.models import WorktreeCommandResult
 from agents_remember.worktrees.worktree_contract import load_contract, write_contract
-from closeout_input_test_support import closeout_operation_input, start_closeout_operation
+from closeout_input_test_support import start_closeout_operation
 from lifecycle_control_test_support import publish_completed_disposition_task_authority
+from selected_lifecycle_test_support import selected_closeout_operation_input
 from test_closeout_generation_boundary import _publish_mutated_code_generation
 from test_lifecycle_operations import _contract, _publish_integration_branch_authority
 
@@ -92,9 +93,9 @@ def _command(
 
 
 def _dirty_closeout(tmp_path: Path):
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
-    operation_input = closeout_operation_input(contract, code="close first intent")
+    operation_input = selected_closeout_operation_input(contract, code="close first intent")
     start_closeout_operation(operation_input, launcher=lambda *_: None)
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     record = store.read()
@@ -210,9 +211,9 @@ def test_initial_claimed_door_crash_recovers_before_worker_launch(
     tmp_path: Path,
     after_contract_write: bool,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
-    operation_input = closeout_operation_input(contract, code="publish claimed door first")
+    operation_input = selected_closeout_operation_input(contract, code="publish claimed door first")
     original_publish = operations_module.publish_door_intent
 
     def cut_publication(path, intent):
@@ -276,16 +277,17 @@ def test_initial_claimed_door_crash_recovers_before_worker_launch(
 def test_initial_claimed_door_journal_create_cut_recovers_before_first_launch(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
-    operation_input = closeout_operation_input(contract, code="publish claimed door first")
+    operation_input = selected_closeout_operation_input(contract, code="publish claimed door first")
     original_create = LifecycleOperationStore.create
 
     def cut_after_record_create(
         target: LifecycleOperationStore,
         candidate: LifecycleOperationRecord,
+        **options,
     ) -> tuple[LifecycleOperationRecord, bool]:
-        created = original_create(target, candidate)
+        created = original_create(target, candidate, **options)
         if target.path == operation_record_path(contract.worktree_group, "closeout"):
             raise SystemExit("cut after accepted journal create")
         return created
@@ -345,9 +347,11 @@ def test_initial_claimed_door_journal_create_cut_recovers_before_first_launch(
 def test_initial_door_without_journal_intent_is_exact_public_decision(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
-    operation_input = closeout_operation_input(contract, code="reject unjournaled live door")
+    operation_input = selected_closeout_operation_input(
+        contract, code="reject unjournaled live door"
+    )
     start_closeout_operation(operation_input, launcher=mock.Mock())
     store = LifecycleOperationStore(operation_record_path(contract.worktree_group, "closeout"))
     accepted = store.read()
@@ -408,7 +412,7 @@ def test_initial_door_without_journal_intent_is_exact_public_decision(
 def test_advertised_integrate_control_starts_task_addressed_generation(
     tmp_path: Path,
 ) -> None:
-    contract = _integration_source_ready_contract(_contract(tmp_path))
+    contract = _integration_source_ready_contract(_contract(tmp_path, selected_profile=True))
     _operation_input, closeout_store, finalized = _publish_mutated_code_generation(contract)
     completed = closeout_store.read()
     assert completed is not None
@@ -895,7 +899,7 @@ def test_completed_worker_exit_reconciliation_preserves_terminal_outcome(
 def test_status_advertised_integrate_persists_natural_closeout_exit_on_execution(
     tmp_path: Path,
 ) -> None:
-    contract = _integration_source_ready_contract(_contract(tmp_path))
+    contract = _integration_source_ready_contract(_contract(tmp_path, selected_profile=True))
     _operation_input, store, finalized = _publish_mutated_code_generation(contract)
     store.update(
         lambda current: current.model_copy(

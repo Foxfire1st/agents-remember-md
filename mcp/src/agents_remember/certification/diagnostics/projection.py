@@ -31,12 +31,9 @@ from agents_remember.certification.diagnostics.models import (
 )
 from agents_remember.certification.diagnostics.store import DiagnosticManifestStore
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    CandidateIdentity,
-    CertificationContractFinding,
-    FrozenContractModel,
-)
+from agents_remember.certification.models import CandidateIdentity, CertificationContractFinding
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import FrozenContractModel
 
 DiagnosticLaneDisposition = Literal[
     "not-requested-optional",

@@ -44,6 +44,7 @@ from agents_remember.worktrees.worktree_contract import (
     default_series_contract,
     write_contract,
 )
+from repository_profile_test_support import install_fixture_profile
 
 
 class SourceLineageTests(unittest.TestCase):
@@ -475,9 +476,10 @@ def _fixture(
     *,
     external_memory: bool = False,
     publish_locations: bool = True,
+    selected_profile: bool = False,
 ) -> _Fixture:
     coordination = root / "coordination"
-    code_repo = _repo(root / "code")
+    code_repo = _repo(root / "code", selected_profile=selected_profile)
     memory_repo = _repo(root / "memory") if external_memory else None
     task_root = coordination / "tasks" / "repo" / "master"
     _write_task_tree(coordination)
@@ -633,13 +635,16 @@ def _doc(**values: object) -> TaskDocument:
     )
 
 
-def _repo(path: Path) -> Path:
+def _repo(path: Path, *, selected_profile: bool = False) -> Path:
     path.mkdir(parents=True)
     _git(path, "init", "-b", "super")
     _git(path, "config", "user.email", "test@example.invalid")
     _git(path, "config", "user.name", "Test")
     (path / "base.txt").write_text("base\n", encoding="utf-8")
     _git(path, "add", "base.txt")
+    if selected_profile:
+        profile = install_fixture_profile(path, "repo")
+        _git(path, "add", profile.relative_to(path).as_posix())
     _git(path, "commit", "-m", "base")
     _git(path, "branch", "main", "super")
     _git(path, "branch", "ar/master")

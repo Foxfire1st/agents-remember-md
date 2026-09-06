@@ -13,10 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal
 
-from agents_remember.certification.models import (
-    CertificationContractFinding,
-    RailIdentity,
-)
+from agents_remember.certification.models import CertificationContractFinding
 from agents_remember.certification.replay.models import (
     GateRunMeasurement,
     ReplayProfileSnapshot,
@@ -28,6 +25,7 @@ from agents_remember.certification.replay.models import (
     ScenarioState,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import RailIdentity
 
 _SCENARIO_IDS: tuple[str, ...] = tuple(f"r17-scenario-{number:02d}" for number in range(1, 18))
 

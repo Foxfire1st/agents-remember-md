@@ -12,7 +12,7 @@ import argparse
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from agents_remember.kernel.primitives.gate_policy import (
     DEFAULT_GATE_POLICY,
@@ -26,6 +26,9 @@ from agents_remember.models.lifecycles.operation import (
 )
 from agents_remember.models.worktree import MemorySyncChoice, SyncResolutionAction
 from agents_remember.worktrees.modules.models import WorktreeProviderSetupConfig
+
+if TYPE_CHECKING:
+    from agents_remember.worktrees.integration.certification import IntegrationCertificationOwner
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,7 @@ class WorktreeArgs:
     recovery_commits: LifecycleOperationRecoveryCommits | None = None
     quality_certification: IntegrationQualityCertification | None = None
     integration_publication: IntegrationPublicationIntent | None = None
+    integration_certification_owner: IntegrationCertificationOwner | None = None
     operation_progress: Callable[[str, Mapping[str, object]], None] | None = None
 
     @classmethod

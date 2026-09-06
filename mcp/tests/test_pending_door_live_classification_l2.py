@@ -35,8 +35,9 @@ from agents_remember.worktrees.worktree_contract import (
     load_contract,
     write_contract,
 )
-from closeout_input_test_support import closeout_operation_input, start_closeout_operation
+from closeout_input_test_support import start_closeout_operation
 from lifecycle_control_test_support import publish_completed_disposition_task_authority
+from selected_lifecycle_test_support import selected_closeout_operation_input
 from test_closeout_generation_boundary import _publish_mutated_code_generation
 from test_lifecycle_operation_controls_l2 import (
     _byte_tree,
@@ -97,9 +98,9 @@ def _recursive_keys(value: object) -> set[str]:
 
 
 def _pending_initial_door(tmp_path: Path):
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     (contract.code_worktree / "candidate.py").write_text("VALUE = 1\n", encoding="utf-8")
-    operation_input = closeout_operation_input(contract, code="publish exact claimed door")
+    operation_input = selected_closeout_operation_input(contract, code="publish exact claimed door")
     with (
         mock.patch.object(
             operations_mod,
@@ -241,7 +242,7 @@ def _pending_disposition_fixture(tmp_path: Path, mode: str):
         )
         caller = None
     else:
-        contract = _contract(tmp_path)
+        contract = _contract(tmp_path, selected_profile=True)
         _operation_input, store, contract = _publish_mutated_code_generation(contract)
         record = store.read()
         assert record is not None

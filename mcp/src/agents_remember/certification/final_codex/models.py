@@ -34,9 +34,11 @@ from pydantic import AfterValidator, Field, model_validator
 from agents_remember.certification.digests import content_digest
 from agents_remember.certification.models import (
     CandidateIdentity,
-    FrozenContractModel,
     GateResultManifest,
     RailEvidenceReference,
+)
+from agents_remember.models.certification.base import (
+    FrozenContractModel,
     RailIdentity,
     SemanticText,
 )

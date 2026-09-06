@@ -9,12 +9,24 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from agents_remember.certification.models import RegistryValidationFinding
+from agents_remember.certification.repository_profiles.environment_validation import (
+    _validate_environments,
+)
 from agents_remember.certification.repository_profiles.models import (
     CanonicalRepositoryCertificationProfile,
     JsonExitStatusDecoderDefinition,
     RepositoryProfileValidationReport,
     RepositoryRailDefinition,
     RepositorySelectorAuthority,
+)
+from agents_remember.certification.repository_profiles.source_selection.validation import (
+    source_placeholders,
+    validate_source_applicability,
+)
+from agents_remember.certification.repository_profiles.validation_primitives import (
+    _duplicates,
+    _finding,
+    _validate_gate_set,
 )
 
 _CLASS_GATE = {
@@ -102,6 +114,24 @@ def validate_repository_profile(
         path="resultDecoders",
         findings=findings,
     )
+    _duplicates(
+        [item.inputId for item in profile.generatedInputs],
+        "duplicate-generated-input",
+        "generatedInputs",
+        findings,
+    )
+    for item in profile.generatedInputs:
+        rail = rails.get(item.checkRail.key)
+        if rail is None or rail.gate != 1:
+            findings.append(
+                _finding(
+                    "generated-input-check-rail-invalid",
+                    f"generatedInputs.{item.inputId}.checkRail",
+                    "generated candidate input must name a declared Gate 1 rail",
+                )
+            )
+    _validate_environments(profile, rails, findings)
+    validate_source_applicability(profile, rails, findings)
     _validate_publication(profile, decoders, findings)
     for executor in profile.executorAdapters:
         _validate_executor(executor, findings)
@@ -225,17 +255,18 @@ def _validate_executor(executor, findings) -> None:
     arguments = (
         executor.sourceArgument,
         executor.repositoryBundleArgument,
-        executor.diffBaseArgument,
         executor.memoryCapArgument,
         executor.planArgument,
         executor.reportsField,
     )
+    if executor.retainedReportsArgument is not None:
+        arguments += (executor.retainedReportsArgument,)
     if len(set(arguments)) != len(arguments):
         findings.append(
             _finding(
                 "executor-argument-ambiguous",
                 f"executorAdapters.{executor.adapterId}",
-                "executor source, bundle, diff, memory, plan, and reports arguments must differ",
+                "executor source, bundle, memory, plan, reports, and retained arguments must differ",
             )
         )
     _validate_gate_set(
@@ -380,17 +411,6 @@ def _validate_exact_consuming_gates(
         )
 
 
-def _validate_gate_set(gates, path, findings) -> None:
-    if tuple(gates) != tuple(sorted(set(gates))):
-        findings.append(
-            _finding(
-                "semantic-input-gates-not-canonical",
-                path,
-                "semantic input gate scope must be nonempty, unique, and ordered",
-            )
-        )
-
-
 def _validate_selection_authority(selections, findings) -> None:
     observed = {(item.purpose, item.mode) for item in selections}
     for purpose, mode in sorted(_REQUIRED_SELECTIONS - observed):
@@ -484,7 +504,7 @@ def _validate_rail(
             )
         )
     _validate_rail_fields(rail, path, findings)
-    _validate_rail_runtime(rail, path, index.selectors, index.decoders, findings)
+    _validate_rail_runtime(rail, path, index, findings)
     _validate_rail_dependencies(rail, path, index.rails, findings)
     _validate_artifact_dependencies(rail, path, index.producers, findings)
     _validate_gate_semantics(rail, path, findings)
@@ -505,7 +525,8 @@ def _validate_rail_fields(rail, path, findings) -> None:
         _duplicates(values, "duplicate-rail-field", f"{path}.{field}", findings)
 
 
-def _validate_rail_runtime(rail, path, selectors, decoders, findings) -> None:
+def _validate_rail_runtime(rail, path, index, findings) -> None:
+    selectors, decoders = index.selectors, index.decoders
     runtime = rail.runtimeInputs.model_dump()
     missing_runtime = sorted(name for name, value in runtime.items() if value is None)
     if missing_runtime:
@@ -538,8 +559,10 @@ def _validate_rail_runtime(rail, path, selectors, decoders, findings) -> None:
         selectors.get(execution.scopeProviderId) if execution.scopeProviderId is not None else None
     )
     list_placeholders = frozenset(selector.outputArtifacts) if selector is not None else frozenset()
-    scalar_placeholders = _SCALAR_PLACEHOLDERS | (
-        {"selector-output"} if selector is not None else set()
+    scalar_placeholders = (
+        _SCALAR_PLACEHOLDERS
+        | source_placeholders(rail, index.rails)
+        | ({"selector-output"} if selector is not None else set())
     )
     _validate_command_placeholders(
         execution.command,
@@ -829,16 +852,6 @@ def _validate_cycles(rail_declarations, rails, findings) -> None:
                 "repository rail prerequisites must be acyclic",
             )
         )
-
-
-def _duplicates(values, code, path, findings) -> None:
-    duplicates = sorted(value for value, count in Counter(values).items() if count > 1)
-    if duplicates:
-        findings.append(_finding(code, path, "duplicate declarations: " + ", ".join(duplicates)))
-
-
-def _finding(code: str, path: str, detail: str) -> RegistryValidationFinding:
-    return RegistryValidationFinding(code=code, path=path, detail=detail)
 
 
 __all__ = ["validate_repository_profile"]

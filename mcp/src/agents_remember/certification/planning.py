@@ -10,7 +10,6 @@ from agents_remember.certification.models import (
     CanonicalRailRegistry,
     CertificationPlan,
     CompiledRail,
-    GateId,
     GatePlan,
     RailDefinition,
     RegistryProfile,
@@ -19,6 +18,7 @@ from agents_remember.certification.models import (
 )
 from agents_remember.certification.validation import validate_registry
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId
 
 
 def compile_certification_plan(

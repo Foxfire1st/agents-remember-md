@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any, cast
 from unittest import mock
 
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.repository_profiles.execution import (
+    admit_repository_profile_execution,
+)
 from agents_remember.errors import CertificationProfileError
 from agents_remember.models.test_evidence import _certifying_evidence_from_verified_dagger
 from agents_remember.worktrees.modules.quality import clean_executor
@@ -18,8 +22,11 @@ from agents_remember.worktrees.modules.quality.clean_executor import CleanQualit
 from agents_remember.worktrees.modules.quality.published_manifest import (
     load_published_quality_manifest,
 )
-from repository_profile_test_support import agents_remember_profile_execution
-from test_worktree_closeout_quality_gate import _checkout_with_profile, _quality_target
+from gate_certification_test_support import _checkout_with_profile, _gate_catalog, _git, _lane_for
+from test_worktree_closeout_quality_gate import (
+    _checkout_with_profile as generic_profile_checkout,
+)
+from test_worktree_closeout_quality_gate import _quality_target
 
 
 def _successful_quality_outcome(request, *, stdout: str = "passed\n") -> CleanQualityOutcome:
@@ -30,19 +37,28 @@ def _successful_quality_outcome(request, *, stdout: str = "passed\n") -> CleanQu
         capture_output=True,
         check=True,
     ).stdout.strip()
+    admitted, lane, _candidate = _lane_for(
+        request.code_worktree,
+        request.mode,
+        diff_base=request.diff_base,
+    )
     with tempfile.TemporaryDirectory() as temporary:
         exported = Path(temporary)
         (exported / "clean-quality-results.json").write_text(
-            json.dumps({"status": "passed", "exitCode": 0}) + "\n",
+            json.dumps({"status": "passed", "exitCode": 0, "gates": _gate_catalog(lane, exported)})
+            + "\n",
             encoding="utf-8",
         )
         clean_executor._publish_reports(  # pyright: ignore[reportPrivateUsage]
             exported,
             request.worktree_group / "reports",
             candidate_tree=candidate_tree,
-            profile_execution=agents_remember_profile_execution(
-                candidate_tree=candidate_tree,
+            profile_execution=admit_repository_profile_execution(
+                admitted,
+                purpose="closeout",
                 mode=request.mode,
+                candidate_identity=CandidateIdentity(kind="git-tree", value=candidate_tree),
+                source_selection=lane.repositoryPlan.sourceSelection,
             ),
         )
     manifest = load_published_quality_manifest(request.worktree_group / "reports")
@@ -141,7 +157,7 @@ class CodeQualityGateTests(unittest.TestCase):
 
     def test_profile_authority_is_repository_generic_without_a_name_special_case(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            candidate = _checkout_with_profile(
+            candidate = generic_profile_checkout(
                 Path(tmp),
                 repository_id="consumer-repo",
             )
@@ -161,7 +177,7 @@ class CodeQualityGateTests(unittest.TestCase):
 
     def test_gate_refuses_to_run_when_the_profile_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            worktree = Path(tmp)
+            worktree = _checkout_with_profile(Path(tmp))
             target = code_quality_gate.QualityGateTarget(
                 code_worktree=worktree,
                 worktree_group=worktree / "enclosure",
@@ -169,8 +185,15 @@ class CodeQualityGateTests(unittest.TestCase):
                 profile_reference=None,
             )
 
-            with self.assertRaises(CertificationProfileError):
-                code_quality_gate.run_strict_code_quality_gate(target)
+            with (
+                mock.patch.object(code_quality_gate, "run_clean_quality") as execute,
+                self.assertRaises(CertificationProfileError),
+            ):
+                code_quality_gate.run_strict_code_quality_gate(
+                    target,
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
+                )
+            execute.assert_not_called()
 
     def test_host_quality_execution_refuses_before_running_a_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -195,7 +218,7 @@ class CodeQualityGateTests(unittest.TestCase):
             ) as clean:
                 result = code_quality_gate.run_strict_code_quality_gate(
                     target,
-                    diff_base="abc123",
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                     plan=code_quality_gate.QualityGatePlan(
                         mode=code_quality_gate.GATE_FULL,
                         memory_cap_bytes=2_147_483_648,
@@ -206,7 +229,7 @@ class CodeQualityGateTests(unittest.TestCase):
             self.assertEqual(request.code_worktree, worktree)
             self.assertEqual(request.worktree_group, root / "enclosure")
             self.assertEqual(request.mode, code_quality_gate.GATE_FULL)
-            self.assertEqual(request.diff_base, "abc123")
+            self.assertEqual(request.diff_base, _git(worktree, "rev-parse", "HEAD"))
             self.assertEqual(request.memory_cap_bytes, 2_147_483_648)
             self.assertEqual(request.repository_id, "agents-remember")
             self.assertEqual(result["executor"], "dagger")
@@ -237,10 +260,12 @@ class CodeQualityGateTests(unittest.TestCase):
                 ),
             ):
                 code_quality_gate.run_strict_code_quality_gate(
-                    _quality_target(worktree, worktree_group)
+                    _quality_target(worktree, worktree_group),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
                 code_quality_gate.run_strict_code_quality_gate(
-                    _quality_target(worktree, worktree_group)
+                    _quality_target(worktree, worktree_group),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
             report_text = report.read_text(encoding="utf-8")
@@ -268,13 +293,14 @@ class CodeQualityGateTests(unittest.TestCase):
                 self.assertRaises(KeyboardInterrupt),
             ):
                 code_quality_gate.run_strict_code_quality_gate(
-                    _quality_target(worktree, worktree_group)
+                    _quality_target(worktree, worktree_group),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
             self.assertEqual(report.read_text(encoding="utf-8"), "previous completed run\n")
 
     def test_gate_measures_the_leaf_diff_not_the_whole_branch(self) -> None:
-        """The leaf's base commit reaches the profile adapter as --diff-base.
+        """The leaf's base commit reaches the immutable execution manifest.
 
         Without it the repository rail resolves its base to origin/HEAD or main, and the
         100% per-diff coverage floor then measures every change on the integration
@@ -290,12 +316,17 @@ class CodeQualityGateTests(unittest.TestCase):
             ) as clean:
                 result = code_quality_gate.run_strict_code_quality_gate(
                     _quality_target(worktree),
-                    diff_base="c1dc5056",
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
-            self.assertEqual(clean.call_args.args[0].diff_base, "c1dc5056")
-            self.assertEqual(result["diffBase"], "c1dc5056")
-            self.assertIn("--diff-base=c1dc5056", str(result["command"]))
+            self.assertEqual(clean.call_args.args[0].diff_base, _git(worktree, "rev-parse", "HEAD"))
+            self.assertEqual(result["diffBase"], _git(worktree, "rev-parse", "HEAD"))
+            self.assertIn("--execution-manifest=", str(result["command"]))
+            self.assertNotIn("--diff-base", str(result["command"]))
+            report = code_quality_gate.test_results_report_path(
+                _quality_target(worktree).worktree_group
+            )
+            self.assertIn(f"Diff base: `{_git(worktree, 'rev-parse', 'HEAD')}`", report.read_text())
 
     def test_gate_preview_reports_the_diff_base_it_will_use(self) -> None:
         """The preview names the exact command, so a reader can rerun what will run."""
@@ -304,10 +335,11 @@ class CodeQualityGateTests(unittest.TestCase):
             preview = code_quality_gate.code_quality_gate_preview(
                 _quality_target(worktree),
                 code_would_commit=True,
-                diff_base="c1dc5056",
+                diff_base=_git(worktree, "rev-parse", "HEAD"),
             )
-            self.assertEqual(preview["diffBase"], "c1dc5056")
-            self.assertIn("--diff-base=c1dc5056", str(preview["command"]))
+            self.assertEqual(preview["diffBase"], _git(worktree, "rev-parse", "HEAD"))
+            self.assertIn("--execution-manifest=", str(preview["command"]))
+            self.assertNotIn("--diff-base", str(preview["command"]))
 
     def test_gate_command_refuses_unknown_modes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -349,7 +381,7 @@ class CodeQualityGateTests(unittest.TestCase):
             preview = code_quality_gate.code_quality_gate_preview(
                 _quality_target(worktree),
                 code_would_commit=True,
-                diff_base="abc123",
+                diff_base=_git(worktree, "rev-parse", "HEAD"),
                 plan=code_quality_gate.QualityGatePlan(
                     mode=code_quality_gate.GATE_FULL,
                     memory_cap_bytes=4096,
@@ -378,7 +410,7 @@ class CodeQualityGateTests(unittest.TestCase):
             preview = code_quality_gate.code_quality_gate_preview(
                 _quality_target(worktree),
                 code_would_commit=True,
-                diff_base="c1dc5056",
+                diff_base=_git(worktree, "rev-parse", "HEAD"),
                 plan=code_quality_gate.QualityGatePlan(
                     mode=code_quality_gate.GATE_FULL,
                     memory_cap_bytes=2147483648,
@@ -424,6 +456,7 @@ class CodeQualityGateTests(unittest.TestCase):
                 result = code_quality_gate.run_strict_code_quality_gate(
                     _quality_target(worktree),
                     plan=code_quality_gate.QualityGatePlan(mode=code_quality_gate.GATE_FULL),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
             request = clean.call_args.args[0]
@@ -448,6 +481,7 @@ class CodeQualityGateTests(unittest.TestCase):
                 code_quality_gate.run_strict_code_quality_gate(
                     _quality_target(worktree),
                     plan=code_quality_gate.QualityGatePlan(mode=cast(Any, "bogus")),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
     def test_full_gate_run_uses_the_planned_cap_mechanism(self) -> None:
@@ -460,7 +494,7 @@ class CodeQualityGateTests(unittest.TestCase):
             ) as clean:
                 result = code_quality_gate.run_strict_code_quality_gate(
                     _quality_target(worktree),
-                    diff_base="c1dc5056",
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                     plan=code_quality_gate.QualityGatePlan(
                         mode=code_quality_gate.GATE_FULL,
                         memory_cap_bytes=1024,
@@ -493,6 +527,7 @@ class CodeQualityGateTests(unittest.TestCase):
                         mode=code_quality_gate.GATE_FULL,
                         memory_cap_bytes=1024,
                     ),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
             self.assertIn("dagger-inner-wrapper", str(caught.exception))
@@ -515,6 +550,7 @@ class CodeQualityGateTests(unittest.TestCase):
                         mode=code_quality_gate.GATE_FULL,
                         memory_cap_bytes=1024,
                     ),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
             self.assertIn("dagger-inner-wrapper", str(caught.exception))
@@ -538,6 +574,7 @@ class CodeQualityGateTests(unittest.TestCase):
             ):
                 code_quality_gate.run_strict_code_quality_gate(
                     _quality_target(worktree),
+                    diff_base=_git(worktree, "rev-parse", "HEAD"),
                 )
 
             self.assertNotIn("line-0", str(caught.exception))

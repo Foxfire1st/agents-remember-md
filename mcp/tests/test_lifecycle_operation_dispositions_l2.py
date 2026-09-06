@@ -123,7 +123,7 @@ def test_completed_unintegrated_disposition_preserves_artifacts(
     tmp_path: Path,
     action: LifecycleControlAction,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     _operation_input, store, finalized = _publish_mutated_code_generation(contract)
     record = store.read()
     assert record is not None
@@ -179,7 +179,7 @@ def test_completed_unintegrated_disposition_preserves_artifacts(
 def test_sprint_orchestrator_status_payload_executes_public_disposition(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     _operation_input, store, finalized = _publish_mutated_code_generation(contract)
     record = store.read()
     assert record is not None
@@ -216,7 +216,7 @@ def test_sprint_orchestrator_status_payload_executes_public_disposition(
 def test_completed_disposition_is_not_advertised_or_executable_by_leaf(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     _operation_input, store, finalized = _publish_mutated_code_generation(contract)
     record = store.read()
     assert record is not None
@@ -255,7 +255,7 @@ def test_completed_disposition_is_not_advertised_or_executable_by_leaf(
 def test_status_keeps_completed_closeout_actionable_beside_newer_cancelled_integrate(
     tmp_path: Path,
 ) -> None:
-    contract = _integration_source_ready_contract(_contract(tmp_path))
+    contract = _integration_source_ready_contract(_contract(tmp_path, selected_profile=True))
     _operation_input, _closeout_store, finalized = _publish_mutated_code_generation(contract)
     owner = _sprint_owner(finalized)
     start_or_observe_operation(
@@ -306,7 +306,7 @@ def test_public_supersede_recovers_before_and_after_contract_publication(
     tmp_path: Path,
     after_write: bool,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     _operation_input, store, finalized = _publish_mutated_code_generation(contract)
     record = store.read()
     assert record is not None
@@ -385,7 +385,7 @@ def test_public_supersede_recovers_before_and_after_contract_publication(
 def test_supersede_exact_replay_converges_and_competing_declaration_refuses(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     _operation_input, store, finalized = _publish_mutated_code_generation(contract)
     record = store.read()
     assert record is not None
@@ -431,7 +431,7 @@ def test_supersede_exact_replay_converges_and_competing_declaration_refuses(
 def test_completed_unintegrated_supersede_dry_run_previews_would_supersede(
     tmp_path: Path,
 ) -> None:
-    contract = _contract(tmp_path)
+    contract = _contract(tmp_path, selected_profile=True)
     _operation_input, store, finalized = _publish_mutated_code_generation(contract)
     record = store.read()
     assert record is not None

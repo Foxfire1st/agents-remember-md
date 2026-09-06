@@ -29,7 +29,8 @@ from agents_remember.certification.final_codex.models import (
     FinalCodexRunManifest,
 )
 from agents_remember.certification.final_codex.store import FinalCodexManifestStore
-from agents_remember.certification.models import CandidateIdentity, FrozenContractModel
+from agents_remember.certification.models import CandidateIdentity
+from agents_remember.models.certification.base import FrozenContractModel
 
 FinalCodexLaneDisposition = Literal[
     "not-started",

@@ -22,14 +22,13 @@ def test_closeout_apply_refuses_missing_normalized_input_before_candidate_work(
 ) -> None:
     contract = _contract(tmp_path)
     with pytest.raises(RuntimeError, match="normalized effective input"):
-        closeout.closeout_result(
+        closeout._effective_closeout_input(
             WorktreeArgs(
                 contract_path=contract.contract_path,
                 approved=True,
                 approval_note="approved",
                 operation_progress=MutationEvidenceRecorder(),
             ),
-            contract,
         )
 
 
@@ -52,12 +51,11 @@ def test_closeout_apply_requires_journaled_explicit_approval(tmp_path: Path) -> 
     recorder = MutationEvidenceRecorder()
 
     with pytest.raises(RuntimeError, match="journaled explicit commit approval"):
-        closeout.closeout_result(
+        closeout._closeout_approval_note(
             closeout_worktree_args(
                 contract,
                 operation_progress=recorder,
             ),
-            contract,
         )
 
     assert head_commit(contract.code_worktree) == before_head

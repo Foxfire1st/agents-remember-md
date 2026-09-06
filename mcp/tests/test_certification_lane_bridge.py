@@ -17,7 +17,6 @@ from agents_remember.certification.models import (
     RailApplicability,
     RailDefinition,
     RailEvidenceContract,
-    RailIdentity,
     RailRuntimeInputs,
 )
 from agents_remember.certification.repository_profiles.authority import (
@@ -30,6 +29,8 @@ from agents_remember.certification.repository_profiles.planning import (
 )
 from agents_remember.errors import CertificationContractError
 from agents_remember.memory_quality.gate_five_rails import gate_five_memory_rails
+from agents_remember.models.certification.base import RailIdentity
+from source_selection_test_support import source_selection_fixture
 
 _PROFILE = Path(__file__).resolve().parents[1] / "certification-profile-v1.json"
 _REPOSITORY_ID = "agents-remember"
@@ -51,6 +52,7 @@ def _plan(admitted, mode: ProfileMode = "targeted"):
         admitted.canonical,
         selection_id=selection.selectionId,
         candidate_identity=_CANDIDATE,
+        source_selection=source_selection_fixture(_CANDIDATE.value),
     )
 
 

@@ -12,11 +12,7 @@ from typing import Any, Literal, cast
 
 import pytest
 from agents_remember.certification.digests import content_digest
-from agents_remember.certification.models import (
-    CertificationContractFinding,
-    GateId,
-    RailIdentity,
-)
+from agents_remember.certification.models import CertificationContractFinding
 from agents_remember.certification.replay.compare import (
     ReplayComparisonInput,
     ReplayComparisonReport,
@@ -58,6 +54,7 @@ from agents_remember.certification.telemetry.models import (
     TelemetrySpan,
 )
 from agents_remember.errors import CertificationContractError
+from agents_remember.models.certification.base import GateId, RailIdentity
 
 _DIGEST = "a" * 64
 _GIT = "c" * 40

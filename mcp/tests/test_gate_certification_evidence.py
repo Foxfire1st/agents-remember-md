@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from agents_remember.certification.models import CandidateIdentity
+from agents_remember.certification.certificate_models import GateCertificate
+from agents_remember.certification.frozen_run.models import freeze_certification_run
+from agents_remember.certification.models import CandidateIdentity, GateResultManifest
 from agents_remember.certification.repository_profiles.execution import (
     admit_repository_profile_execution,
 )
@@ -21,6 +23,7 @@ from agents_remember.worktrees.modules.quality import (
     clean_executor,
     gate,
 )
+from agents_remember.worktrees.modules.quality.execution.models import RetainedGateExecution
 from agents_remember.worktrees.modules.quality.published_manifest import (
     PublishedQualityManifest,
     load_published_quality_manifest,
@@ -60,22 +63,23 @@ def _arrange(tmp_path: Path):
     code = _checkout_with_profile(tmp_path / "code")
     admitted, lane, candidate = _lane_for(code)
     group = tmp_path / "enclosure"
-    prepared = certification_records.PreparedCertificationRun(
-        worktree_group=group,
-        candidateTree=candidate,
-        lane=lane,
-        provenance=lane.admission.provenance,
+    prepared = certification_records._persist_admission(
+        certification_records.PreparedCertificationRun(
+            group, freeze_certification_run(admitted.canonical, lane)
+        )
     )
     execution = admit_repository_profile_execution(
         admitted,
         purpose="closeout",
         mode="targeted",
         candidate_identity=CandidateIdentity(kind="git-tree", value=candidate),
+        source_selection=lane.repositoryPlan.sourceSelection,
     )
     return code, group, prepared, execution
 
 
-def _publish(group, prepared, execution, *, nonce="first", bindings=None):
+def _publish(prepared, execution, *, nonce="first", bindings=None, transform=None):
+    group = prepared.worktree_group
     exported = group.parent / "export"
     exported.mkdir(exist_ok=True)
     payload = {
@@ -84,6 +88,8 @@ def _publish(group, prepared, execution, *, nonce="first", bindings=None):
         "attemptNonce": nonce,
         "gates": _gate_catalog(prepared.lane, exported),
     }
+    if transform is not None:
+        transform(payload)
     (exported / "clean-quality-results.json").write_text(json.dumps(payload))
     clean_executor._publish_reports(
         exported,
@@ -96,14 +102,16 @@ def _publish(group, prepared, execution, *, nonce="first", bindings=None):
 
 
 def _record(prepared, publication, payload):
-    result = certification_records.record_published_generation(prepared, publication, payload)
+    result = certification_records.record_published_generation(
+        prepared, publication, payload
+    ).as_payload()
     assert result["refused"] == []
     return certification_evidence.read_gate_records(prepared.directory)
 
 
 def test_unchanged_certificate_reuses_original_generation_and_provenance(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
-    first, payload = _publish(group, prepared, execution)
+    first, payload = _publish(prepared, execution)
     records = _record(prepared, first, payload)
     store = prepared.certificate_store()
     original_bytes = {
@@ -113,14 +121,20 @@ def test_unchanged_certificate_reuses_original_generation_and_provenance(tmp_pat
         for row in records
     }
     later_provenance = prepared.provenance.model_copy(update={"createdAt": "2099-01-01T00:00:00Z"})
-    later = replace(prepared, provenance=later_provenance)
-    second, payload = _publish(group, later, execution, nonce="different-storage-attempt")
+    later_admission = prepared.lane.admission.model_copy(update={"provenance": later_provenance})
+    later = replace(
+        prepared,
+        frozen_run=freeze_certification_run(
+            prepared.frozen_run.repositoryProfile, replace(prepared.lane, admission=later_admission)
+        ),
+    )
+    second, payload = _publish(later, execution, nonce="different-storage-attempt")
     assert second.generation != first.generation
     repeated = _record(later, second, payload)
     assert [row["certificate"] for row in repeated] == [row["certificate"] for row in records]
     for row in repeated:
-        certificate = store.load_certificate(_digest(row, "certificate"))
-        result = store.load_result_manifest(_digest(row, "manifest"))
+        certificate = store.load(GateCertificate, _digest(row, "certificate"))
+        result = store.load(GateResultManifest, _digest(row, "manifest"))
         retained = parse_published_quality_manifest(row["publication"])
         assert retained.generation == first.generation
         assert certificate.provenance == prepared.provenance
@@ -135,10 +149,10 @@ def test_unchanged_certificate_reuses_original_generation_and_provenance(tmp_pat
 
 def test_selected_certificate_generation_survives_pruning_until_selection_releases_it(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
-    first, payload = _publish(group, prepared, execution)
+    first, payload = _publish(prepared, execution)
     _record(prepared, first, payload)
     for nonce in range(5):
-        _publish(group, prepared, execution, nonce=str(nonce))
+        _publish(prepared, execution, nonce=str(nonce))
     generations = group / "reports/.quality-report-generations"
     assert (generations / first.generation).is_dir()
     assert len(list(generations.iterdir())) <= 4
@@ -146,14 +160,14 @@ def test_selected_certificate_generation_survives_pruning_until_selection_releas
         group / "reports", store=prepared.certificate_store()
     ) == {first.generation}
     certification_records.journal_gate_records(group, [])
-    _publish(group, prepared, execution, nonce="released")
+    _publish(prepared, execution, nonce="released")
     assert not (generations / first.generation).exists()
 
 
 @pytest.mark.parametrize("fault", ["missing", "corrupt", "oversized", "symlink", "parent-link"])
 def test_actual_evidence_fault_refuses_certificate_issuance(tmp_path, fault):
     _code, group, prepared, execution = _arrange(tmp_path)
-    publication, payload = _publish(group, prepared, execution)
+    publication, payload = _publish(prepared, execution)
     reference = payload["gates"][0]["rails"][0]["evidence"][0]["reference"]
     evidence = group / "reports/.quality-report-generations" / publication.generation / reference
     if fault == "missing":
@@ -173,7 +187,9 @@ def test_actual_evidence_fault_refuses_certificate_issuance(tmp_path, fault):
         outside = tmp_path / "outside-directory"
         original.rename(outside)
         original.symlink_to(outside, target_is_directory=True)
-    result = certification_records.record_published_generation(prepared, publication, payload)
+    result = certification_records.record_published_generation(
+        prepared, publication, payload
+    ).as_payload()
     assert result["published"] == []
     assert _refusals(result)[0]["refusalCode"] == "certificate-evidence-unavailable"
     assert not list((prepared.directory / "objects/certificate").glob("sha256/*/*.json"))
@@ -181,24 +197,28 @@ def test_actual_evidence_fault_refuses_certificate_issuance(tmp_path, fault):
 
 @pytest.mark.parametrize("field", ["sha256", "size", "reference"])
 def test_payload_binding_must_match_accepted_inventory(tmp_path, field):
-    _code, group, prepared, execution = _arrange(tmp_path)
-    publication, payload = _publish(group, prepared, execution)
+    _code, _group, prepared, execution = _arrange(tmp_path)
+    publication, payload = _publish(prepared, execution)
     binding = payload["gates"][0]["rails"][0]["evidence"][0]
     binding[field] = {"sha256": "0" * 64, "size": 0, "reference": "../escape"}[field]
-    result = certification_records.record_published_generation(prepared, publication, payload)
+    result = certification_records.record_published_generation(
+        prepared, publication, payload
+    ).as_payload()
     assert result["published"] == []
     assert _refusals(result)[0]["refusalCode"].startswith("certificate-evidence-")
 
 
 def test_reuse_does_not_substitute_current_generation_for_missing_retained_generation(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
-    first, payload = _publish(group, prepared, execution)
+    first, payload = _publish(prepared, execution)
     records = _record(prepared, first, payload)
-    second, payload = _publish(group, prepared, execution, nonce="second")
+    second, payload = _publish(prepared, execution, nonce="second")
     reference = payload["gates"][0]["rails"][0]["evidence"][0]["reference"]
     original_file = group / "reports/.quality-report-generations" / first.generation / reference
     original_file.unlink()
-    result = certification_records.record_published_generation(prepared, second, payload)
+    result = certification_records.record_published_generation(
+        prepared, second, payload
+    ).as_payload()
     assert result["published"] == []
     assert _refusals(result)[0]["refusalCode"] == "certificate-evidence-unavailable"
     assert _publication(records[0])["generation"] != second.generation
@@ -206,7 +226,7 @@ def test_reuse_does_not_substitute_current_generation_for_missing_retained_gener
 
 def test_selected_publication_snapshot_cannot_be_rebound_to_another_generation(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
-    first, payload = _publish(group, prepared, execution)
+    first, payload = _publish(prepared, execution)
     records = list(_record(prepared, first, payload))
     _publication(records[0])["generation"] = "f" * 64
     with pytest.raises(CertificationContractError, match="certificate report evidence refused"):
@@ -294,15 +314,17 @@ def _damage_selected_snapshot(prepared, records):
 )
 def test_reuse_refuses_valid_foreign_authority_with_identical_artifact_bytes(tmp_path, field):
     _code, group, prepared, execution = _arrange(tmp_path)
-    original, payload = _publish(group, prepared, execution)
+    original, payload = _publish(prepared, execution)
     records = list(_record(prepared, original, payload))
-    current, payload = _publish(group, prepared, execution, nonce="current")
+    current, payload = _publish(prepared, execution, nonce="current")
     foreign = _foreign_publication(group, original, field)
-    result = prepared.certificate_store().load_result_manifest(_digest(records[0], "manifest"))
+    result = prepared.certificate_store().load(GateResultManifest, _digest(records[0], "manifest"))
     certification_evidence.verify_result_evidence(group / "reports", foreign, result.railResults)
     records[0]["publication"] = published_manifest_payload(foreign)
     original_journal = _damage_selected_snapshot(prepared, records)
-    refusal = certification_records.record_published_generation(prepared, current, payload)
+    refusal = certification_records.record_published_generation(
+        prepared, current, payload
+    ).as_payload()
     assert refusal["published"] == []
     assert _refusals(refusal)[0]["refusalCode"] == "certificate-evidence-binding-mismatch"
     assert (prepared.directory / "gates.json").read_bytes() == original_journal
@@ -313,7 +335,7 @@ def test_journal_publication_refuses_foreign_authority_without_replacing_valid_s
     tmp_path, field
 ):
     _code, group, prepared, execution = _arrange(tmp_path)
-    original, payload = _publish(group, prepared, execution)
+    original, payload = _publish(prepared, execution)
     records = list(_record(prepared, original, payload))
     records[0]["publication"] = published_manifest_payload(
         _foreign_publication(group, original, field)
@@ -329,7 +351,7 @@ def test_journal_publication_refuses_foreign_authority_without_replacing_valid_s
 @pytest.mark.parametrize("field", ["candidateTree", "profileDigest", "profileSelectionId"])
 def test_pruning_refuses_a_valid_foreign_selected_publication(tmp_path, field):
     _code, group, prepared, execution = _arrange(tmp_path)
-    original, payload = _publish(group, prepared, execution)
+    original, payload = _publish(prepared, execution)
     records = list(_record(prepared, original, payload))
     records[0]["publication"] = published_manifest_payload(
         _foreign_publication(group, original, field)
@@ -338,7 +360,7 @@ def test_pruning_refuses_a_valid_foreign_selected_publication(tmp_path, field):
     pointer = group / "reports/quality-report-set.json"
     original_pointer = pointer.read_bytes()
     with pytest.raises(CertificationContractError) as caught:
-        _publish(group, prepared, execution, nonce="must-not-publish")
+        _publish(prepared, execution, nonce="must-not-publish")
     assert caught.value.findings[0]["code"] == "certificate-evidence-binding-mismatch"
     assert pointer.read_bytes() == original_pointer
 
@@ -346,16 +368,16 @@ def test_pruning_refuses_a_valid_foreign_selected_publication(tmp_path, field):
 @pytest.mark.parametrize("field", ["profileDigest", "profilePlanDigest", "profileSelectionId"])
 def test_current_publication_must_match_the_actual_admitted_repository_plan(tmp_path, field):
     _code, group, prepared, execution = _arrange(tmp_path)
-    original, payload = _publish(group, prepared, execution)
+    original, payload = _publish(prepared, execution)
     foreign = _foreign_publication(group, original, field)
     with pytest.raises(RuntimeError, match="another admitted repository plan"):
-        certification_records.record_published_generation(prepared, foreign, payload)
+        certification_records.record_published_generation(prepared, foreign, payload).as_payload()
     assert certification_evidence.read_gate_records(prepared.directory) == ()
 
 
 def test_journal_capacity_refuses_without_overwriting_the_prior_selection(tmp_path, monkeypatch):
     _code, group, prepared, execution = _arrange(tmp_path)
-    publication, payload = _publish(group, prepared, execution)
+    publication, payload = _publish(prepared, execution)
     rows = list(_record(prepared, publication, payload))
     path = prepared.directory / "gates.json"
     original = path.read_bytes()
@@ -381,7 +403,7 @@ def test_unavailable_selected_journal_refuses_publication_without_releasing_gene
     tmp_path, monkeypatch, fault
 ):
     _code, group, prepared, execution = _arrange(tmp_path)
-    original, payload = _publish(group, prepared, execution)
+    original, payload = _publish(prepared, execution)
     _record(prepared, original, payload)
     path = prepared.directory / "gates.json"
     journal_bytes = path.read_bytes()
@@ -404,7 +426,7 @@ def test_unavailable_selected_journal_refuses_publication_without_releasing_gene
             patch.setattr(certification_evidence, "MAX_GATE_RECORD_BYTES", len(journal_bytes) - 1)
             code = "certificate-evidence-capacity"
         with pytest.raises(CertificationContractError) as caught:
-            _publish(group, prepared, execution, nonce="must-not-replace")
+            _publish(prepared, execution, nonce="must-not-replace")
         assert caught.value.findings[0]["code"] == code
     assert path.read_bytes() == journal_bytes
     assert pointer.read_bytes() == pointer_bytes
@@ -429,7 +451,7 @@ def test_unavailable_selected_journal_refuses_publication_without_releasing_gene
 )
 def test_invalid_selected_records_cannot_replace_a_live_journal(tmp_path, fault, code, detail):
     _code, group, prepared, execution = _arrange(tmp_path)
-    publication, payload = _publish(group, prepared, execution)
+    publication, payload = _publish(prepared, execution)
     rows = list(_record(prepared, publication, payload))
     path = prepared.directory / "gates.json"
     original = path.read_bytes()
@@ -459,7 +481,7 @@ def test_invalid_selected_records_cannot_replace_a_live_journal(tmp_path, fault,
 
 def test_selected_gate_cannot_claim_another_gates_certificate(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
-    publication, payload = _publish(group, prepared, execution)
+    publication, payload = _publish(prepared, execution)
     rows = list(_record(prepared, publication, payload))
     path = prepared.directory / "gates.json"
     original = path.read_bytes()
@@ -472,16 +494,18 @@ def test_selected_gate_cannot_claim_another_gates_certificate(tmp_path):
 
 
 def test_reuse_refuses_certificate_rebound_to_another_existing_result(tmp_path):
-    _code, group, prepared, execution = _arrange(tmp_path)
-    first, payload = _publish(group, prepared, execution)
+    _code, _group, prepared, execution = _arrange(tmp_path)
+    first, payload = _publish(prepared, execution)
     rows = list(_record(prepared, first, payload))
-    current, payload = _publish(group, prepared, execution, nonce="current")
+    current, payload = _publish(prepared, execution, nonce="current")
     assert rows[0]["manifest"] != rows[1]["manifest"]
-    foreign = prepared.certificate_store().load_result_manifest(_digest(rows[1], "manifest"))
+    foreign = prepared.certificate_store().load(GateResultManifest, _digest(rows[1], "manifest"))
     assert foreign.gate == rows[1]["gate"]
     rows[0]["manifest"] = rows[1]["manifest"]
     original = _damage_selected_snapshot(prepared, rows)
-    result = certification_records.record_published_generation(prepared, current, payload)
+    result = certification_records.record_published_generation(
+        prepared, current, payload
+    ).as_payload()
     assert result["published"] == []
     assert _refusals(result)[0]["refusalCode"] == "certificate-evidence-binding-mismatch"
     assert (prepared.directory / "gates.json").read_bytes() == original
@@ -525,7 +549,12 @@ def test_admission_reuse_preserves_original_bytes_and_provenance(tmp_path):
     original_bytes = path.read_bytes()
     changed = first.provenance.model_copy(update={"createdAt": "2099-01-01T00:00:00Z"})
     new_admission = first.lane.admission.model_copy(update={"provenance": changed})
-    later = replace(first, provenance=changed, lane=replace(first.lane, admission=new_admission))
+    later = replace(
+        first,
+        frozen_run=freeze_certification_run(
+            first.frozen_run.repositoryProfile, replace(first.lane, admission=new_admission)
+        ),
+    )
     reopened = certification_records._persist_admission(later)
     assert reopened.provenance == first.provenance
     assert reopened.lane.admission == first.lane.admission
@@ -536,7 +565,6 @@ def test_admission_reuse_preserves_original_bytes_and_provenance(tmp_path):
 def test_exact_manifest_snapshot_roundtrips_all_generation_authority(tmp_path, attestation):
     _code, group, prepared, execution = _arrange(tmp_path)
     publication, _payload = _publish(
-        group,
         prepared,
         execution,
         bindings=clean_executor.ReportBindings(
@@ -558,7 +586,7 @@ def test_exact_manifest_snapshot_roundtrips_all_generation_authority(tmp_path, a
 @pytest.mark.parametrize("fault", ["relative-name", "generation"])
 def test_unsafe_retained_locator_refuses_before_opening_any_path(tmp_path, monkeypatch, fault):
     _code, group, prepared, execution = _arrange(tmp_path)
-    publication, _payload = _publish(group, prepared, execution)
+    publication, _payload = _publish(prepared, execution)
     name = publication.result_decoder.artifactPath
     pointer = group / "reports/quality-report-set.json"
     original = pointer.read_bytes()
@@ -583,9 +611,11 @@ def test_unsafe_retained_locator_refuses_before_opening_any_path(tmp_path, monke
 )
 def test_missing_required_gate_four_artifact_preserves_only_the_green_prefix(tmp_path, relative):
     _code, group, prepared, execution = _arrange(tmp_path)
-    publication, payload = _publish(group, prepared, execution)
+    publication, payload = _publish(prepared, execution)
     (group / "reports/.quality-report-generations" / publication.generation / relative).unlink()
-    result = certification_records.record_published_generation(prepared, publication, payload)
+    result = certification_records.record_published_generation(
+        prepared, publication, payload
+    ).as_payload()
     published = result["published"]
     assert isinstance(published, list)
     assert [row["gate"] for row in published] == [1, 2, 3]
@@ -595,13 +625,184 @@ def test_missing_required_gate_four_artifact_preserves_only_the_green_prefix(tmp
 
 def test_missing_live_generation_refuses_before_creating_another_generation(tmp_path):
     _code, group, prepared, execution = _arrange(tmp_path)
-    first, payload = _publish(group, prepared, execution)
+    first, payload = _publish(prepared, execution)
     _record(prepared, first, payload)
     generations = group / "reports/.quality-report-generations"
     (generations / first.generation).rename(tmp_path / "retained-away")
     pointer = group / "reports/quality-report-set.json"
     original = pointer.read_bytes()
     with pytest.raises(CertificationContractError):
-        _publish(group, prepared, execution, nonce="must-not-publish")
+        _publish(prepared, execution, nonce="must-not-publish")
     assert pointer.read_bytes() == original
     assert list(generations.iterdir()) == []
+
+
+@pytest.mark.parametrize("disposition", ["red", "interrupted"])
+def test_complete_failed_catalog_retains_typed_manifest_and_physical_generation(
+    tmp_path, disposition
+):
+    _code, group, prepared, execution = _arrange(tmp_path)
+    failing_key = prepared.lane.certificationPlan.gates[0].waves[-1][0].key
+
+    def fail_gate(payload):
+        payload.update(status="failed", exitCode=130 if disposition == "interrupted" else 1)
+        payload["gates"] = payload["gates"][:1]
+        payload["gates"][0]["disposition"] = disposition
+        for rail in payload["gates"][0]["rails"]:
+            if rail["key"] == failing_key:
+                rail.update(
+                    status="fail",
+                    failureCode="execution-interrupted"
+                    if disposition == "interrupted"
+                    else "observed-failure",
+                )
+
+    publication, payload = _publish(prepared, execution, transform=fail_gate)
+    recorded = certification_records.record_published_generation(prepared, publication, payload)
+    assert recorded.as_payload()["refused"] == []
+    assert recorded.as_payload()["certificates"] == []
+    assert len(recorded.terminals) == 1
+    terminal = recorded.terminals[0]
+    assert terminal.result.disposition == "red"
+    assert terminal.certificate is terminal.certificateReference is None
+    assert terminal.publication == publication
+    assert prepared.certificate_store().load_reference(terminal.resultReference) == terminal.result
+    assert len(terminal.result.railResults) == len(prepared.lane.certificationPlan.gates[0].rails)
+    assert certification_evidence.protected_certificate_generations(
+        group / "reports", store=prepared.certificate_store()
+    ) == frozenset({publication.generation})
+    _publish(prepared, execution, nonce="later")
+    assert (group / "reports/.quality-report-generations" / publication.generation).is_dir()
+    certification_evidence.verify_result_evidence(
+        group / "reports", publication, terminal.result.railResults
+    )
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "missing",
+        "duplicate",
+        "foreign",
+        "unknown-status",
+        "junk",
+        "bad-evidence",
+        "contradictory-disposition",
+    ],
+)
+def test_invalid_failed_catalog_never_synthesizes_a_terminal_result(tmp_path, damage):
+    _code, _group, prepared, execution = _arrange(tmp_path)
+
+    def damage_catalog(payload):
+        payload["gates"] = payload["gates"][:1]
+        payload["gates"][0]["disposition"] = "red"
+        rails = payload["gates"][0]["rails"]
+        if damage == "missing":
+            rails.pop()
+        elif damage == "duplicate":
+            rails[-1] = rails[0]
+        elif damage == "foreign":
+            rails[0]["key"] = "foreign@v1"
+        elif damage == "unknown-status":
+            rails[0]["status"] = "interrupted"
+        elif damage == "junk":
+            rails[0] = "not a rail observation"
+        elif damage == "bad-evidence":
+            rails[0]["evidence"] = ["not bounded evidence"]
+
+    publication, payload = _publish(prepared, execution, transform=damage_catalog)
+    recorded = certification_records.record_published_generation(prepared, publication, payload)
+    assert recorded.terminals == ()
+    assert recorded.as_payload()["certificates"] == []
+    expected = {
+        "bad-evidence": "terminal-catalog-invalid",
+        "contradictory-disposition": "terminal-disposition-mismatch",
+    }.get(damage, "missing-run-evidence")
+    assert _refusals(recorded.as_payload())[0]["refusalCode"] == expected
+
+
+def test_supplied_frozen_run_reconstruction_ignores_mutable_profile_and_summary(
+    tmp_path, monkeypatch
+):
+    code, group, prepared, _execution = _arrange(tmp_path)
+    original = prepared.frozen_run
+    reference = prepared.frozen_reference
+    (prepared.directory / "admission.json").write_text("not selection authority")
+    (code / "mcp/certification-profile-v1.json").unlink()
+
+    def forbid_reload(*args, **kwargs):
+        raise AssertionError("recovery must use the supplied frozen run")
+
+    monkeypatch.setattr(certification_records, "load_repository_profile", forbid_reload)
+    restored = certification_records.prepared_from_frozen_run(group, original)
+    assert restored.frozen_run == original
+    assert restored.frozen_reference == reference
+    assert restored.provenance == original.provenance
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["none", "missing-selection", "started", "nonboolean", "changed-provenance", "missing-object"],
+)
+def test_reused_catalog_selects_original_typed_objects_without_reissuing(
+    tmp_path, monkeypatch, fault
+):
+    _code, _group, prepared, execution = _arrange(tmp_path)
+    original, payload = _publish(prepared, execution)
+    first = certification_records.record_published_generation(prepared, original, payload)
+    terminal = first.terminals[0]
+    assert terminal.certificate is not None
+    certificate = terminal.certificate
+    retained = RetainedGateExecution(certificate, terminal.result, original)
+
+    def reuse_first(payload):
+        payload["gates"] = [
+            {
+                "gate": 1,
+                "disposition": "reused",
+                "started": False,
+                "zeroStart": True,
+                "rails": [],
+                "certificateDigest": certificate.certificateDigest,
+                "resultManifestDigest": terminal.result.manifestDigest,
+                "originalPublication": published_manifest_payload(original),
+            }
+        ]
+
+    current, payload = _publish(prepared, execution, nonce="retry", transform=reuse_first)
+    selected = (retained,)
+    if fault == "missing-selection":
+        selected = ()
+    elif fault == "started":
+        payload["gates"][0]["started"] = True
+    elif fault == "nonboolean":
+        payload["gates"][0]["started"] = 0
+    elif fault == "changed-provenance":
+        changed = certificate.model_copy(
+            update={
+                "provenance": certificate.provenance.model_copy(
+                    update={"createdAt": "2099-01-01T00:00:00Z"}
+                )
+            }
+        )
+        selected = (replace(retained, certificate=changed),)
+    elif fault == "missing-object":
+        prepared.certificate_store().exact_path(
+            "certificate", certificate.certificateDigest
+        ).unlink()
+
+    def forbid_compile(*args, **kwargs):
+        raise AssertionError("retained objects must never be reissued")
+
+    monkeypatch.setattr(certification_records, "compile_gate_certificate", forbid_compile)
+    monkeypatch.setattr(certification_records, "compile_gate_result_manifest", forbid_compile)
+    recorded = certification_records.record_published_generation(
+        prepared, current, payload, retained=selected
+    )
+    if fault == "none":
+        assert recorded.terminals == (terminal,)
+        assert recorded.as_payload()["refused"] == []
+        assert recorded.terminals[0].publication != current
+    else:
+        assert recorded.terminals == ()
+        assert recorded.as_payload()["refused"]

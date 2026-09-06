@@ -6,11 +6,12 @@ import tempfile
 import unittest
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from unittest import mock
 
-from _quality_evidence_fixture import publish_passing_quality_gate
 from agents_remember.application.lifecycle import lifecycle_operation_worker
 from agents_remember.models.lifecycles.operation import IntegrateOperationInput
 from agents_remember.tasks import read_task_doc, write_task_doc
+from agents_remember.worktrees.integration.certification import IntegrationCertificationOwner
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     LifecycleOperationStore,
     operation_record_path,
@@ -26,6 +27,8 @@ from closeout_input_test_support import (
     publish_closeout_finalization,
     start_closeout_operation,
 )
+from repository_profile_test_support import NODE_FIXTURE
+from test_closeout_certification_entrypoint import _executor
 from test_closeout_queue import MASTER_A, QueueFixture
 from test_worktree_support import git
 
@@ -57,18 +60,20 @@ def _full_gate(contract: WorktreeContract) -> Callable[..., dict[str, object]]:
         invocation: str = "master-integration",
         attestation: Mapping[str, str] | None = None,
     ) -> dict[str, object]:
-        published = publish_passing_quality_gate(
-            target,
-            diff_base=diff_base,
-            plan=plan,
-            invocation=invocation,
-            attestation=attestation,
-        )
-        return {
-            **FULL_GATE,
-            **published,
-            "diffBase": diff_base or contract.code_base_commit,
-        }
+        assert target.repository_id == contract.repo_name
+        assert plan is not None and plan.selected is not None
+        with mock.patch.object(
+            code_quality_gate,
+            "run_clean_quality",
+            side_effect=_executor(NODE_FIXTURE, []),
+        ):
+            return code_quality_gate.run_strict_code_quality_gate(
+                target,
+                diff_base=diff_base,
+                plan=plan,
+                invocation=invocation,
+                attestation=attestation,
+            )
 
     return run
 
@@ -147,4 +152,5 @@ class OrganizationalCompletionFixture(unittest.TestCase):
             quality_certification=record.qualityCertification,
             integration_publication=record.integrationPublication,
             operation_progress=runtime.progress,
+            integration_certification_owner=IntegrationCertificationOwner(record, runtime.store),
         )

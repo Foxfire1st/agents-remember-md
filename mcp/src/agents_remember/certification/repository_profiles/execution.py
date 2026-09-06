@@ -21,6 +21,9 @@ from agents_remember.certification.repository_profiles.planning import (
     compile_repository_profile_plan,
     resolve_repository_profile_selection,
 )
+from agents_remember.certification.repository_profiles.source_selection.models import (
+    CandidateSourceSelection,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,7 @@ def admit_repository_profile_execution(
     purpose: ProfilePurpose,
     mode: ProfileMode,
     candidate_identity: CandidateIdentity,
+    source_selection: CandidateSourceSelection | None = None,
 ) -> AdmittedRepositoryProfileExecution:
     """Admit one exact candidate/profile execution without naming repository commands."""
 
@@ -53,6 +57,7 @@ def admit_repository_profile_execution(
         admitted.canonical,
         selection_id=selection.selectionId,
         candidate_identity=candidate_identity,
+        source_selection=source_selection,
     )
     executors = {
         definition.adapterId: definition

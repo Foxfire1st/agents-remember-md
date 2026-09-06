@@ -66,6 +66,7 @@ from agents_remember.worktrees.integration.legacy.legacy_operation_schema import
     LegacySchemaOneRecord,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_identity import (
+    operation_key,
     operation_state_fingerprint,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_projection import (
@@ -73,9 +74,6 @@ from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_project
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     lifecycle_operation_record_access,
-)
-from agents_remember.worktrees.integration.lifecycle.lifecycle_operations import (
-    operation_key,
 )
 from agents_remember.worktrees.integration.lifecycle.lifecycle_public_evidence import (
     public_failure_evidence,
