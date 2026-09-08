@@ -88,6 +88,7 @@ from agents_remember.worktrees.modules.quality.closeout_memory import run_memory
 from agents_remember.worktrees.modules.quality.gate import (
     QualityGatePlan,
     QualityGateTarget,
+    closeout_profile_purpose,
     code_quality_gate_preview,
     requires_strict_code_quality,
 )
@@ -151,6 +152,7 @@ def _quality_gate_target(contract, args: WorktreeArgs) -> QualityGateTarget:
         worktree_group=contract.worktree_group,
         repository_id=contract.repo_name,
         profile_reference=args.certification_profile,
+        purpose=closeout_profile_purpose(contract),
     )
 
 

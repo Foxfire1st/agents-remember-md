@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from agents_remember.kernel.onboarding_doc import active_claim_lines
 from agents_remember.memory_quality.style.citations import cells, model
 from agents_remember.memory_quality.style.document_shape import inline_scan
 
@@ -89,6 +90,7 @@ class ProseParts:
 
 def blocks(lines: list[str], occupied: set[int] | None = None) -> list[Block]:
     """Prose paragraphs: unfenced, outside any table, split at blank lines."""
+    lines = active_claim_lines(lines)
     occupied = cells.table_lines(lines) if occupied is None else occupied
     found: list[Block] = []
     pieces: list[str] = []

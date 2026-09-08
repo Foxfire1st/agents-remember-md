@@ -70,7 +70,11 @@ def compile_gate_certificate(
             "Gate 5 requires exact memory inputs and Gates 1-4 forbid them",
         )
     consumed = _bind_consumed_artifacts(gate_plan, result_manifest, predecessors)
-    if gate_plan.gate == 3 and (not consumed or any(item.producerGate != 2 for item in consumed)):
+    if (
+        gate_plan.gate == 3
+        and any(rail.applicability.status == "applicable" for rail in gate_plan.rails)
+        and (not consumed or any(item.producerGate != 2 for item in consumed))
+    ):
         _raise(
             "gate certificate publication refused",
             "gate-three-suite-artifacts-unbound",
@@ -305,6 +309,7 @@ def _bind_consumed_artifacts(
     required = {
         artifact
         for rail in gate_plan.rails
+        if rail.applicability.status == "applicable"
         for artifact in rail.requiredArtifacts
         if artifact not in produced_here
     }

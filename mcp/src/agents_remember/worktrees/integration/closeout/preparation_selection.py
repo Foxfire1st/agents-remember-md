@@ -23,6 +23,9 @@ from agents_remember.worktrees.integration.closeout.certification.selection impo
     load_typed,
     require_selected_certification,
 )
+from agents_remember.worktrees.integration.lifecycle.certification_observation import (
+    observe_certification_publication,
+)
 from agents_remember.worktrees.integration.lifecycle.lifecycle_operation_store import (
     LifecycleOperationStore,
 )
@@ -236,6 +239,7 @@ def _select(
     observed: LifecycleOperationRecord,
     state: OperationPreparationState,
 ) -> LifecycleOperationRecord:
+    observed = observe_certification_publication(store, observed)
     record, matched = store.update_if_current(
         observed, lambda current: current.model_copy(update={"preparation": state})
     )

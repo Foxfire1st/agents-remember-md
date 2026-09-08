@@ -361,6 +361,7 @@ def fixture_profile(fixture: FixtureRepository = NODE_FIXTURE) -> RepositoryCert
             ("local-targeted", "local-precommit", "targeted"),
             ("closeout-targeted", "closeout", "targeted"),
             ("closeout-full", "closeout", "full"),
+            ("atomic-leaf-closeout-targeted", "atomic-leaf-closeout", "targeted"),
         )
     )
     profile = RepositoryCertificationProfile(
@@ -525,6 +526,13 @@ def _selection(selection_id, purpose, mode, rail_ids) -> RepositoryProfileSelect
             railIds=tuple(identity for identity in rail_ids if _gate(identity) == gate),
             selectionIdentity=f"{selection_id}:gate-{gate}",
             population=f"declared Gate {gate} population",
+        )
+        if purpose != "atomic-leaf-closeout" or gate == 1
+        else RepositoryGateSelection(
+            gate=gate,
+            status="not-applicable",
+            selectionIdentity=f"{selection_id}:gate-{gate}",
+            reason="Atomic leaf suites and test-derived evidence are deferred to master integration.",
         )
         for gate in (1, 2, 3, 4)
     )

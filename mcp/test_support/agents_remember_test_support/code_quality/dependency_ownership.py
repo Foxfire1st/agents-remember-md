@@ -32,7 +32,7 @@ GLOBAL_TEST_INPUTS = frozenset(
     }
 )
 CATALOG_PATH = Path("mcp/tests/evidence-lifecycle.toml")
-OWNERSHIP_AUTHORITY_VERSION = "2.1.0"
+OWNERSHIP_AUTHORITY_VERSION = "2.1.1"
 IRRELEVANT_ROOTS = frozenset({"dashboard", "docs", "notes"})
 IRRELEVANT_SUFFIXES = frozenset({".md", ".rst", ".txt"})
 

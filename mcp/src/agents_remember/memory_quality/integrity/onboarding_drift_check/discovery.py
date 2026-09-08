@@ -15,8 +15,13 @@ from agents_remember.memory_quality.integrity.onboarding_drift_check.models impo
 
 
 def parse_table_metadata(path: Path) -> dict[str, str]:
+    return parse_table_metadata_text(path.read_text(encoding="utf-8"))
+
+
+def parse_table_metadata_text(text: str) -> dict[str, str]:
+    """Canonical table metadata parsing for filesystem and exact Git tree readers."""
     metadata: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line.startswith("|"):
             continue

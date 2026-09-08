@@ -53,6 +53,7 @@ from agents_remember.certification.repository_profiles.authority import (
     load_repository_profile,
 )
 from agents_remember.certification.repository_profiles.models import (
+    ProfilePurpose,
     RepositoryProfilePlan,
 )
 from agents_remember.certification.repository_profiles.planning import (
@@ -83,6 +84,7 @@ from agents_remember.worktrees.modules.quality.certification_terminal import (
     RecordedGateTerminal,
     TerminalEvidenceMissing,
     catalog_gates,
+    not_applicable_terminal_results,
     refused_record,
     terminal_results,
 )
@@ -113,6 +115,7 @@ class CertificationRunTarget:
     code_worktree: Path
     profile_reference: object
     worktree_group: Path
+    purpose: ProfilePurpose = "closeout"
 
 
 @dataclass(frozen=True)
@@ -202,7 +205,9 @@ def prepare_certification_records(
         target.code_worktree,
         target.profile_reference,
     )
-    repository_plan = _repository_plan(admitted, mode, candidate_tree, diff_base)
+    repository_plan = _repository_plan(
+        admitted, mode, candidate_tree, diff_base, purpose=target.purpose
+    )
     provenance = _provenance(f"gate:{mode}")
     lane = compile_certification_lane(
         admitted.canonical,
@@ -262,9 +267,7 @@ def record_published_generation(
                 record_retained(prepared, gate, entry, selected.pop(gate, None), run)
             )
             continue
-        gate_records.append(
-            _record_gate(prepared, gate, entry.get("disposition"), entry.get("rails"), run)
-        )
+        gate_records.append(_record_gate(prepared, gate, entry, run))
     if selected:
         raise CertificationContractError(
             "retained gates were not reported",
@@ -334,18 +337,33 @@ def journal_gate_records(worktree_group: Path, records: Sequence[dict[str, objec
 def _record_gate(
     prepared: PreparedCertificationRun,
     gate: int,
-    disposition: object,
-    rail_outcomes: object,
+    entry: Mapping[str, object],
     run: GateRecordPublication,
 ) -> dict[str, object]:
-    if not isinstance(disposition, str) or disposition not in {"green", "red", "interrupted"}:
+    disposition = entry.get("disposition")
+    if not isinstance(disposition, str) or disposition not in {
+        "green",
+        "red",
+        "interrupted",
+        "not-applicable",
+    }:
         return refused_record(gate, "unsupported-terminal-disposition", disposition=disposition)
     lane = prepared.lane
     gate_plan = next((item for item in lane.certificationPlan.gates if item.gate == gate), None)
     if gate_plan is None:
         return refused_record(gate, "unplanned-gate")
     try:
-        results = terminal_results(gate_plan, rail_outcomes)
+        if disposition == "not-applicable":
+            repository_gate = next(
+                (item for item in lane.repositoryPlan.gates if item.gate == gate), None
+            )
+            if repository_gate is None:
+                raise TerminalEvidenceMissing("non-applicable terminal lacks its repository gate")
+            results = not_applicable_terminal_results(
+                gate_plan, repository_gate, entry, run.publication, prepared.directory.parent
+            )
+        else:
+            results = terminal_results(gate_plan, entry.get("rails"))
         return _publish_gate_result(prepared, gate_plan, results, run, disposition=disposition)
     except TerminalEvidenceMissing as error:
         return refused_record(
@@ -471,10 +489,12 @@ def _repository_plan(
     mode: str,
     candidate_tree: str,
     diff_base: str,
+    *,
+    purpose: ProfilePurpose,
 ) -> RepositoryProfilePlan:
     selection = resolve_repository_profile_selection(
         admitted.canonical,
-        purpose="closeout",
+        purpose=purpose,
         mode=mode,  # type: ignore[arg-type]
     )
     candidate = CandidateIdentity(kind="git-tree", value=candidate_tree)

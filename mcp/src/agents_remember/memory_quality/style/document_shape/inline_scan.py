@@ -12,6 +12,25 @@ contract.
 
 from __future__ import annotations
 
+from agents_remember.kernel.onboarding_doc import (
+    fence_delimiter,
+    unfenced_lines,
+)
+
+__all__ = [
+    "BACKSLASH",
+    "BACKTICK",
+    "PIPE",
+    "backtick_runs",
+    "cell_boundaries",
+    "cell_spans",
+    "code_span_ranges",
+    "enclosing_span_end",
+    "fence_delimiter",
+    "split_row",
+    "unfenced_lines",
+]
+
 BACKTICK = "`"
 BACKSLASH = "\\"
 PIPE = "|"
@@ -119,46 +138,3 @@ def cell_spans(line: str) -> list[tuple[int, int]]:
 def split_row(line: str) -> list[str]:
     """The cells of a table row, stripped."""
     return [line[start:end].strip() for start, end in cell_spans(line)]
-
-
-def fence_delimiter(line: str) -> tuple[str, int] | None:
-    """``(character, length)`` if this line opens or closes a fenced code block.
-
-    A fence is three or more backticks or tildes at an indent of at most three spaces.
-    Both checks in this package skip fenced regions: a fence is where a document quotes
-    somebody else's text, so a diff hunk or a broken table shown inside one is the
-    document working correctly.
-    """
-    stripped = line.lstrip(" ")
-    if len(line) - len(stripped) > 3:
-        return None
-    for character in (BACKTICK, "~"):
-        if not stripped.startswith(character * 3):
-            continue
-        length = len(stripped) - len(stripped.lstrip(character))
-        return character, length
-    return None
-
-
-def unfenced_lines(lines: list[str]) -> list[tuple[int, str]]:
-    """``(zero-based index, line)`` for every line outside a fenced code block.
-
-    The opening and closing fence lines are themselves excluded. A closing fence must use
-    the same character and be at least as long as the opener, which is what keeps a
-    ````` ````markdown ````` block containing a ```` ``` ```` from ending three lines early --
-    ``notes/installer-design`` holds exactly that nesting.
-    """
-    kept: list[tuple[int, str]] = []
-    open_fence: tuple[str, int] | None = None
-    for index, line in enumerate(lines):
-        delimiter = fence_delimiter(line)
-        if open_fence is None:
-            if delimiter is not None:
-                open_fence = delimiter
-                continue
-            kept.append((index, line))
-            continue
-        character, length = open_fence
-        if delimiter is not None and delimiter[0] == character and delimiter[1] >= length:
-            open_fence = None
-    return kept

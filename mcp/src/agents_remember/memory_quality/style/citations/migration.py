@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agents_remember.kernel.onboarding_doc import active_claim_lines
 from agents_remember.memory_quality.integrity.onboarding_drift_check.discovery import (
     parse_table_metadata,
     rel,
@@ -314,6 +315,7 @@ def _bare_sites(line: str, taken: list[tuple[int, int, str]]) -> list[tuple[int,
 
 def plan_prose(subject: Subject, lines: list[str], occupied: set[int], run: Pass) -> list[Draft]:
     """Every superseded prose citation in one document that sits on a single line."""
+    lines = active_claim_lines(lines)
     candidates = [
         (index, line)
         for index, line in inline_scan.unfenced_lines(lines)

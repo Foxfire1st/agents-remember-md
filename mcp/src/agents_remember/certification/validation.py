@@ -256,7 +256,11 @@ def _validate_rail(
     _validate_applicability(rail, index, path, findings)
     _validate_dependencies(rail, index, path, findings)
     _validate_runtime_inputs(rail, path, findings)
-    if rail.gate == 2 and not rail.outputArtifacts:
+    if (
+        rail.gate == 2
+        and any(item.status == "applicable" for item in rail.applicability)
+        and not rail.outputArtifacts
+    ):
         findings.append(
             _finding(
                 "suite-artifact-missing",
@@ -459,8 +463,11 @@ def _validate_rail_artifacts(
     findings: list[RegistryValidationFinding],
 ) -> None:
     path = index.rail_path(rail)
+    requires_suite_artifact = rail.gate == 3 and any(
+        item.status == "applicable" for item in rail.applicability
+    )
     if not rail.requiredArtifacts:
-        if rail.gate == 3:
+        if requires_suite_artifact:
             findings.append(
                 _finding(
                     "post-test-artifact-missing",
@@ -500,7 +507,7 @@ def _validate_rail_artifacts(
                 )
                 or gate_two_input
             )
-    if rail.gate == 3 and not gate_two_input:
+    if requires_suite_artifact and not gate_two_input:
         findings.append(
             _finding(
                 "post-test-artifact-missing",

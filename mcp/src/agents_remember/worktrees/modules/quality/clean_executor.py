@@ -26,6 +26,7 @@ from agents_remember.certification.repository_profiles.execution import (
 from agents_remember.certification.repository_profiles.models import (
     JsonExitStatusDecoderDefinition,
     ProfileMode,
+    ProfilePurpose,
     PublishedArtifactDefinition,
 )
 from agents_remember.errors import CertificationExecutorPrerequisiteError
@@ -106,6 +107,7 @@ class CleanQualityRequest:
     execution: CodeCertificationExecution | None = None
     protected_generations: Callable[[], frozenset[str]] | None = None
     authorize_start: Callable[[], None] | None = None
+    purpose: ProfilePurpose = "closeout"
 
 
 @dataclass(frozen=True)

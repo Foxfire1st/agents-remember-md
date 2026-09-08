@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from agents_remember.kernel.onboarding_doc import active_claim_lines
 from agents_remember.memory_quality.integrity.onboarding_drift_check.discovery import rel
 from agents_remember.memory_quality.style.citations import (
     cells,
@@ -133,6 +134,7 @@ def prose_sites(lines: list[str]) -> tuple[list[tuple[model.Claim, Site]], int]:
     the line breaks removed, and there is no way back from an offset in a joined block to
     the two lines it straddles without re-deriving the join.
     """
+    lines = active_claim_lines(lines)
     occupied = cells.table_lines(lines)
     found: list[tuple[model.Claim, Site]] = []
     wrapped = 0

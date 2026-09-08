@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from agents_remember.certification.certificate_models import GateCertificate
 from agents_remember.certification.models import (
@@ -16,11 +18,15 @@ from agents_remember.certification.models import (
     RailStatus,
     RailTerminalObservation,
 )
+from agents_remember.certification.repository_profiles.models import RepositoryGatePlan
 from agents_remember.certification.results import build_rail_result
 from agents_remember.errors import CertificationContractError
 from agents_remember.models.certification.base import RailIdentity
 from agents_remember.models.certification.references import CertificateObjectReference
 from agents_remember.worktrees.modules.quality.published_manifest import PublishedQualityManifest
+from agents_remember.worktrees.modules.quality.report_publication_paths import (
+    published_report_path_from_manifest,
+)
 
 
 @dataclass(frozen=True)
@@ -107,6 +113,60 @@ def catalog_gates(payload: Mapping[str, object]) -> tuple[dict[str, object], ...
         seen.add(gate)
         gates.append(entry)
     return tuple(gates)
+
+
+def not_applicable_terminal_results(
+    gate_plan: GatePlan,
+    repository_gate: RepositoryGatePlan,
+    entry: Mapping[str, object],
+    publication: PublishedQualityManifest,
+    reports: Path,
+) -> tuple[RailResult, ...]:
+    """Bind explicit repository non-execution to its original verified decoder bytes."""
+    if (
+        repository_gate.gate != gate_plan.gate
+        or repository_gate.applicability != "not-applicable"
+        or repository_gate.rails
+        or entry.get("gate") != gate_plan.gate
+        or entry.get("disposition") != "not-applicable"
+        or entry.get("applicability") != "not-applicable"
+        or entry.get("started") is not False
+        or entry.get("rails") != []
+        or not gate_plan.rails
+        or any(rail.applicability.status != "not-applicable" for rail in gate_plan.rails)
+        or any(rail.requiredArtifacts or rail.outputArtifacts for rail in gate_plan.rails)
+    ):
+        raise TerminalEvidenceMissing("repository non-applicability differs from its frozen gate")
+    reference = publication.result_decoder.artifactPath
+    try:
+        path = published_report_path_from_manifest(reports, publication, reference)
+        payload = json.loads(path.read_bytes())
+        if not isinstance(payload, dict):
+            raise ValueError("decoder payload is not an object")
+        matches = [item for item in catalog_gates(payload) if item["gate"] == gate_plan.gate]
+        if matches != [entry]:
+            raise ValueError("non-applicable terminal differs from the verified decoder catalog")
+    except (OSError, RuntimeError, ValueError) as error:
+        raise TerminalEvidenceMissing(str(error)) from error
+    source = publication.require_file(reference)
+    evidence = RailEvidenceReference(
+        evidenceId="repository-gate-applicability",
+        reference=reference,
+        sha256=source.sha256,
+        size=source.size,
+    )
+    return tuple(
+        build_rail_result(
+            gate_plan,
+            RailTerminalObservation(
+                rail=rail.identity,
+                status="not-applicable",
+                code="repository-gate-not-applicable",
+                evidence=(evidence,),
+            ),
+        )
+        for rail in gate_plan.rails
+    )
 
 
 def terminal_results(

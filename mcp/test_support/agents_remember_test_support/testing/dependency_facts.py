@@ -361,10 +361,12 @@ class RepositoryDependencyFacts:
         return frozenset(tests)
 
     def _direct_literal_referrers(self, path: Path) -> frozenset[Path]:
+        module = self.modules.get(path) or module_for_path(path, self.import_roots)
         return frozenset(
             candidate
             for candidate in self.python_paths
-            if _source_references_path(
+            if (module is not None and module in self.string_literals.get(candidate, frozenset()))
+            or _source_references_path(
                 self.string_literals.get(candidate, frozenset()),
                 candidate in self.directory_readers,
                 candidate in self.file_readers,

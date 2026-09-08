@@ -16,10 +16,8 @@ from typing import Any
 
 from agents_remember.kernel.atomic_write import atomic_write_text
 from agents_remember.kernel.git_command import run_git
-from agents_remember.memory_quality.integrity.onboarding_drift_check.models import (
-    ACTIONABLE_CLASSIFICATIONS,
-)
 from agents_remember.models.lifecycles.curator_coherence import (
+    CuratorSourceCandidate,
     memory_quality_attestation_dependencies,
 )
 from agents_remember.models.lifecycles.memory_candidate import MemoryCandidatePairIdentity
@@ -44,6 +42,7 @@ class CuratorChecklist:
     commit_owned_findings: list[dict[str, Any]]
     missing_onboarding: dict[str, Any]
     stale_route_indexes: list[str]
+    source_candidates: tuple[CuratorSourceCandidate, ...]
     drift_rows: list[dict[str, Any]]
     report_only_findings: list[dict[str, Any]]
 
@@ -98,18 +97,14 @@ def write_curator_checklist(checklist: CuratorChecklist) -> dict[str, Any]:
     repair = _sorted_findings(checklist.repair_findings)
     commit_owned = _sorted_findings(checklist.commit_owned_findings)
     report_only = _sorted_findings(checklist.report_only_findings)
-    source_candidates = sorted(
-        (
-            dict(row)
-            for row in checklist.drift_rows
-            if str(row.get("classification", "")) in ACTIONABLE_CLASSIFICATIONS
-        ),
-        key=lambda row: (
-            str(row.get("onboarding_file", "")),
-            str(row.get("source_file", "")),
-            str(row.get("classification", "")),
-        ),
-    )
+    source_candidates = [
+        {
+            "source_file": row.sourceFile,
+            "onboarding_file": row.onboardingFile,
+            "classification": row.classification,
+        }
+        for row in checklist.source_candidates
+    ]
     actionable_count = len(repair) + len(missing) + len(stale)
     status = "ready-for-closeout" if actionable_count == 0 else "action-required"
     sections = _ChecklistSections(
@@ -235,6 +230,9 @@ def _render(checklist: CuratorChecklist, sections: _ChecklistSections) -> str:
     _append_missing(lines, sections.missing)
     _append_paths(lines, "Stale route indexes", sections.stale)
     _append_drift(lines, sections.source_candidates)
+    _append_drift(
+        lines, checklist.drift_rows, heading="Full drift diagnostics (not candidate selection)"
+    )
     _append_findings(lines, "Closeout-owned real-commit provenance", sections.commit_owned)
     _append_findings(lines, "Noteworthy report-only findings", sections.report_only)
     lines.extend(
@@ -303,16 +301,21 @@ def _append_paths(lines: list[str], heading: str, paths: list[str]) -> None:
     lines.extend([*(f"- `{_cell(path)}`" for path in paths), ""] if paths else ["_None._", ""])
 
 
-def _append_drift(lines: list[str], rows: list[dict[str, Any]]) -> None:
-    lines.extend(["## Source-change reconciliation candidates", ""])
+def _append_drift(
+    lines: list[str],
+    rows: list[dict[str, Any]],
+    *,
+    heading: str = "Source-change reconciliation candidates",
+) -> None:
+    lines.extend([f"## {heading}", ""])
     if not rows:
         lines.extend(["_None._", ""])
         return
     lines.extend(
         [
             (
-                "These rows locate onboarding whose source changed or whose verification state "
-                "needs review. They do not count toward `curatorActionableCount` because a dirty "
+                "The governed candidate set is derived from exact structural census. Drift diagnostics "
+                "remain context and do not expand that set. Rows do not count toward `curatorActionableCount`; a dirty "
                 "worktree cannot truthfully receive its final commit stamp."
             ),
             "",

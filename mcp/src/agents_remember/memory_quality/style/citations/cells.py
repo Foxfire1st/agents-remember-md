@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agents_remember.kernel.onboarding_doc import active_claim_lines
 from agents_remember.memory_quality.style.citations import model
 from agents_remember.memory_quality.style.document_shape import inline_scan, tables
 
@@ -50,7 +51,7 @@ def parse_row(line: int, anchor_cell: str, source_cell: str) -> model.Claim:
 
 def scan_tables(lines: list[str]) -> list[tuple[tables.Row, list[tables.Row]]]:
     """Parse every GFM table once for reuse by citation checks."""
-    return tables.tables(inline_scan.unfenced_lines(lines))
+    return tables.tables(inline_scan.unfenced_lines(active_claim_lines(lines)))
 
 
 def table_lines(

@@ -20,6 +20,7 @@ from agents_remember.certification.repository_profiles import (
 )
 from agents_remember.certification.repository_profiles.models import (
     ProfileMode,
+    ProfilePurpose,
     RepositoryProfileSelection,
 )
 from agents_remember.kernel.atomic_write import atomic_write_text
@@ -30,6 +31,7 @@ from agents_remember.models.test_evidence import (
     evidence_payload,
     require_certifying_evidence,
 )
+from agents_remember.worktrees.integration.integration_branch_authority import atomic_leaf_parent
 from agents_remember.worktrees.modules.git import require_git
 from agents_remember.worktrees.modules.quality import certification_records
 from agents_remember.worktrees.modules.quality.certification_run import (
@@ -49,6 +51,7 @@ from agents_remember.worktrees.modules.quality.clean_executor import (
 from agents_remember.worktrees.modules.quality.published_manifest import (
     PublishedQualityManifest,
 )
+from agents_remember.worktrees.worktree_contract import WorktreeContract
 
 FAILURE_OUTPUT_LINES = 40
 REPORT_DIRECTORY_NAME = "reports"
@@ -77,6 +80,7 @@ class QualityGateTarget:
     worktree_group: Path
     repository_id: str
     profile_reference: Path | None
+    purpose: ProfilePurpose = "closeout"
 
 
 @dataclass(frozen=True)
@@ -297,6 +301,7 @@ def run_strict_code_quality_gate(
             worktree_group=target.worktree_group,
             repository_id=target.repository_id,
             profile_reference=target.profile_reference,
+            purpose=target.purpose,
             mode=plan.mode,
             diff_base=diff_base,
             memory_cap_bytes=plan.memory_cap_bytes,
@@ -469,6 +474,7 @@ def _freeze_certification_records(
             code_worktree=target.code_worktree,
             profile_reference=target.profile_reference,
             worktree_group=target.worktree_group,
+            purpose=target.purpose,
         ),
         mode=plan.mode,
         candidate_tree=candidate_tree,
@@ -545,6 +551,12 @@ def _gate_command_parts(
     )
 
 
+def closeout_profile_purpose(contract: WorktreeContract) -> ProfilePurpose:
+    """Only a canonically bound atomic leaf may defer suites to its master."""
+    parent = atomic_leaf_parent(contract, operation="closeout-profile-selection")
+    return "atomic-leaf-closeout" if parent is not None else "closeout"
+
+
 def _admitted_selection(
     target: QualityGateTarget,
     mode: ProfileMode,
@@ -556,7 +568,7 @@ def _admitted_selection(
     )
     selection = resolve_repository_profile_selection(
         admitted.canonical,
-        purpose="closeout",
+        purpose=target.purpose,
         mode=mode,
     )
     return admitted, selection
@@ -576,7 +588,7 @@ def _profile_report_command(
     else:
         profile = frozen_run.repositoryProfile
         selection = resolve_repository_profile_selection(
-            profile, purpose="closeout", mode=plan.mode
+            profile, purpose=target.purpose, mode=plan.mode
         )
         if selection.selectionId != frozen_run.repositoryPlan.selectionId:
             raise RuntimeError("quality mode differs from the selected frozen profile plan")

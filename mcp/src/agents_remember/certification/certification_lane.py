@@ -32,19 +32,27 @@ from agents_remember.certification.certificate_models import (
     CertificationAdmissionManifest,
     CreationProvenance,
 )
+from agents_remember.certification.digests import content_digest
 from agents_remember.certification.models import (
     CandidateIdentity,
     CanonicalRailRegistry,
     CertificationContractFinding,
     CertificationPlan,
     CompiledRail,
+    RailAdapterDefinition,
+    RailApplicability,
+    RailClass,
     RailDefinition,
+    RailEvidenceContract,
+    RailIdentity,
     RailRegistry,
+    RailRuntimeInputs,
     RegistryProfile,
 )
 from agents_remember.certification.planning import compile_certification_plan
 from agents_remember.certification.repository_profiles.models import (
     CanonicalRepositoryCertificationProfile,
+    RepositoryGatePlan,
     RepositoryProfilePlan,
 )
 from agents_remember.errors import CertificationContractError
@@ -86,14 +94,13 @@ def compile_certification_lane(
 ) -> CertificationLane:
     """Admit one exact executable run into the R21 certificate vocabulary.
 
-    The R22 plan must have admitted the exact repository profile and every
-    repository gate must be applicable:  a not-applicable repository gate cannot
-    contribute an R11 gate plan, so no certifying R21 admission exists for it.
+    The R22 plan must have admitted the exact repository profile. Applicable
+    gates preserve their rail contracts; explicitly not-applicable gates contribute
+    a bounded applicability record, with no execution or suite-artifact claim.
     memory_rails must name the complete Gate-5 memory-domain rail population
     the terminal Gate-5 phase executes (at least one applicable rail), so the
     derived R11 registry yields the required five-gate certification plan.
     """
-    _require_applicable_repository_gates(repository_plan)
     _require_memory_rails(memory_rails)
     registry = _compile_registry_contribution(
         profile,
@@ -164,10 +171,13 @@ def _compile_registry_contribution(
     if registry_id is None:
         registry_id = f"{repository_id}-certification-rails"
     rails = tuple(
-        _project_repository_rail(rail)
+        rail
         for gate_plan in repository_plan.gates
-        if gate_plan.applicability == "applicable"
-        for rail in gate_plan.rails
+        for rail in (
+            tuple(_project_repository_rail(item) for item in gate_plan.rails)
+            if gate_plan.applicability == "applicable"
+            else (_project_not_applicable_gate(gate_plan),)
+        )
     )
     registry = RailRegistry(
         registryId=registry_id,
@@ -212,16 +222,51 @@ def _project_repository_rail(rail: CompiledRail) -> RailDefinition:
     )
 
 
-def _require_applicable_repository_gates(plan: RepositoryProfilePlan) -> None:
-    not_applicable = tuple(gate.gate for gate in plan.gates if gate.applicability != "applicable")
-    if not_applicable:
-        _refuse(
-            "certification lane admission refused",
-            "repository-gate-not-applicable",
-            f"gates.{not_applicable[0]}",
-            "a not-applicable repository gate has no R11 rail contribution, so the "
-            "exact certifying five-gate admission cannot be compiled for this selection",
-        )
+def _project_not_applicable_gate(gate: RepositoryGatePlan) -> RailDefinition:
+    """Preserve a declared gate deferral as bounded evidence, never a test pass."""
+    if gate.applicability != "not-applicable" or gate.reason is None:
+        raise ValueError("gate projection requires explicit not-applicable authority")
+    classes: dict[int, RailClass] = {
+        1: "pre-test-quality",
+        2: "ordinary-test-suite",
+        3: "post-test-quality",
+        4: "integration-test",
+    }
+    return RailDefinition(
+        identity=RailIdentity(
+            railId=f"repository-gate-{gate.gate}-not-applicable", version="1.0.0"
+        ),
+        gate=gate.gate,
+        railClass=classes[gate.gate],
+        authority="repository-profile",
+        ownerClass="repository-quality",
+        correctiveOwner="repository-quality",
+        posture="enforcing",
+        orderKey="00-applicability",
+        adapter=RailAdapterDefinition(
+            adapterKind="repository-gate-applicability",
+            adapterId="repository-gate-applicability",
+            configurationDigest=content_digest(gate.model_dump(mode="json")),
+            executionEvidence="Exact published repository terminal records this gate as "
+            "not-applicable, unstarted and without rail execution.",
+        ),
+        runtimeInputs=RailRuntimeInputs(),
+        applicability=(
+            RailApplicability(
+                profileId=gate.selectionId,
+                status="not-applicable",
+                selectionIdentity=gate.planDigest,
+                reason=gate.reason,
+            ),
+        ),
+        evidenceContract=(
+            RailEvidenceContract(
+                evidenceId="repository-gate-applicability",
+                mediaType="application/json",
+                maxBytes=100_000_000,
+            ),
+        ),
+    )
 
 
 def _require_memory_rails(memory_rails: Sequence[RailDefinition]) -> None:

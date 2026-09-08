@@ -133,6 +133,121 @@ def parse_entity_inventory_names(path: Path) -> list[str]:
 
 
 @dataclass(frozen=True)
+class CensusEntityRow:
+    """Exact inventory key, curated evidence, and row bytes for structural comparison."""
+
+    key: str
+    evidence_paths: tuple[str, ...]
+    inventory_text: str
+    fingerprint_text: str
+
+
+def _census_entity_key(cell: str) -> str:
+    key = cell.strip()
+    if len(key) >= 2 and key.startswith("`") and key.endswith("`"):
+        key = key[1:-1]
+    if not key or "\x00" in key:
+        raise ValueError("entity census requires a nonempty decoded Entity key")
+    key.encode("utf-8", errors="strict")
+    return key
+
+
+def _census_evidence_paths(fields: dict[str, str]) -> tuple[str, ...]:
+    if "evidencepaths" not in fields:
+        raise ValueError("entity fingerprint table lacks evidencePaths")
+    cells = re.sub(r"<br\s*/?>", ";", fields["evidencepaths"], flags=re.IGNORECASE).split(";")
+    evidence = []
+    for cell in cells:
+        value = cell.strip()
+        if not value or value.lower().strip("`") in {"n/a", "none"}:
+            continue
+        evidence.append(_census_entity_key(value))
+    return tuple(evidence)
+
+
+@dataclass
+class _EntityCensusParser:
+    inventory: dict[str, list[str]]
+    fingerprints: dict[str, tuple[str, tuple[str, ...]]]
+    section: str = ""
+    headers: tuple[str, ...] = ()
+    current: str | None = None
+
+    def inventory_entry(self, key: str, raw: str) -> None:
+        if key in self.inventory:
+            raise ValueError(f"duplicate entity inventory key: {key}")
+        self.inventory[key] = [raw]
+
+    def consume(self, raw: str) -> None:
+        line = raw.strip()
+        if line.startswith("## "):
+            self.section = line
+            self.headers = ()
+            self.current = None
+            return
+        if self.section == "## Entity Inventory":
+            if line.startswith("### "):
+                self.current = _census_entity_key(line.removeprefix("### "))
+                self.inventory_entry(self.current, raw)
+                return
+            if self.current is not None:
+                self.inventory[self.current].append(raw)
+                return
+        if self.section in {"## Entity Inventory", "## Entity Fingerprints"} and line.startswith(
+            "|"
+        ):
+            self.table_row(line, raw)
+
+    def table_row(self, line: str, raw: str) -> None:
+        cells = split_table_row(line)
+        if _is_table_separator_row(cells):
+            return
+        normalized = _normalized_header_cells(cells)
+        if "entity" in normalized:
+            if len(normalized) != len(set(normalized)):
+                raise ValueError("duplicate entity catalog table header")
+            self.headers = tuple(normalized)
+            return
+        if not self.headers:
+            raise ValueError("entity catalog row precedes its Entity header")
+        if len(cells) != len(self.headers):
+            raise ValueError("entity catalog row does not match its header width")
+        fields = dict(zip(self.headers, cells, strict=True))
+        key = _census_entity_key(fields["entity"])
+        if self.section == "## Entity Inventory":
+            self.inventory_entry(key, raw)
+            return
+        if key in self.fingerprints:
+            raise ValueError(f"duplicate entity fingerprint key: {key}")
+        self.fingerprints[key] = (raw, _census_evidence_paths(fields))
+
+    def rows(self) -> tuple[CensusEntityRow, ...]:
+        if set(self.inventory) != set(self.fingerprints):
+            raise ValueError("entity inventory and fingerprint keys must match exactly once")
+        return tuple(
+            CensusEntityRow(
+                key,
+                self.fingerprints[key][1],
+                "".join(self.inventory[key]),
+                self.fingerprints[key][0],
+            )
+            for key in sorted(self.inventory, key=lambda item: item.encode("utf-8"))
+        )
+
+
+def parse_entity_census_rows(text: str) -> tuple[CensusEntityRow, ...]:
+    """Parse exact keys without the drift reader's historical deduplication.
+
+    Both canonical inventory forms (named subsections and Entity tables) retain
+    duplicate keys so ambiguity refuses instead of silently selecting a row.
+    """
+    parser = _EntityCensusParser({}, {})
+    for raw in text.splitlines(keepends=True):
+        parser.consume(raw)
+    return parser.rows()
+
+
+@dataclass(frozen=True)
 class _EntityVerdict:
     """The four fields that differ between one entity classification and the next.
 

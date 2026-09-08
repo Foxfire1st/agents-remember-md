@@ -217,6 +217,7 @@ def _publish_actual_coherence(contract: WorktreeContract, scan: _FullMemoryScan)
             [],
             {"eligible": len(scan.eligible), "missing": list(scan.missing)},
             list(scan.stale_indexes),
+            (),
             scan.quality["checks"][DRIFT_CHECK_NAME]["rows"],
             scan.quality["reportOnlyFindings"],
         )

@@ -270,7 +270,12 @@ def _pytest_step(
             config.pytest_phase_report.as_posix(),
         ]
     if config.causal_failure_report is not None:
-        pytest_args += ["--ar-causal-failure-report", config.causal_failure_report.as_posix()]
+        pytest_args += [
+            "-p",
+            "agents_remember_test_support.testing.causal_failures",
+            "--ar-causal-failure-report",
+            config.causal_failure_report.as_posix(),
+        ]
     if retry_plan is not None and retry_plan.delta:
         pytest_args += [
             "-p",

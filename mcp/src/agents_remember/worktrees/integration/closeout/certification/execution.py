@@ -35,6 +35,7 @@ from agents_remember.worktrees.modules.quality.execution.models import (
 from agents_remember.worktrees.modules.quality.gate import (
     QualityGatePlan,
     QualityGateTarget,
+    closeout_profile_purpose,
     run_strict_code_quality_gate,
 )
 from agents_remember.worktrees.services import CertificationContinuationPort, worktree_services
@@ -244,12 +245,16 @@ def _run_code(handoff: CloseoutCertificationHandoff) -> CloseoutCertificationHan
         # require its exact live owner; only concurrent heartbeat progress may differ.
         observe_certification_publication(handoff.store, handoff.record)
 
+    purpose = closeout_profile_purpose(handoff.contract)
+    if execution.run.repositoryPlan.purpose != purpose:
+        raise ValueError("frozen closeout purpose differs from current atomic owner")
     run_strict_code_quality_gate(
         QualityGateTarget(
             handoff.contract.code_worktree,
             handoff.contract.worktree_group,
             handoff.contract.repo_name,
             profile_reference,
+            purpose,
         ),
         diff_base=handoff.contract.code_base_commit,
         plan=QualityGatePlan(

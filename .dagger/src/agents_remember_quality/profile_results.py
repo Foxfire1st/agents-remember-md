@@ -55,6 +55,15 @@ def gate_catalog_payload(
     Every planned rail of a started gate gets one terminal record (pass, skipped,
     fail, or blocked); a gate that never started records zero starts and no rails.
     """
+    declared_not_applicable = outcomes.disposition == "not-applicable"
+    if declared_not_applicable and (
+        outcomes.applicability != "not-applicable"
+        or outcomes.started
+        or outcomes.rails
+        or outcomes.rail_outcomes
+        or outcomes.selector_outcomes
+    ):
+        raise ValueError("not-applicable gate cannot claim execution or rail outcomes")
     catalog_rails: list[dict[str, object]] = []
     for rail in outcomes.rails:
         outcome = outcomes.rail_outcomes.get(rail.identity_key)
@@ -84,7 +93,9 @@ def gate_catalog_payload(
         "gate": gate_number,
         "applicability": outcomes.applicability,
         "started": outcomes.started,
-        "disposition": outcomes.disposition if outcomes.started else "not-run",
+        "disposition": (
+            outcomes.disposition if outcomes.started or declared_not_applicable else "not-run"
+        ),
         "laterGatesZeroStart": outcomes.started and outcomes.disposition == "red",
         "zeroStart": not outcomes.started,
         "rails": catalog_rails,

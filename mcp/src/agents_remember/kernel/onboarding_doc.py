@@ -87,21 +87,82 @@ def discover_route_overviews(onboarding_root: Path) -> list[tuple[str, str]]:
     return overviews
 
 
+def fence_delimiter(line: str) -> tuple[str, int] | None:
+    """``(character, length)`` if this line opens or closes a fenced code block.
+
+    A fence is three or more backticks or tildes at an indent of at most three spaces.
+    Document scanners skip fenced regions: a fence is where a document quotes
+    somebody else's text, so a diff hunk or a broken table shown inside one is the
+    document working correctly.
+    """
+    stripped = line.lstrip(" ")
+    if len(line) - len(stripped) > 3:
+        return None
+    for character in ("`", "~"):
+        if not stripped.startswith(character * 3):
+            continue
+        length = len(stripped) - len(stripped.lstrip(character))
+        return character, length
+    return None
+
+
+def unfenced_lines(lines: list[str]) -> list[tuple[int, str]]:
+    """``(zero-based index, line)`` for every line outside a fenced code block.
+
+    The opening and closing fence lines are themselves excluded. A closing fence must use
+    the same character and be at least as long as the opener, which is what keeps a
+    ````` ````markdown ````` block containing a ```` ``` ```` from ending three lines early --
+    ``notes/installer-design`` holds exactly that nesting.
+    """
+    kept: list[tuple[int, str]] = []
+    open_fence: tuple[str, int] | None = None
+    for index, line in enumerate(lines):
+        delimiter = fence_delimiter(line)
+        if open_fence is None:
+            if delimiter is not None:
+                open_fence = delimiter
+                continue
+            kept.append((index, line))
+            continue
+        character, length = open_fence
+        if delimiter is not None and delimiter[0] == character and delimiter[1] >= length:
+            open_fence = None
+    return kept
+
+
 def _is_update_history_heading(line: str) -> bool:
     return line.strip().lower() == UPDATE_HISTORY_HEADING
+
+
+def _section_lines(lines: list[str]) -> Iterable[tuple[str, bool, bool]]:
+    """Line, history membership, and real H2 boundary under one fence-aware scope."""
+    unfenced = {index for index, _line in unfenced_lines(lines)}
+    in_history = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        heading = index in unfenced and stripped.startswith("## ")
+        if heading:
+            in_history = _is_update_history_heading(stripped)
+        yield line, in_history, heading
+
+
+def active_claim_lines(lines: list[str]) -> list[str]:
+    """Blank historical sections without changing live bytes or original line indexes.
+
+    A real Update History H2 starts the excluded section; the next unfenced H2
+    resumes active claims. Quoted headings inside fences never change membership.
+    This is a scanning view only: callers apply repairs to the original document.
+    """
+    return ["" if historical else line for line, historical, _heading in _section_lines(lines)]
 
 
 def meaningful_body(text: str) -> str:
     """Document content minus verification metadata rows and Update History."""
     kept: list[str] = []
-    in_history = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            in_history = _is_update_history_heading(stripped)
+    for line, in_history, _heading in _section_lines(text.splitlines()):
         if in_history:
             continue
-        cells = markdown_table_cells(line) if stripped.startswith("|") else []
+        cells = markdown_table_cells(line) if line.strip().startswith("|") else []
         if cells and cells[0] in METADATA_FIELDS:
             continue
         kept.append(line)
@@ -113,17 +174,12 @@ def meaningful_body_changed(old_text: str | None, new_text: str) -> bool:
 
 
 def update_history_section(text: str) -> list[str]:
-    """Stripped, non-empty lines of the Update History section, heading excluded."""
-    lines: list[str] = []
-    in_history = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            in_history = _is_update_history_heading(stripped)
-            continue
-        if in_history and stripped:
-            lines.append(stripped)
-    return lines
+    """Stripped, non-empty historical lines, excluding real H2 boundaries."""
+    return [
+        line.strip()
+        for line, in_history, heading in _section_lines(text.splitlines())
+        if in_history and not heading and line.strip()
+    ]
 
 
 def new_history_lines(old_text: str | None, new_text: str) -> list[str]:

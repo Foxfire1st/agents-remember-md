@@ -16,7 +16,6 @@ from agents_remember.kernel.onboarding_doc import (
     new_history_lines,
     normalize_route,
     onboarding_metadata_row,
-    route_contains_changed_path,
     table_metadata,
 )
 from agents_remember.kernel.route_index import build_route_indexes
@@ -134,13 +133,14 @@ def route_overview_metadata_refresh_plan_for_context(
     memory_tree: Path | None = None,
     memory_verified_commit: str = "",
 ) -> RouteOverviewRefreshPlan:
-    """Plan verification stamps for source-matched and task-edited route overviews.
+    """Plan verification stamps for nearest governing and task-edited overviews.
 
     A curator can repair a route whose source drift predates the leaf's current code
     range (for example after a source-branch sync).  Such an overview is still part of
     this closeout transaction even though none of ``changed_paths`` falls below its
     route.  Include every route overview changed since the task's verified memory
     baseline so the body gate can validate it and closeout can stamp it atomically.
+    Untouched ancestors outside that closed set must not receive verification stamps.
     """
     required: list[dict[str, str]] = []
     missing_metadata: list[str] = []
@@ -148,6 +148,7 @@ def route_overview_metadata_refresh_plan_for_context(
     changed_memory = (
         _changed_memory_paths(tree, memory_verified_commit) if tree is not None else set()
     )
+    overviews = []
     for overview_path in sorted(context.onboarding_root.rglob("overview.md")):
         if not filesystem.is_file(overview_path):
             continue
@@ -155,6 +156,14 @@ def route_overview_metadata_refresh_plan_for_context(
         if metadata.get("doc_type", "").strip("`") not in ROUTE_OVERVIEW_DOC_TYPES:
             continue
         source_route = normalize_route(metadata.get("sourceRoute", "."))
+        overviews.append((overview_path, metadata, source_route))
+    routes = [source_route for _, _, source_route in overviews]
+    governing_routes = {
+        route
+        for path in changed_paths
+        if (route := _nearest_governing_route(path, routes)) is not None
+    }
+    for overview_path, metadata, source_route in overviews:
         changed_in_memory = False
         if tree is not None:
             try:
@@ -163,7 +172,7 @@ def route_overview_metadata_refresh_plan_for_context(
                 )
             except ValueError:
                 changed_in_memory = False
-        if not route_contains_changed_path(source_route, changed_paths) and not changed_in_memory:
+        if source_route not in governing_routes and not changed_in_memory:
             continue
         rel_path = overview_path.relative_to(context.onboarding_root).as_posix()
         if "lastVerifiedCommitHash" not in metadata or "lastVerifiedCommitDate" not in metadata:

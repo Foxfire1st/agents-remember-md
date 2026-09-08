@@ -93,12 +93,15 @@ from agents_remember.worktrees.integration.closeout.preparation.memory_port impo
     PreparedMemoryCertificationResult,
 )
 from agents_remember.worktrees.modules.context import contract_context
-from agents_remember.worktrees.modules.quality.clean_executor import ReportBindings, _publish_reports
 from agents_remember.worktrees.modules.quality.certification_evidence import verify_result_evidence
 from agents_remember.worktrees.modules.quality.certification_records import certificate_store
 from agents_remember.worktrees.modules.quality.certification_terminal import (
     RecordedCertificationGeneration,
     RecordedGateTerminal,
+)
+from agents_remember.worktrees.modules.quality.clean_executor import (
+    ReportBindings,
+    _publish_reports,
 )
 from agents_remember.worktrees.modules.quality.published_manifest import (
     PublishedQualityManifest,
@@ -130,7 +133,8 @@ class _PreparedScopeAuthority:
         # Use the original selected admission's actual task-source bytes. The door's
         # pre-curation memory tree is not the realized memory candidate after curation.
         snapshots = tuple(
-            item for item in current.selected.authorities.inputSnapshots
+            item
+            for item in current.selected.authorities.inputSnapshots
             if item.owner == "task-document-source"
         )
         if len(snapshots) != 1:
@@ -146,12 +150,16 @@ class _PreparedScopeAuthority:
         return ScopeCandidateIdentity(
             pairIdentity=pair,
             code=observe_git_tree_delta(
-                Path(pair.codeRoot), namespace="code", root=pair.codeRoot,
+                Path(pair.codeRoot),
+                namespace="code",
+                root=pair.codeRoot,
                 base_ref=current.contract.code_base_commit,
                 candidate_tree=self.request.candidate.codeView.codeTree,
             ),
             memory=observe_git_tree_delta(
-                Path(pair.memoryRoot), namespace="memory", root=pair.memoryRoot,
+                Path(pair.memoryRoot),
+                namespace="memory",
+                root=pair.memoryRoot,
                 base_ref=current.contract.memory_base_commit,
                 candidate_tree=self.request.candidate.memoryTree,
             ),
@@ -166,12 +174,13 @@ def _run(request: PreparedMemoryCertificationRequest) -> FinalCertificationResul
     physical_code = Path(request.candidate.codeView.physicalCodeRoot)
     memory, onboarding = Path(pair.memoryRoot), Path(pair.onboardingRoot)
     context = replace(
-        contract_context(current.contract), code_repository_root=physical_code,
-        memory_root=memory, onboarding_root=onboarding,
+        contract_context(current.contract),
+        code_repository_root=physical_code,
+        memory_root=memory,
+        onboarding_root=onboarding,
     )
     prefix = tuple(
-        item.certificate for item in current.selected.terminals[:4]
-        if item.certificate is not None
+        item.certificate for item in current.selected.terminals[:4] if item.certificate is not None
     )
     if len(prefix) != 4:
         refuse("prepared-memory-prefix-incomplete", "four selected original certificates", prefix)
@@ -186,57 +195,94 @@ def _run(request: PreparedMemoryCertificationRequest) -> FinalCertificationResul
     ) as index:
         scope = compile_scope_manifest(
             authority,
-            ContractDependencyAuthority(DependencyOwnerContext(
-                logical_code, memory, onboarding, current.contract.repo_name,
-                context.storage, index,
-            )),
+            ContractDependencyAuthority(
+                DependencyOwnerContext(
+                    logical_code,
+                    memory,
+                    onboarding,
+                    current.contract.repo_name,
+                    context.storage,
+                    index,
+                )
+            ),
             checkers=AVAILABLE_CHECKS,
         )
         plan = compile_affected_closure_plan(
-            AffectedClosureAdmission(authority, current.selected.run.admission, prefix), scope,
+            AffectedClosureAdmission(authority, current.selected.run.admission, prefix),
+            scope,
         )
         affected = execute_affected_closure(
-            AffectedClosureExecution(authority, RangeResolutionAffectedExecutor(
-                RangeResolutionExecutionContext(logical_code, memory, onboarding, index),
-            )),
-            plan, prior_results=(),
+            AffectedClosureExecution(
+                authority,
+                RangeResolutionAffectedExecutor(
+                    RangeResolutionExecutionContext(logical_code, memory, onboarding, index),
+                ),
+            ),
+            plan,
+            prior_results=(),
         )
     _current(request)
     quality = run_memory_quality_check(
-        onboarding, checks=AVAILABLE_CHECKS,
+        onboarding,
+        checks=AVAILABLE_CHECKS,
         drift_context=DriftCheckContext(
-            physical_code, context, detail_limit=1000, include_rows=True, write_report=False,
+            physical_code,
+            context,
+            detail_limit=1000,
+            include_rows=True,
+            write_report=False,
         ),
         include_report_only_findings=True,
     )
     census = route_index_source_snapshot(
-        code_root=physical_code, storage=context.storage,
+        code_root=physical_code,
+        storage=context.storage,
         scoped_repo_path=current.contract.repo_name,
     )
     missing = tuple(
-        row.to_dict() for source in census.eligible_paths
-        if (row := missing_onboarding_for_source(
-            physical_code, onboarding, context.storage, current.contract.repo_name, source,
-        )) is not None
+        row.to_dict()
+        for source in census.eligible_paths
+        if (
+            row := missing_onboarding_for_source(
+                physical_code,
+                onboarding,
+                context.storage,
+                current.contract.repo_name,
+                source,
+            )
+        )
+        is not None
     )
     indexes = build_route_indexes(
-        code_root=physical_code, onboarding_root=onboarding,
-        repository=current.contract.repo_name, storage=context.storage, dry_run=True,
+        code_root=physical_code,
+        onboarding_root=onboarding,
+        repository=current.contract.repo_name,
+        storage=context.storage,
+        dry_run=True,
     )
     actual_indexes = {
-        path.relative_to(onboarding).as_posix()
-        for path in onboarding.rglob("overview.index.json")
+        path.relative_to(onboarding).as_posix() for path in onboarding.rglob("overview.index.json")
     }
     stale = set(indexes.stale_indexes) | (actual_indexes - set(indexes.indexes))
     after = _current(request)
     if require_current_curator_coherence(after.contract) != coherence:
         refuse("prepared-memory-coherence-moved", coherence.record_digest, "changed")
-    return certify_final_full_memory_coherence(FinalCertificationEvidence(
-        current.selected.run.admission, prefix, (), candidate.code.candidateTree,
-        candidate.memory.candidateTree, candidate.pairIdentity, plan, coherence,
-        quality["checks"], len(missing), len(stale),
-        affected.terminalStatus == "pass" and affected.incrementalMemoryReady,
-    ))
+    return certify_final_full_memory_coherence(
+        FinalCertificationEvidence(
+            current.selected.run.admission,
+            prefix,
+            (),
+            candidate.code.candidateTree,
+            candidate.memory.candidateTree,
+            candidate.pairIdentity,
+            plan,
+            coherence,
+            quality["checks"],
+            len(missing),
+            len(stale),
+            affected.terminalStatus == "pass" and affected.incrementalMemoryReady,
+        )
+    )
 
 
 def _profile(request: PreparedMemoryCertificationRequest) -> AdmittedRepositoryProfileExecution:
@@ -245,7 +291,8 @@ def _profile(request: PreparedMemoryCertificationRequest) -> AdmittedRepositoryP
     if not isinstance(operation_input, CloseoutOperationInput):
         refuse("prepared-memory-operation-kind", "closeout", current.record.operationKind)
     reference = require_repo(
-        load_config(operation_input.configPath), current.contract.repo_name,
+        load_config(operation_input.configPath),
+        current.contract.repo_name,
     ).certification_profile
     root = Path(request.candidate.codeView.physicalCodeRoot)
     path = resolve_repository_profile_path(root, reference)
@@ -255,11 +302,16 @@ def _profile(request: PreparedMemoryCertificationRequest) -> AdmittedRepositoryP
         refuse("prepared-memory-profile-capacity", MAX_PROFILE_BYTES, len(raw))
     frozen = current.selected.run
     admitted = AdmittedRepositoryProfile(
-        current.contract.repo_name, root, path, hashlib.sha256(raw).hexdigest(),
+        current.contract.repo_name,
+        root,
+        path,
+        hashlib.sha256(raw).hexdigest(),
         frozen.repositoryProfile,
     )
     execution = admit_repository_profile_execution(
-        admitted, purpose="closeout", mode=frozen.repositoryPlan.mode,
+        admitted,
+        purpose=frozen.repositoryPlan.purpose,
+        mode=frozen.repositoryPlan.mode,
         candidate_identity=frozen.repositoryPlan.candidateIdentity,
         source_selection=frozen.repositoryPlan.sourceSelection,
     )
@@ -280,7 +332,8 @@ def _export(
         if definition.path == execution.decoder.artifactPath:
             continue
         publications = tuple(
-            item.publication for item in current.selected.terminals[:4]
+            item.publication
+            for item in current.selected.terminals[:4]
             if definition.path in item.publication.files
         )
         if not publications:
@@ -295,7 +348,8 @@ def _export(
             raw = stream.read(definition.maxBytes + 1)
         record = publication.require_file(definition.path)
         if (
-            len(raw) > definition.maxBytes or len(raw) != record.size
+            len(raw) > definition.maxBytes
+            or len(raw) != record.size
             or hashlib.sha256(raw).hexdigest() != record.sha256
         ):
             refuse("prepared-memory-original-artifact-moved", record, definition.path)
@@ -304,7 +358,8 @@ def _export(
         destination.write_bytes(raw)
     payload = {
         execution.decoder.statusField: execution.decoder.passedValue
-        if result.state == "green" else execution.decoder.failedValue,
+        if result.state == "green"
+        else execution.decoder.failedValue,
         execution.decoder.exitCodeField: 0 if result.state == "green" else 1,
         "producer": "prepared-memory-certification",
         "preparedCandidate": request.candidate.model_dump(mode="json"),
@@ -334,18 +389,33 @@ def _manifest(
         if (
             len(rail.evidenceContract) != 1
             or rail.evidenceContract[0].evidenceId != item.item.itemId
-            or rail.requiredArtifacts or rail.outputArtifacts
+            or rail.requiredArtifacts
+            or rail.outputArtifacts
         ):
             refuse("prepared-memory-rail-contract-mismatch", item.item, rail)
-        rows.append(build_rail_result(gate, RailTerminalObservation(
-            rail=rail.identity, status=item.status, code="actual-r08-" + item.status,
-            evidence=(RailEvidenceReference(
-                evidenceId=item.item.itemId, reference=artifact,
-                sha256=hashlib.sha256(raw).hexdigest(), size=len(raw),
-            ),),
-        )))
+        rows.append(
+            build_rail_result(
+                gate,
+                RailTerminalObservation(
+                    rail=rail.identity,
+                    status=item.status,
+                    code="actual-r08-" + item.status,
+                    evidence=(
+                        RailEvidenceReference(
+                            evidenceId=item.item.itemId,
+                            reference=artifact,
+                            sha256=hashlib.sha256(raw).hexdigest(),
+                            size=len(raw),
+                        ),
+                    ),
+                ),
+            )
+        )
     return compile_gate_result_manifest(
-        frozen.registry, frozen.certificationPlan, gate, rows,
+        frozen.registry,
+        frozen.certificationPlan,
+        gate,
+        rows,
         GateResultAdmission(
             candidateIdentity=frozen.repositoryPlan.candidateIdentity,
             profileId=frozen.repositoryPlan.selectionId,
@@ -363,15 +433,18 @@ def _select(
     current = _current(request)
     frozen = current.selected.run
     prefix = tuple(
-        item.certificate for item in current.selected.terminals[:4]
-        if item.certificate is not None
+        item.certificate for item in current.selected.terminals[:4] if item.certificate is not None
     )
     certificate = None
     if result.state == "green":
         certificate = compile_gate_certificate(
-            frozen.admission, frozen.certificationPlan.gates[4], manifest, prefix,
+            frozen.admission,
+            frozen.certificationPlan.gates[4],
+            manifest,
+            prefix,
             GateCertificateIssuanceContext(
-                provenance=frozen.provenance, gateFiveInputs=result.gateFiveInputs,
+                provenance=frozen.provenance,
+                gateFiveInputs=result.gateFiveInputs,
             ),
         )
     objects = certificate_store(current.contract.worktree_group)
@@ -379,15 +452,25 @@ def _select(
     if certificate is not None:
         objects.publish(certificate)
     terminal = RecordedGateTerminal(
-        manifest, objects.reference("result-manifest", manifest.manifestDigest), publication,
-        certificate, None if certificate is None else objects.reference(
-            "certificate", certificate.certificateDigest,
+        manifest,
+        objects.reference("result-manifest", manifest.manifestDigest),
+        publication,
+        certificate,
+        None
+        if certificate is None
+        else objects.reference(
+            "certificate",
+            certificate.certificateDigest,
         ),
     )
-    verify_result_evidence(current.contract.worktree_group / "reports", publication, manifest.railResults)
+    verify_result_evidence(
+        current.contract.worktree_group / "reports", publication, manifest.railResults
+    )
     current = _current(request)
     select_recorded_terminals(
-        current.contract, current.store, current.record,
+        current.contract,
+        current.store,
+        current.record,
         RecordedCertificationGeneration((terminal,), ()),
     )
     return terminal
@@ -401,37 +484,59 @@ class PreparedMemoryCertificationAdapter:
         return _run(request).gateFiveInputs
 
     def certify(
-        self, request: PreparedMemoryCertificationRequest,
+        self,
+        request: PreparedMemoryCertificationRequest,
     ) -> PreparedMemoryCertificationResult:
         current = _current(request)
         if len(current.selected.terminals) != 4:
-            refuse("prepared-memory-terminal-already-selected", "exact code prefix only", current.selected.state)
+            refuse(
+                "prepared-memory-terminal-already-selected",
+                "exact code prefix only",
+                current.selected.state,
+            )
         result = _run(request)
         execution = _profile(request)
-        with TemporaryDirectory(prefix="prepared-memory-export-", dir=current.contract.worktree_group) as directory:
+        with TemporaryDirectory(
+            prefix="prepared-memory-export-", dir=current.contract.worktree_group
+        ) as directory:
             export = Path(directory)
             raw = _export(request, result, execution, export)
             manifest = _manifest(request, result, execution.decoder.artifactPath, raw)
-            publication = parse_published_quality_manifest(_publish_reports(
-                export, current.contract.worktree_group / "reports",
-                candidate_tree=request.candidate.codeView.codeTree, profile_execution=execution,
-                bindings=ReportBindings(
-                    attestation=None, runtime_authority_digest=None,
-                    protected_generations=lambda: _current(request).selected.protected_generations,
-                ),
-            ))
+            publication = parse_published_quality_manifest(
+                _publish_reports(
+                    export,
+                    current.contract.worktree_group / "reports",
+                    candidate_tree=request.candidate.codeView.codeTree,
+                    profile_execution=execution,
+                    bindings=ReportBindings(
+                        attestation=None,
+                        runtime_authority_digest=None,
+                        protected_generations=lambda: (
+                            _current(request).selected.protected_generations
+                        ),
+                    ),
+                )
+            )
             published = published_report_path_from_manifest(
-                current.contract.worktree_group / "reports", publication, execution.decoder.artifactPath,
+                current.contract.worktree_group / "reports",
+                publication,
+                execution.decoder.artifactPath,
             ).read_bytes()
             if published != raw:
-                refuse("prepared-memory-publication-moved", hashlib.sha256(raw).hexdigest(), "changed")
+                refuse(
+                    "prepared-memory-publication-moved", hashlib.sha256(raw).hexdigest(), "changed"
+                )
         terminal = _select(request, result, manifest, publication)
         if result.gateFiveInputs is None or terminal.certificateReference is None:
             raise FinalCertificationError(
-                "prepared-memory-certification-red", result.reason or result.state,
+                "prepared-memory-certification-red",
+                result.reason or result.state,
                 next_action="memory_quality_check",
             )
         return PreparedMemoryCertificationResult(
-            _current(request), request.candidate, result.gateFiveInputs,
-            terminal.resultReference, terminal.certificateReference,
+            _current(request),
+            request.candidate,
+            result.gateFiveInputs,
+            terminal.resultReference,
+            terminal.certificateReference,
         )

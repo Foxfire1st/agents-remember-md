@@ -36,7 +36,10 @@ from agents_remember.worktrees.modules.quality.certification_records import (
     PreparedCertificationRun,
     prepare_certification_records,
 )
-from agents_remember.worktrees.modules.quality.gate import QualityGateTarget
+from agents_remember.worktrees.modules.quality.gate import (
+    QualityGateTarget,
+    closeout_profile_purpose,
+)
 from agents_remember.worktrees.queue.closeout_staged_quality import (
     PreparedStagedCode,
     prepare_staged_code,
@@ -88,8 +91,13 @@ def prepare_closeout_certification(
     profile_reference = require_repo(config, contract.repo_name).certification_profile
     # A malformed or missing profile refuses before staging or invoking a hook.
     load_repository_profile(contract.repo_name, contract.code_worktree, profile_reference)
+    purpose = closeout_profile_purpose(contract)
     target = QualityGateTarget(
-        contract.code_worktree, contract.worktree_group, contract.repo_name, profile_reference
+        contract.code_worktree,
+        contract.worktree_group,
+        contract.repo_name,
+        profile_reference,
+        purpose,
     )
     try:
         preparation = prepare_staged_code(target, candidate_tree=candidate_tree)
@@ -107,7 +115,11 @@ def prepare_closeout_certification(
         ) from error
     prepared = prepare_certification_records(
         CertificationRunTarget(
-            contract.repo_name, contract.code_worktree, profile_reference, contract.worktree_group
+            contract.repo_name,
+            contract.code_worktree,
+            profile_reference,
+            contract.worktree_group,
+            purpose,
         ),
         mode="targeted",
         candidate_tree=preparation.candidate_tree,
@@ -289,6 +301,10 @@ def validate_selected_currentness(
     record: LifecycleOperationRecord,
 ) -> LoadedCertificationSelection:
     selected = require_selected_certification(contract, record)
+    if selected.run.repositoryPlan.purpose == "atomic-leaf-closeout":
+        purpose = closeout_profile_purpose(contract)
+        if purpose != "atomic-leaf-closeout":
+            refuse("selected-atomic-owner-moved", "atomic-leaf-closeout", purpose)
     profile = require_repo(
         load_config(operation_input.configPath), contract.repo_name
     ).certification_profile

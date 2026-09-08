@@ -34,7 +34,7 @@ from agents_remember.models.certification.base import (
 
 RepositoryGateId = Literal[1, 2, 3, 4]
 ProfileMode = Literal["targeted", "full"]
-ProfilePurpose = Literal["local-precommit", "closeout"]
+ProfilePurpose = Literal["local-precommit", "closeout", "atomic-leaf-closeout"]
 GateApplicabilityStatus = Literal["applicable", "not-applicable"]
 SemanticInputKind = Literal[
     "rail-execution",

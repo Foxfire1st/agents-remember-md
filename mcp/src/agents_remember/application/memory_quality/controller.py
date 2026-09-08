@@ -7,6 +7,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from agents_remember.application.memory_quality.census import (
+    PreparedMemoryCensus,
+    census_curator_candidates,
+    prepare_memory_census,
+    publish_memory_census,
+)
 from agents_remember.application.memory_quality.runs import (
     QualityRunIdentity,
     QualityRunSnapshot,
@@ -320,6 +326,7 @@ def _execute_memory_quality(execution: MemoryQualityExecution) -> dict[str, obje
     candidate_inputs = (
         _curator_candidate_inputs(scope) if execution.publish_curator_report else None
     )
+    census = prepare_memory_census(scope)
     payload = run_memory_quality_check(
         scope.onboarding_root,
         checks=execution.checks,
@@ -348,26 +355,59 @@ def _execute_memory_quality(execution: MemoryQualityExecution) -> dict[str, obje
         **_scope_projection(scope.identity),
         **payload,
     }
+    if census is not None:
+        response["memoryCensus"] = publish_memory_census(
+            census, detail_limit=execution.detail_limit
+        )
     if not execution.publish_curator_report:
-        return response
+        return _bounded_quality_response(response, execution.detail_limit)
     _attach_curator_checklist(
-        execution.config,
-        scope,
+        execution,
         payload,
         response,
         candidate_inputs=candidate_inputs,
+        census=census,
     )
-    return response
+    return _bounded_quality_response(response, execution.detail_limit)
+
+
+def _bounded_quality_response(response: dict[str, object], detail_limit: int) -> dict[str, object]:
+    """Bound transport samples after complete checklist and catalog publication."""
+
+    def sampled(payload: dict[str, Any]) -> dict[str, Any]:
+        result = dict(payload)
+        for field, count_field in (
+            ("findings", "findingSampleCount"),
+            ("surfacedFindings", "surfacedSampleCount"),
+            ("debtFindings", "debtSampleCount"),
+            ("reportOnlySample", "reportOnlySampleCount"),
+        ):
+            findings = result.get(field)
+            if isinstance(findings, list):
+                result[field] = findings[:detail_limit]
+                result[count_field] = len(result[field])
+        return result
+
+    result = sampled(response)
+    checks = result.get("checks")
+    if isinstance(checks, dict):
+        result["checks"] = {
+            name: sampled(check) if isinstance(check, dict) else check
+            for name, check in checks.items()
+        }
+    return result
 
 
 def _attach_curator_checklist(
-    config: McpRuntimeConfig,
-    scope: MemoryScope,
+    execution: MemoryQualityExecution,
     payload: dict[str, Any],
     response: dict[str, object],
     *,
     candidate_inputs: _CuratorCandidateInputs | None = None,
+    census: PreparedMemoryCensus | None,
 ) -> None:
+    config = execution.config
+    scope = revalidate_memory_candidate_scope(config, execution.scope)
     checks = payload.get("checks")
     drift_result = checks.get(DRIFT_CHECK_NAME, {}) if isinstance(checks, dict) else {}
     drift_rows = drift_result.pop("rows", []) if isinstance(drift_result, dict) else []
@@ -411,6 +451,20 @@ def _attach_curator_checklist(
         expected=candidate_inputs,
         observed=_curator_candidate_inputs(scope),
     )
+    if census is None:
+        raise RuntimeError("curator publication requires its complete plane-derived census")
+    source_candidates = census_curator_candidates(census)
+    repair_findings.extend(
+        {
+            "check": "memory-census",
+            "code": blocker.code,
+            "path": blocker.identity.memoryRootRelativePath
+            if blocker.identity
+            else blocker.sourcePath or "",
+            "message": blocker.detail,
+        }
+        for blocker in census.result.blockers
+    )
     checklist = write_curator_checklist(
         CuratorChecklist(
             report_path=scope.curator_report_path,
@@ -425,6 +479,7 @@ def _attach_curator_checklist(
             commit_owned_findings=commit_owned_findings,
             missing_onboarding=missing_onboarding,
             stale_route_indexes=route_indexes.stale_indexes,
+            source_candidates=source_candidates,
             drift_rows=drift_rows,
             report_only_findings=report_only,
         )
@@ -451,8 +506,8 @@ def _attach_final_full_catalog(
 ) -> None:
     """Project the deterministic complete Gate-5 catalog onto the full run result.
 
-    The interactive full contract-scoped run is the execution surface of the final full
-    memory-coherence certification (CCR-R08). It cannot hold the R21 Gate 1-4
+    The interactive full contract-scoped run prepares memory before certification
+    admission. It cannot hold the R21 Gate 1-4
     certificates or the R07 affected-closure plan, so the projection names the exact
     complete catalog population, every item's typed status, and the still-missing
     certification authorities without claiming certification eligibility.

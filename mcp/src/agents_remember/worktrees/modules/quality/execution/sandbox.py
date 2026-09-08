@@ -52,14 +52,14 @@ def _admit_prepared_profile(
     )
     candidate = CandidateIdentity(kind="git-tree", value=prepared.candidate_tree)
     selection = resolve_repository_profile_selection(
-        admitted.canonical, purpose="closeout", mode=request.mode
+        admitted.canonical, purpose=request.purpose, mode=request.mode
     )
     source_selection = observe_profile_source_selection(
         admitted, selection, candidate, request.diff_base
     )
     return admit_repository_profile_execution(
         admitted,
-        purpose="closeout",
+        purpose=request.purpose,
         mode=request.mode,
         candidate_identity=candidate,
         source_selection=source_selection,
@@ -79,6 +79,7 @@ def _selected_profile(
     if (
         plan.candidateIdentity != CandidateIdentity(kind="git-tree", value=prepared.candidate_tree)
         or plan.mode != request.mode
+        or plan.purpose != request.purpose
         or profile.repositoryId != request.repository_id
     ):
         raise ValueError("frozen certification run differs from the exact executor candidate")

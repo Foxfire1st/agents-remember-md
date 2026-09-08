@@ -165,6 +165,7 @@ class MemoryQualityControllerTests(unittest.TestCase):
                 "revalidate_memory_candidate_scope",
                 side_effect=[self.candidate_scope, self.candidate_scope, error],
             ),
+            mock.patch.object(controller, "prepare_memory_census", return_value=None),
             mock.patch.object(
                 controller,
                 "run_memory_quality_check",

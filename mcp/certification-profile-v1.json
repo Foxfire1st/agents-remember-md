@@ -50,7 +50,7 @@
       "reportsField": "reports",
       "repositoryBundleArgument": "repository-bundle",
       "retainedReportsArgument": "retained-reports",
-      "runtimeDigest": "1ea0d21043dcc358b6f18de7a0eddaf27418122f95412b479bb066ae0bec299a",
+      "runtimeDigest": "c019240c0be24c7e8a298435727999473fbf1a67a03abe5baf517bbe8930e13c",
       "sourceArgument": "source",
       "version": "0.21.8"
     }
@@ -179,7 +179,7 @@
       ]
     }
   ],
-  "profileDigest": "5096c06a017e237a6a3f3cb6b9e1c703e2304d44831716cbfaf898699f9bfb1d",
+  "profileDigest": "0e31ae4b36b0361165c28055e03eb01ca5a6b78f8ac10434462199643a87bd2c",
   "profileId": "agents-remember-certification",
   "publishedArtifacts": [
     {
@@ -3612,6 +3612,133 @@
       "purpose": "local-precommit",
       "resultDecoderId": "quality-terminal-result",
       "selectionId": "local-targeted"
+    },
+    {
+      "executorAdapterId": "certifying-dagger",
+      "gates": [
+        {
+          "gate": 1,
+          "population": "targeted pre-test quality population",
+          "railIds": [
+            {
+              "railId": "causal-preflight",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-build",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-codegen",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-lint",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dashboard-typecheck",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "dependency-prerequisites",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "evidence-lifecycle",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "file-size",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-harness",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-projection-types",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-runtime",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "generated-skills",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "layering",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "pyright",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "quality-config-scope",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-cc",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "radon-mi",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "ruff-format",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "runtime-capability",
+              "version": "1.0.0"
+            },
+            {
+              "railId": "test-selection-ownership",
+              "version": "1.0.0"
+            }
+          ],
+          "reason": null,
+          "selectionIdentity": "closeout-targeted:gate-1:v1",
+          "status": "applicable"
+        },
+        {
+          "gate": 2,
+          "railIds": [],
+          "reason": "Atomic leaf acceptance defers suites and test-derived evidence to its canonical atomic master full integration gates.",
+          "selectionIdentity": "atomic-leaf-master-deferred-gate-2",
+          "status": "not-applicable"
+        },
+        {
+          "gate": 3,
+          "railIds": [],
+          "reason": "Atomic leaf acceptance defers suites and test-derived evidence to its canonical atomic master full integration gates.",
+          "selectionIdentity": "atomic-leaf-master-deferred-gate-3",
+          "status": "not-applicable"
+        },
+        {
+          "gate": 4,
+          "railIds": [],
+          "reason": "Atomic leaf acceptance defers suites and test-derived evidence to its canonical atomic master full integration gates.",
+          "selectionIdentity": "atomic-leaf-master-deferred-gate-4",
+          "status": "not-applicable"
+        }
+      ],
+      "mode": "targeted",
+      "purpose": "atomic-leaf-closeout",
+      "resultDecoderId": "quality-terminal-result",
+      "selectionId": "atomic-leaf-closeout-targeted"
     }
   ],
   "selectors": [
@@ -3639,7 +3766,7 @@
         "--output",
         "{selector-output}"
       ],
-      "configurationDigest": "e6fe17146ba4ac8ee68c3d94fc076f1de4d69c61f05080e405d12a2eef3fdc72",
+      "configurationDigest": "618b626c7430341f2c1d54966ae8eb27153fbdbc679410818d4a0f2ac7938fd9",
       "externalInputs": [],
       "inputUniverse": [
         "configuration and generated projections",
@@ -3661,7 +3788,7 @@
       "resultPath": ".quality-profile/agents-remember-test-selection.json",
       "schemaVersion": "repository-selector-result/v2",
       "selectorId": "agents-remember-test-selection",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "workingDirectory": "."
     }
   ],

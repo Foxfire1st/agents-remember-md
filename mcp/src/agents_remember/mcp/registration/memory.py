@@ -67,11 +67,14 @@ def _register_memory_health_tools(server: FastMCP, config: McpRuntimeConfig) -> 
     def memory_quality_check(
         request: MemoryQualityCheckRequest,
     ) -> dict[str, Any]:
-        """Closeout memory-quality gate: runs drift-integrity and style checks over onboarding.
+        """Prepare memory before certification admission using drift-integrity and style checks.
         It never changes code or memory. A full contract-scoped call atomically replaces the one
         operational checklist at `<worktree enclosure>/reports/curator-memory-quality.md` and its
         structured, report-digest-bound `.json` attestation; subset and unscoped calls write
-        neither. ok=false means findings exist (e.g. dirty-source
+        neither. Every contract-scoped execution also publishes the complete structural
+        census to reports/memory-census.json and returns bounded memoryCensus diagnostics.
+        This worklist requires no code-gate results and does not certify semantic decisions.
+        ok=false means findings exist (e.g. dirty-source
         drift), not that the tool failed. `curatorActionableCount` and
         `qualityChecklistStatus` are the onboarding-repair loop gate. Once the raw checklist is
         `ready-for-closeout`, combined `checklistStatus=coherence-required` means the caller must
